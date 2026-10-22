@@ -124,3 +124,15 @@ def test_reverse_speed_counts_as_distance():
     assert t.max_speed_mps == 10
     (t,) = trips([s(0, "gear", 2.0), *drive(0, 100_000, v=-5.0), s(100_000, "ignition", 2.0)])
     assert t.distance_m == pytest.approx(500) and t.max_speed_mps == 5 and t.avg_speed_mps == pytest.approx(5)
+
+
+def test_no_battery_before_start_gives_null_energy():
+    samples = [s(0, "gear", 1.0), *drive(0, 100_000), s(30_000, "battery_wh", 33000), s(60_000, "battery_wh", 32900), s(100_000, "ignition", 2.0)]
+    (t,) = trips(samples)
+    assert t.net_wh is t.gross_wh is t.recup_wh is t.start_wh is t.end_wh is None
+
+
+def test_ignition_undefined_does_not_end_trip():
+    samples = [s(0, "gear", 1.0), *drive(0, 100_000), s(50_000, "ignition", 0.0), s(200_000, "ignition", 1.0)]
+    (t,) = trips(samples)
+    assert t.end == 200_000

@@ -5,7 +5,7 @@ from typing import Any
 from .protocol import Sample
 
 PARK_GEAR = 4
-IGNITION_OFF_MAX = 2  # LOCK = 1, OFF = 2
+IGNITION_ENDS_TRIP = (1, 2)  # LOCK, OFF; 0 is UNDEFINED
 MERGE_GAP_MS = 180_000
 MOVING_MPS = 0.2778  # 1 km/h
 MAX_SPEED_STEP_MS = 5_000  # a speed sample stands for at most this long
@@ -65,7 +65,7 @@ def find_trips(samples: list[Sample], seed: dict[str, Any], now_ms: int, has_ign
             if s.k == "gear":
                 gear = v
                 p = (i if p is None else p) if v == PARK_GEAR else None
-            elif s.k == "ignition" and cur and v <= IGNITION_OFF_MAX:
+            elif s.k == "ignition" and cur and v in IGNITION_ENDS_TRIP:
                 spans.append((cur[0], i + 1, cur[1], cur[2], True))
                 cur = p = None
             elif s.k == "battery_wh":
@@ -102,8 +102,6 @@ def _build(seg: list[Sample], wh0: float | None, temp0: float | None, closed: bo
                 base = v
             else:
                 readings.append(v)
-    if base is None and readings:
-        base = readings.pop(0)
     end_wh = net = gross = recup = None
     if base is not None:
         end_wh, gross, recup = base, 0.0, 0.0
