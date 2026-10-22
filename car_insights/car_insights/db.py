@@ -21,6 +21,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS gaps_uniq ON gaps(vehicle_id, source_id, from_
 CREATE TABLE trips(vehicle_id TEXT, start INTEGER, end INTEGER, algo INTEGER, json TEXT, PRIMARY KEY(vehicle_id, start));
 CREATE TABLE charges(vehicle_id TEXT, start INTEGER, end INTEGER, algo INTEGER, json TEXT, PRIMARY KEY(vehicle_id, start));
 CREATE INDEX IF NOT EXISTS samples_vt ON samples(vehicle_id, t);
+CREATE INDEX IF NOT EXISTS trips_ve ON trips(vehicle_id, end);
+CREATE INDEX IF NOT EXISTS charges_ve ON charges(vehicle_id, end);
 """]
 
 
@@ -44,6 +46,7 @@ def tx(conn: sqlite3.Connection) -> Iterator[None]:
 def connect(path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")  # safe in WAL (no corruption, at worst the last commits); the car resends unacked data
     _migrate(conn)
     return conn
 
@@ -85,22 +88,19 @@ def latest_per_key(conn, vehicle_id: str, max_t: int) -> list[Sample]:
     return [Sample(0, t, k, json.loads(v)) for k, t, v in rows]
 
 
-def samples_after(conn, vehicle_id: str, after_t: int, max_t: int) -> list[Sample]:
-    """Samples with after_t < t <= max_t across all sources, ignoring meta/gap, ordered by (t, seq)."""
+def samples_after(conn, vehicle_id: str, after_t: int, max_t: int, keys: Sequence[str]) -> list[Sample]:
+    """Samples of the given keys with after_t < t <= max_t across all sources, ordered by (t, seq)."""
     rows = conn.execute(
-        "SELECT seq, t, key, value_json FROM samples WHERE vehicle_id=? AND t>? AND t<=? AND key NOT IN ('meta','gap') "
-        "ORDER BY t, seq, source_id", (vehicle_id, after_t, max_t))
+        f"SELECT seq, t, key, value_json FROM samples WHERE vehicle_id=? AND t>? AND t<=? AND key IN ({','.join('?' * len(keys))}) "
+        "ORDER BY t, seq, source_id", (vehicle_id, after_t, max_t, *keys))
     return [Sample(seq, t, k, json.loads(v)) for seq, t, k, v in rows]
 
 
-_DERIVE_KEYS = ("gear", "ignition", "speed", "battery_wh", "outside_temp", "plugged", "range_m", "gps")
-
-
-def latest_at_or_before(conn, vehicle_id: str, t: int) -> dict:
-    """key -> value of the newest sample (ties: highest seq) of each key derivation uses with sample t <= t.
+def latest_at_or_before(conn, vehicle_id: str, t: int, keys: Sequence[str]) -> dict:
+    """key -> value of the newest sample (ties: highest seq) of each given key with sample t <= t.
     One indexed lookup per key; latest_per_key would scan the vehicle's whole history."""
     out = {}
-    for k in _DERIVE_KEYS:
+    for k in keys:
         r = conn.execute("SELECT value_json FROM samples WHERE vehicle_id=? AND key=? AND t<=? ORDER BY t DESC, seq DESC LIMIT 1",
                          (vehicle_id, k, t)).fetchone()
         if r is not None:

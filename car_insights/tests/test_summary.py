@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from car_insights.summary import build
+from car_insights.summary import build, week_start_ms
 
 TZ = timezone(timedelta(hours=2))
 
@@ -21,12 +21,16 @@ NOW = ms(2026, 10, 22, 12)
 H = 3_600_000
 
 
+def summary(trips, charges, now=NOW):
+    return build(trips, charges, trips, charges, now, TZ)
+
+
 def test_rev_stable_and_changes():
     t1, t2 = trip(ms(2026, 10, 22, 8), ms(2026, 10, 22, 9)), trip(ms(2026, 10, 21, 8), ms(2026, 10, 21, 9))
-    a, b = build(None, [t1], [], NOW, TZ), build(None, [t1], [], NOW + 60_000, TZ)
+    a, b = summary([t1], []), summary([t1], [], NOW + 60_000)
     assert a["rev"] == b["rev"] and len(a["rev"]) == 12
     assert a["updated"] != b["updated"]
-    assert build(None, [t1, t2], [], NOW, TZ)["rev"] != a["rev"]
+    assert summary([t1, t2], [])["rev"] != a["rev"]
 
 
 def test_week_and_today():
@@ -37,7 +41,7 @@ def test_week_and_today():
         trip(d21 + 8 * H, d21 + 9 * H, None, None),
     ]
     charges = [charge(d22 + H, 700), charge(d21 + H, None)]
-    s = build(None, trips, charges, NOW, TZ)
+    s = summary(trips, charges)
     assert len(s["week"]) == 7
     assert [d["date"] for d in s["week"]][-2:] == ["2026-10-21", "2026-10-22"]
     assert s["week"][0] == {"date": "2026-10-16", "distance_m": 0, "net_wh": 0, "charged_wh": 0}
@@ -46,16 +50,24 @@ def test_week_and_today():
     assert sum(d["distance_m"] for d in s["week"]) == 7000
 
 
-def test_current_trip_counts_today_and_lists_are_capped():
-    cur = trip(ms(2026, 10, 22, 11), None, 3000, 300)
-    trips = [trip(ms(2026, 10, 22, 8) - i * 1000, ms(2026, 10, 22, 8), 1, 0) for i in range(25)]
-    s = build(cur, trips, [], NOW, TZ)
-    assert s["current_trip"] == cur
-    assert s["today"]["distance_m"] == 3025
-    assert len(s["trips"]) == 20 and s["trips"][0] is trips[0] and s["last_trip"] is trips[0]
-    assert s["last_charge"] is None and s["charges"] == []
+def test_lists_and_last_come_from_the_given_newest_rows_and_the_week_from_its_own():
+    listed = [trip(ms(2026, 10, 1) - i * 1000, ms(2026, 10, 1), 1, 0) for i in range(3)]  # older than the week
+    week = [trip(ms(2026, 10, 22, 8), ms(2026, 10, 22, 9), 2000, 200)]
+    s = build(listed, [], week, [], NOW, TZ)
+    assert s["trips"] == listed and s["last_trip"] is listed[0] and s["last_charge"] is None and s["charges"] == []
+    assert s["today"]["distance_m"] == 2000 and sum(d["distance_m"] for d in s["week"]) == 2000
+
+
+def test_no_current_trip_in_the_summary():
+    assert "current_trip" not in summary([], [])
 
 
 def test_empty():
-    s = build(None, [], [], NOW, TZ)
-    assert s["current_trip"] is None and s["last_trip"] is None and s["today"]["distance_m"] == 0
+    s = summary([], [])
+    assert s["last_trip"] is None and s["today"]["distance_m"] == 0
+
+
+def test_week_start_is_local_midnight_six_days_back():
+    assert week_start_ms(NOW, TZ) == ms(2026, 10, 16)
+    assert week_start_ms(ms(2026, 10, 22, 0, 0), TZ) == ms(2026, 10, 16)
+    assert week_start_ms(ms(2026, 10, 22, 23, 59), TZ) == ms(2026, 10, 16)

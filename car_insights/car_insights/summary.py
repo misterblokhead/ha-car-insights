@@ -1,9 +1,15 @@
 import hashlib
 import json
-from datetime import datetime, timedelta, tzinfo
+from datetime import datetime, time, timedelta, tzinfo
 
-_LIST = 20
+LIST = 20
 _DAYS = 7
+
+
+def week_start_ms(now_ms: int, tz: tzinfo) -> int:
+    """Local midnight of the first of the 7 days that end today: the earliest start the week's totals need."""
+    first = datetime.fromtimestamp(now_ms / 1000, tz).date() - timedelta(days=_DAYS - 1)
+    return int(datetime.combine(first, time.min, tz).timestamp() * 1000)
 
 
 def _sum(rows, day_of, field, days):
@@ -15,18 +21,18 @@ def _sum(rows, day_of, field, days):
     return out
 
 
-def build(current: dict | None, trips: list[dict], charges: list[dict], now_ms: int, tz: tzinfo) -> dict:
-    """The summary sent back in the webhook response. trips/charges: all closed rows fetched, newest first."""
+def build(trips: list[dict], charges: list[dict], week_trips: list[dict], week_charges: list[dict], now_ms: int, tz: tzinfo) -> dict:
+    """The summary sent back in the webhook response (the open trip is not part of it).
+    trips/charges: the newest closed rows, newest first (at most LIST); week_*: every closed row since week_start_ms."""
     def day_of(r):
         return datetime.fromtimestamp(r["start"] / 1000, tz).date()
     today = datetime.fromtimestamp(now_ms / 1000, tz).date()
     days = [today - timedelta(days=i) for i in range(_DAYS - 1, -1, -1)]
-    drives = trips + ([current] if current else [])
-    dist, net, added = _sum(drives, day_of, "distance_m", days), _sum(drives, day_of, "net_wh", days), _sum(charges, day_of, "added_wh", days)
+    dist, net, added = _sum(week_trips, day_of, "distance_m", days), _sum(week_trips, day_of, "net_wh", days), _sum(week_charges, day_of, "added_wh", days)
     week = [{"date": d.isoformat(), "distance_m": dist[d], "net_wh": net[d], "charged_wh": added[d]} for d in days]
     s = {
-        "current_trip": current, "today": week[-1], "last_trip": trips[0] if trips else None,
-        "last_charge": charges[0] if charges else None, "trips": trips[:_LIST], "charges": charges[:_LIST], "week": week,
+        "today": week[-1], "last_trip": trips[0] if trips else None, "last_charge": charges[0] if charges else None,
+        "trips": trips, "charges": charges, "week": week,
     }
     s["rev"] = hashlib.sha1(json.dumps(s, separators=(",", ":"), sort_keys=True).encode()).hexdigest()[:12]
     s["updated"] = now_ms

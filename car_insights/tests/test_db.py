@@ -168,9 +168,9 @@ def _plan(conn, run):
 def test_derive_queries_use_indexes(conn):
     from car_insights.db import latest_at_or_before, samples_after
     ingest(conn, "car1", S, [Sample(1, 5, "speed", 1.0), Sample(2, 9, "gear", 1.0)], 0)
-    (plan,) = _plan(conn, lambda: samples_after(conn, "car1", 3, 100))
-    assert "samples_vt" in plan and "SCAN samples" not in plan
-    plans = _plan(conn, lambda: latest_at_or_before(conn, "car1", 50))
+    (plan,) = _plan(conn, lambda: samples_after(conn, "car1", 3, 100, ("speed", "gear")))
+    assert ("samples_vt" in plan or "samples_vkt" in plan) and "SCAN samples" not in plan
+    plans = _plan(conn, lambda: latest_at_or_before(conn, "car1", 50, ("speed", "gear")))
     assert plans and all("samples_vkt" in p and "SCAN samples" not in p for p in plans)
 
 
@@ -182,8 +182,10 @@ def test_latest_at_or_before_newest_per_derivation_key(conn):
     ingest(conn, "car1", "car_app-1111abcd", [Sample(1, 8, "speed", 3.0)], 0)
     ingest(conn, "car2", S, [Sample(1, 8, "ignition", 4.0)], 0)
     # newest t wins (across sources), a tie on t goes to the higher seq, other keys and later samples are ignored
-    assert latest_at_or_before(conn, "car1", 50) == {"speed": 2.0, "gear": 4.0, "gps": [1, 2]}
-    assert latest_at_or_before(conn, "car1", 6) == {"speed": 1.0}
+    keys = ("gear", "speed", "gps", "ignition")
+    assert latest_at_or_before(conn, "car1", 50, keys) == {"speed": 2.0, "gear": 4.0, "gps": [1, 2]}
+    assert latest_at_or_before(conn, "car1", 6, keys) == {"speed": 1.0}
+    assert latest_at_or_before(conn, "car1", 50, ("soc",)) == {"soc": 50.0}
 
 
 def test_tx_commits_and_rolls_back(conn):
@@ -203,3 +205,21 @@ def test_device_info_falls_back_to_vehicle_id(conn):
     assert device_info(conn, "car1") == ("car1", None, None)
     ingest(conn, "car1", S, [Sample(1, 1, "meta", {"vehicle_name": "Meg", "make": "Renault"})], 0)
     assert device_info(conn, "car1") == ("Meg", "Renault", None)
+
+
+def test_samples_after_filters_keys_and_bounds(conn):
+    from car_insights.db import samples_after
+    ingest(conn, "car1", S, [Sample(1, 5, "speed", 1.0), Sample(2, 9, "gear", 1.0), Sample(3, 9, "soc", 50.0), Sample(4, 20, "speed", 2.0),
+                             Sample(5, 12, "meta", {}), Sample(6, 3, "speed", 0.5)], 0)
+    assert [(x.t, x.k) for x in samples_after(conn, "car1", 3, 10, ("speed", "gear", "meta"))] == [(5, "speed"), (9, "gear")]
+
+
+def test_end_indexes_exist_and_serve_the_newest_end_lookup(conn):
+    for t in ("trips", "charges"):
+        assert f"{t}_ve" in [r[1] for r in conn.execute(f"PRAGMA index_list({t})")]
+        plan = " | ".join(r[3] for r in conn.execute(f"EXPLAIN QUERY PLAN SELECT MAX(end) FROM {t} WHERE vehicle_id='c'"))
+        assert f"{t}_ve" in plan
+
+
+def test_synchronous_normal(conn):
+    assert conn.execute("PRAGMA synchronous").fetchone()[0] == 1

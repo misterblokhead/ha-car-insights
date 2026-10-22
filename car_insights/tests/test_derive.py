@@ -268,3 +268,72 @@ def test_stale_row_cleanup_is_atomic():
         Deriver(FailOnCharges(conn), lambda la, lo: None)
     assert not conn.in_transaction
     assert conn.execute("SELECT COUNT(*) FROM trips").fetchone()[0] == 1  # the trips delete was rolled back
+
+
+def _spy_samples_after(monkeypatch, seen, what):
+    real = db.samples_after
+    monkeypatch.setattr(db, "samples_after", lambda conn, vid, after_t, max_t, keys: (seen.append(what(after_t, keys)), real(conn, vid, after_t, max_t, keys))[1])
+
+
+def test_parked_car_update_reads_only_new_samples(monkeypatch):
+    seen = []
+    _spy_samples_after(monkeypatch, seen, lambda after_t, keys: after_t)
+    conn, d = setup([s(1000, "gps", [52.0, 5.0]), s(61_000, "gps", [52.0, 5.0])])
+    d.update("car1", None, 100_000)
+    db.ingest(conn, "car1", SRC, [s(121_000, "gps", [52.0, 5.0])], 0)
+    d.update("car1", 121_000, 130_000)
+    db.ingest(conn, "car1", SRC, [s(181_000, "gps", [52.0, 5.0])], 0)
+    d.update("car1", 181_000, 190_000)
+    assert seen == [-1, 61_000, 121_000]  # idle: the window starts at the newest sample already processed
+
+
+def test_late_data_below_the_idle_watermark_rederives_the_closed_trip():
+    conn, d = setup(trip_samples(0), [s(DAY, "gps", [52.0, 5.0])])
+    d.update("car1", None, 10 * DAY)
+    db.ingest(conn, "car1", SRC, [s(50_500, "speed", 20.0)], 0)  # inside the closed trip, below the watermark
+    before = d.stored_trips("car1")[0]["distance_m"]
+    trips, _ = d.update("car1", 50_500, 10 * DAY)
+    assert [t["start"] for t in trips] == [0] and trips[0]["distance_m"] > before
+
+
+def test_no_watermark_while_a_segment_is_open(monkeypatch):
+    seen = []
+    _spy_samples_after(monkeypatch, seen, lambda after_t, keys: after_t)
+    conn, d = setup([s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 61_000, 1000)]])
+    d.update("car1", None, 61_000)
+    db.ingest(conn, "car1", SRC, [s(t, "speed", 10.0) for t in range(61_000, 70_000, 1000)], 0)
+    d.update("car1", 61_000, 70_000)
+    assert seen == [-1, -1]  # the open trip is re-read from its start
+
+
+def test_derivation_loads_only_the_keys_it_uses(monkeypatch):
+    from car_insights import derive
+    seen = []
+    _spy_samples_after(monkeypatch, seen, lambda after_t, keys: keys)
+    conn, d = setup(trip_samples(0), [s(5000, "soc", 50.0), s(5000, "tire_pressure", 2.5)])
+    trips, _ = d.update("car1", None, 10 * DAY)
+    assert len(trips) == 1 and seen == [derive.KEYS]
+    assert {"gear", "ignition", "speed", "battery_wh", "outside_temp", "gps", "plugged", "range_m"} == set(derive.KEYS)
+
+
+def test_has_ignition_is_looked_up_until_it_is_true(monkeypatch):
+    calls = []
+    real = db.has_key
+    monkeypatch.setattr(db, "has_key", lambda *a: (calls.append(a[2]), real(*a))[1])
+    conn, d = setup([s(0, "gps", [52.0, 5.0])])
+    d.update("car1", None, 100_000)
+    d.update("car1", None, 100_000)
+    assert calls == ["ignition", "ignition"]  # still false: asked again
+    db.ingest(conn, "car1", SRC, [s(1000, "ignition", 4.0)], 0)
+    d.update("car1", 1000, 100_000)
+    d.update("car1", None, 100_000)
+    d.update("car1", None, 100_000)
+    assert calls == ["ignition"] * 3  # true from now on: remembered
+
+
+def test_stored_rows_since_a_start_time_newest_first_and_limited():
+    conn, d = setup(trip_samples(0), trip_samples(DAY), trip_samples(2 * DAY))
+    d.update("car1", None, 10 * DAY)
+    assert [t["start"] for t in d.stored_trips("car1")] == [2 * DAY, DAY, 0]
+    assert [t["start"] for t in d.stored_trips("car1", since=DAY)] == [2 * DAY, DAY]
+    assert [t["start"] for t in d.stored_trips("car1", 1, since=DAY)] == [2 * DAY]

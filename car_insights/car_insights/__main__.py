@@ -30,7 +30,7 @@ def main() -> None:
     sensors = TripSensors(conn, mqtt)
     tz = fetch_time_zone(sup_token)
 
-    def summarize(vid: str, min_t: int | None, received: int) -> dict:
+    def summarize(vid: str, min_t: int | None, received: int) -> tuple[dict | None, dict]:
         return pipeline.refresh(deriver, sensors, vid, min_t, received, tz)
 
     uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity_wh).on_ingested, summarize=summarize), host="0.0.0.0", port=8099)

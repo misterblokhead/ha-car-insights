@@ -1,6 +1,6 @@
 import pytest
 
-from car_insights.trips import MERGE_GAP_MS, find_trips
+from car_insights.trips import KEYS, MERGE_GAP_MS, find_trips
 from conftest import s
 
 
@@ -153,3 +153,10 @@ def test_ignition_undefined_does_not_end_trip():
     samples = [s(0, "gear", 1.0), *drive(0, 100_000), s(50_000, "ignition", 0.0), s(200_000, "ignition", 1.0)]
     (t,) = trips(samples)
     assert t.end == 200_000
+
+
+def test_keys_cover_what_the_trip_derivation_reads():
+    samples = sorted([s(0, "gear", 1.0), *drive(0, 100_000), s(1_000, "gps", [50.0, 4.0]), s(10_000, "outside_temp", 7.0),
+                      s(0, "battery_wh", 33000), s(60_000, "battery_wh", 32900), s(0, "ignition", 4.0), s(100_000, "ignition", 2.0),
+                      s(5_000, "soc", 50.0), s(6_000, "range_m", 100.0), s(7_000, "plugged", True)], key=lambda x: (x.t, x.seq))
+    assert find_trips([x for x in samples if x.k in KEYS], {}, True) == find_trips(samples, {}, True) != []

@@ -23,7 +23,7 @@ def create_app(
     on_ingested: Callable[[str, list[Sample], int], None],
     now_ms: Callable[[], int] = lambda: int(time.time() * 1000),
     *,
-    summarize: Callable[[str, int | None, int], dict | None] | None = None,
+    summarize: Callable[[str, int | None, int], tuple[dict | None, dict] | None] | None = None,  # -> (open trip, summary)
 ) -> FastAPI:
     if not token:
         raise ValueError("token must not be empty")
@@ -63,9 +63,12 @@ def create_app(
         if summarize:
             try:
                 late = [x.t for x in batch.samples if received - LATE_WINDOW_MS <= x.t <= received + FUTURE_SLACK_MS]
-                s = summarize(batch.vehicle_id, min(late, default=None), received)
-                if s is not None and s["rev"] != batch.summary_rev:
-                    out["summary"] = s
+                result = summarize(batch.vehicle_id, min(late, default=None), received)
+                if result is not None:
+                    current_trip, s = result
+                    out["current_trip"] = current_trip  # every ack: it changes every few seconds, the summary does not
+                    if s["rev"] != batch.summary_rev:
+                        out["summary"] = s
             except Exception:
                 log.exception("summarize failed")
         return out

@@ -32,20 +32,35 @@ def name_at(zones: list[Zone], lat: float, lon: float) -> str | None:
     return min(inside)[1] if inside else None
 
 
-def supervisor_get(path: str, token: str):
-    """JSON of GET http://supervisor<path> (Core's API lives under /core/api)"""
-    req = urllib.request.Request(f"{_SUPERVISOR}{path}", headers={"Authorization": f"Bearer {token}"})
+def _call(path: str, token: str, body: dict | None = None) -> bytes:
+    """GET (POST when there is a JSON body) http://supervisor<path>; Core's API lives under /core/api."""
+    headers = {"Authorization": f"Bearer {token}", **({"Content-Type": "application/json"} if body is not None else {})}
+    req = urllib.request.Request(f"{_SUPERVISOR}{path}", data=None if body is None else json.dumps(body).encode(), headers=headers)
     with urllib.request.urlopen(req, timeout=10) as r:  # raises HTTPError on non-2xx
-        return json.load(r)
+        return r.read()
+
+
+def supervisor_get(path: str, token: str):
+    return json.loads(_call(path, token))
+
+
+# renders just the zones (not every state in the house) as JSON; .get() so a missing attribute is null, not a render error
+_ZONES_TEMPLATE = (
+    "{% set ns = namespace(z=[]) %}{% for s in states.zone %}"
+    "{% set ns.z = ns.z + [{'name': s.name, 'latitude': s.attributes.get('latitude'), 'longitude': s.attributes.get('longitude'),"
+    " 'radius': s.attributes.get('radius'), 'passive': s.attributes.get('passive')}] %}{% endfor %}{{ ns.z | tojson }}"
+)
+
+
+def _is_num(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
 def fetch_zones(token: str) -> list[Zone]:
-    zones = []
-    for s in supervisor_get("/core/api/states", token):
-        a = s.get("attributes") or {}
-        if str(s.get("entity_id", "")).startswith("zone.") and all(k in a for k in ("latitude", "longitude", "radius", "friendly_name")):
-            zones.append(Zone(a["friendly_name"], a["latitude"], a["longitude"], a["radius"]))
-    return zones
+    rows = json.loads(_call("/core/api/template", token, {"template": _ZONES_TEMPLATE}))
+    return [Zone(z["name"], z["latitude"], z["longitude"], z["radius"]) for z in rows
+            if isinstance(z, dict) and not z.get("passive") and isinstance(z.get("name"), str)  # passive zones never trigger
+            and _is_num(z.get("latitude")) and _is_num(z.get("longitude")) and _is_num(z.get("radius"))]
 
 
 def fetch_time_zone(token: str) -> tzinfo:

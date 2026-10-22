@@ -4,6 +4,7 @@ from typing import Any
 from .protocol import PARK_GEAR, Sample, fix, num
 from .trips import MOVING_MPS
 
+KEYS = ("plugged", "gear", "speed", "battery_wh", "range_m", "gps")  # the sample keys find_charges reads
 MIN_ADDED_WH = 100
 
 

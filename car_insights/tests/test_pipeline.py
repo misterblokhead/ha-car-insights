@@ -29,12 +29,12 @@ def test_ingest_to_summary_and_sensors(env):
     conn, mqtt, d, sensors = env
     now = 10_000_000
     db.ingest(conn, "car1", SRC, trip_samples(now - 200_000), now)
-    out = refresh(d, sensors, "car1", now - 200_000, now, TZ)
-    assert out["last_trip"]["from"] == "Home" and out["last_trip"]["distance_m"] == 1000 and len(out["trips"]) == 1
+    cur, out = refresh(d, sensors, "car1", now - 200_000, now, TZ)
+    assert cur is None and out["last_trip"]["from"] == "Home" and out["last_trip"]["distance_m"] == 1000 and len(out["trips"]) == 1
     assert mqtt.on("car_insights/car1/last_trip")[0][0]["distance_km"] == 1.0
     assert [e["event_type"] for e, _ in mqtt.on("car_insights/car1/trip_event")] == ["ended"]
     n = len(mqtt.msgs)
-    assert refresh(d, sensors, "car1", None, now, TZ)["rev"] == out["rev"]
+    assert refresh(d, sensors, "car1", None, now, TZ)[1]["rev"] == out["rev"]
     assert len(mqtt.msgs) == n  # nothing newly closed, nothing published
 
 
@@ -59,5 +59,32 @@ def test_old_charge_publishes_state_but_no_event(env):
 
 def test_empty_vehicle(env):
     _, mqtt, d, sensors = env
-    out = refresh(d, sensors, "nobody", None, 1000, TZ)
-    assert out["last_trip"] is None and out["trips"] == [] and mqtt.msgs == []
+    cur, out = refresh(d, sensors, "nobody", None, 1000, TZ)
+    assert cur is None and out["last_trip"] is None and out["trips"] == [] and mqtt.msgs == []
+
+
+def open_trip_samples(t0, secs):
+    return [s(t0, "ignition", 4.0), s(t0, "gear", 1.0), *[s(t0 + t, "speed", 10.0) for t in range(0, secs * 1000 + 1, 1000)]]
+
+
+def test_current_trip_comes_with_every_refresh_and_never_moves_the_summary_rev(env):
+    conn, mqtt, d, sensors = env
+    now = 10 * DAY
+    db.ingest(conn, "car1", SRC, open_trip_samples(now - 300_000, 30), now)
+    cur1, sum1 = refresh(d, sensors, "car1", None, now - 270_000, TZ)
+    db.ingest(conn, "car1", SRC, [s(now - 300_000 + t, "speed", 10.0) for t in range(31_000, 91_000, 1000)], now)
+    cur2, sum2 = refresh(d, sensors, "car1", now - 269_000, now - 200_000, TZ)
+    assert cur1["end"] is None and cur2["distance_m"] > cur1["distance_m"]
+    assert "current_trip" not in sum1 and sum1["rev"] == sum2["rev"]  # the open trip is not part of the summary
+    assert sum1["today"]["distance_m"] == 0 and sum1["trips"] == []
+
+
+def test_lists_hold_the_newest_20_and_the_week_only_its_own_days(env):
+    conn, mqtt, d, sensors = env
+    now = 30 * DAY + 43_200_000
+    for i in range(22):  # one trip a day, the oldest 22 days before now
+        db.ingest(conn, "car1", SRC, trip_samples(now - (i + 1) * DAY + 3_600_000), now)
+    _, out = refresh(d, sensors, "car1", None, now, TZ)
+    assert len(out["trips"]) == 20 and out["trips"][0]["start"] > out["trips"][-1]["start"]
+    assert out["last_trip"] == out["trips"][0]
+    assert sum(day["distance_m"] for day in out["week"]) == 6 * 1000  # six trips fall in the 7 local days ending today

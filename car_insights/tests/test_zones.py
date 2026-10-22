@@ -36,19 +36,31 @@ def test_cache_keeps_last_list_on_error():
     assert cache(52.0, 5.0) is None
 
 
-def test_fetch_zones_keeps_only_complete_zone_entities(monkeypatch):
-    states = [
-        {"entity_id": "zone.home", "attributes": {"latitude": 52.0, "longitude": 5.0, "radius": 100, "friendly_name": "Home"}},
-        {"entity_id": "zone.broken", "attributes": {"latitude": 52.0}},
-        {"entity_id": "sensor.x", "attributes": {"latitude": 1, "longitude": 1, "radius": 1, "friendly_name": "x"}},
-    ]
+def _template_server(monkeypatch, rendered):
     seen = {}
+
     def urlopen(req, timeout):
-        seen["url"], seen["auth"] = req.full_url, req.get_header("Authorization")
-        return io.BytesIO(json.dumps(states).encode())
+        seen.update(url=req.full_url, method=req.get_method(), auth=req.get_header("Authorization"), body=json.loads(req.data))
+        return io.BytesIO(rendered.encode())
+
     monkeypatch.setattr("car_insights.zones.urllib.request.urlopen", urlopen)
+    return seen
+
+
+def test_fetch_zones_renders_only_the_zones_through_a_template(monkeypatch):
+    seen = _template_server(monkeypatch, json.dumps([{"name": "Home", "latitude": 52.0, "longitude": 5.0, "radius": 100, "passive": False}]))
     assert fetch_zones("tok") == [HOME]
-    assert seen == {"url": "http://supervisor/core/api/states", "auth": "Bearer tok"}
+    assert seen["url"] == "http://supervisor/core/api/template" and seen["method"] == "POST" and seen["auth"] == "Bearer tok"
+    assert "states.zone" in seen["body"]["template"] and "tojson" in seen["body"]["template"]
+
+
+def test_fetch_zones_skips_passive_and_unusable_entries(monkeypatch):
+    good = {"name": "Home", "latitude": 52.0, "longitude": 5.0, "radius": 100, "passive": False}
+    rows = [good, {**good, "name": "Hidden", "passive": True}, {**good, "name": "NoRadius", "radius": None},
+            {**good, "name": "Text", "latitude": "52.0"}, {**good, "name": "Bool", "longitude": True}, {**good, "name": 5},
+            {**good, "name": "NoPassive", "passive": None}, "junk"]
+    _template_server(monkeypatch, json.dumps(rows))
+    assert fetch_zones("tok") == [HOME, Zone("NoPassive", 52.0, 5.0, 100)]
 
 
 def test_fetch_time_zone_falls_back_to_local(monkeypatch):

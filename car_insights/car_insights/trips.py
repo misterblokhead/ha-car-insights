@@ -3,6 +3,7 @@ from typing import Any
 
 from .protocol import PARK_GEAR, Sample, fix, num
 
+KEYS = ("gear", "ignition", "speed", "battery_wh", "outside_temp", "gps")  # the sample keys find_trips reads
 IGNITION_ENDS_TRIP = (1, 2)  # LOCK, OFF; 0 is UNDEFINED
 MERGE_GAP_MS = 180_000
 MOVING_MPS = 0.2778  # 1 km/h

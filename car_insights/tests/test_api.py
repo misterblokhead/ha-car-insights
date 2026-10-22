@@ -78,19 +78,21 @@ def test_response_includes_summary_when_rev_differs():
     seen = []
     def summarize(vid, min_t, received):
         seen.append((vid, min_t, received))
-        return {"rev": "r2"}
+        return None, {"rev": "r2"}
     c, _ = make(summarize=summarize)
-    assert c.post("/ingest", content=body(summary_rev="r1"), headers=AUTH).json() == {"acked_seq": 1, "summary": {"rev": "r2"}}
-    assert c.post("/ingest", content=VALID, headers=AUTH).json() == {"acked_seq": 1, "summary": {"rev": "r2"}}  # no rev sent
+    assert c.post("/ingest", content=body(summary_rev="r1"), headers=AUTH).json() == {"acked_seq": 1, "current_trip": None, "summary": {"rev": "r2"}}
+    assert c.post("/ingest", content=VALID, headers=AUTH).json() == {"acked_seq": 1, "current_trip": None, "summary": {"rev": "r2"}}  # no rev sent
     assert seen[0] == ("car1", 7, 1000)
 
 
-def test_response_omits_summary_when_rev_matches():
-    c, _ = make(summarize=lambda *a: {"rev": "r1"})
-    assert c.post("/ingest", content=body(summary_rev="r1"), headers=AUTH).json() == {"acked_seq": 1}
+def test_current_trip_on_every_ack_summary_only_when_rev_differs():
+    cur = {"start": 5, "end": None, "distance_m": 1.0}
+    c, _ = make(summarize=lambda *a: (cur, {"rev": "r1"}))
+    assert c.post("/ingest", content=body(summary_rev="r1"), headers=AUTH).json() == {"acked_seq": 1, "current_trip": cur}
+    assert c.post("/ingest", content=body(summary_rev="old"), headers=AUTH).json() == {"acked_seq": 1, "current_trip": cur, "summary": {"rev": "r1"}}
 
 
-def test_response_omits_summary_when_none():
+def test_response_omits_both_when_summarize_gives_none():
     c, _ = make(summarize=lambda *a: None)
     assert c.post("/ingest", content=VALID, headers=AUTH).json() == {"acked_seq": 1}
 
@@ -99,12 +101,12 @@ def test_empty_batch_returns_summary():
     seen = []
     def summarize(vid, min_t, received):
         seen.append(min_t)
-        return {"rev": "r"}
+        return None, {"rev": "r"}
     conn = connect(":memory:")
     c = TestClient(create_app(conn, TOKEN, lambda *a: None, lambda: 1000, summarize=summarize))
     assert c.post("/ingest", content=VALID, headers=AUTH).json()["acked_seq"] == 1
     r = c.post("/ingest", content=body(samples=[]), headers=AUTH)
-    assert r.status_code == 200 and r.json() == {"acked_seq": 1, "summary": {"rev": "r"}}
+    assert r.status_code == 200 and r.json() == {"acked_seq": 1, "current_trip": None, "summary": {"rev": "r"}}
     assert seen[-1] is None
     assert conn.execute("SELECT count(*) FROM gaps").fetchone()[0] == 0
 

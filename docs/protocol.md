@@ -57,7 +57,7 @@ Sender batches should stay <= 256 KB. The receiver integration accepts up to 300
 
 | Status | Meaning | Sender should |
 |---|---|---|
-| `200 {"acked_seq": N}` or `200 {"acked_seq": N, "summary": {...}}` | Accepted | Drop samples with `seq <= N`; store `summary` if present |
+| `200 {"acked_seq": N, "current_trip": {...} or null, "summary": {...}}` (`current_trip` and `summary` optional, see Summary) | Accepted | Drop samples with `seq <= N`; replace the open trip with `current_trip` if present; store `summary` if present |
 | `400` | Vehicle id mismatch or invalid batch | Back off and retry; check vehicle id / sender version |
 | `401` | Bad signature | Stop uploading; check the secret |
 | `413` | Batch too large | Halve the batch size |
@@ -65,13 +65,18 @@ Sender batches should stay <= 256 KB. The receiver integration accepts up to 300
 
 ## Summary
 
-The add-on derives trips and charging sessions and returns a `summary` in the 200 body when its `rev` differs from the `summary_rev` in the request (or none was sent). Add-ons older than 0.2.0 never send `summary`; a sender must treat it as optional. The receiver passes the body through unchanged. Units are SI (m, m/s, Wh, s, deg C), times are epoch ms, `null` means not available.
+The add-on derives trips and charging sessions and answers in the 200 body with two optional keys. Add-ons older than 0.2.0 send neither, and the add-on omits both when it could not derive them (the ack is never held back); a sender must treat both as optional. The receiver passes the body through unchanged. Units are SI (m, m/s, Wh, s, deg C), times are epoch ms, `null` means not available.
 
-Summary keys: `rev` (first 12 hex chars of the sha1 of the compact, key-sorted JSON of everything except `rev` and `updated`), `updated` (ms), `current_trip` (or `null`), `today`, `last_trip` (or `null`), `last_charge` (or `null`), `trips` (closed, newest first, at most 20), `charges` (closed, newest first, at most 20), `week` (7 days, oldest first, today last).
+- `current_trip`: the trip in progress (a Trip, below, with `end` `null`) or `null` when there is none. Present in every 200 whenever the add-on derived anything, so it is the only part that is resent every few seconds while driving. A sender replaces its open trip with it, `null` included.
+- `summary`: present when its `rev` differs from the `summary_rev` in the request (or none was sent). It covers closed trips and charges only, so its `rev` does not change while a trip is merely in progress.
+
+Summary keys: `rev` (first 12 hex chars of the sha1 of the compact, key-sorted JSON of everything except `rev` and `updated`), `updated` (ms), `today`, `last_trip` (or `null`), `last_charge` (or `null`), `trips` (closed, newest first, at most 20), `charges` (closed, newest first, at most 20), `week` (7 days, oldest first, today last).
 
 - Trip: `start`, `end` (`null` while open), `from`, `to` (HA zone names or `null`), `distance_m`, `duration_s`, `avg_speed_mps`, `max_speed_mps`, `start_wh`, `end_wh`, `net_wh`, `gross_wh`, `recup_wh`, `avg_temp_c`.
 - Charge: `start`, `end`, `place` (zone name or `null`), `start_wh`, `end_wh`, `added_wh`, `duration_s`, `range_added_m`, `avg_w`.
-- Day (`today` and each `week` entry): `date` (`YYYY-MM-DD`, local date in the Home Assistant time zone), `distance_m`, `net_wh`, `charged_wh`. A trip or charge counts on the day it started; the open trip counts too. Days without data are zeros (sums, not measurements).
+- Day (`today` and each `week` entry): `date` (`YYYY-MM-DD`, local date in the Home Assistant time zone), `distance_m`, `net_wh`, `charged_wh`. A trip or charge counts on the day it started; only closed ones count, so the open trip joins the totals when it ends. Days without data are zeros (sums, not measurements).
+
+When a trip ends: an ignition off/lock sample ends it; without proof it stays open, so a car that falls asleep without sending ignition off keeps its trip open until its next sample arrives. Trips under 100 m and 60 s are dropped once closed, but shown while open. An open charge ends at the next trip start if the unplug was never seen.
 
 ## Acknowledgement and gaps
 
