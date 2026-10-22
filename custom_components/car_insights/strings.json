@@ -1,0 +1,21 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a vehicle",
+        "data": {
+          "vehicle_id": "Vehicle ID (letters, digits, - and _)",
+          "vehicle_name": "Vehicle name",
+          "addon_url": "Car Insights add-on URL"
+        }
+      }
+    },
+    "error": {
+      "invalid_vehicle_id": "Use 1-64 letters, digits, - or _.",
+      "invalid_vehicle_name": "The name must be a single line."
+    },
+    "abort": {
+      "already_configured": "This vehicle is already configured."
+    }
+  }
+}
