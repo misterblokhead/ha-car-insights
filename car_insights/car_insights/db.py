@@ -85,11 +85,11 @@ def latest_per_key(conn, vehicle_id: str, max_t: int) -> list[Sample]:
     return [Sample(0, t, k, json.loads(v)) for k, t, v in rows]
 
 
-def samples_after(conn, vehicle_id: str, after_t: int) -> list[Sample]:
-    """Samples with t > after_t across all sources, ignoring meta/gap, ordered by (t, seq)."""
+def samples_after(conn, vehicle_id: str, after_t: int, max_t: int) -> list[Sample]:
+    """Samples with after_t < t <= max_t across all sources, ignoring meta/gap, ordered by (t, seq)."""
     rows = conn.execute(
-        "SELECT seq, t, key, value_json FROM samples WHERE vehicle_id=? AND t>? AND key NOT IN ('meta','gap') "
-        "ORDER BY t, seq, source_id", (vehicle_id, after_t))
+        "SELECT seq, t, key, value_json FROM samples WHERE vehicle_id=? AND t>? AND t<=? AND key NOT IN ('meta','gap') "
+        "ORDER BY t, seq, source_id", (vehicle_id, after_t, max_t))
     return [Sample(seq, t, k, json.loads(v)) for seq, t, k, v in rows]
 
 

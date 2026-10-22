@@ -135,13 +135,11 @@ def test_open_charge_survives_restart():
 
 
 def test_open_trip_row_not_listed_or_newly_closed():
-    conn, d = setup([s(0, "ignition", 4.0), s(0, "gear", 1.0), s(0, "plugged", True),
-                     *[s(t, "speed", 10.0) for t in range(0, 61_000, 1000)]])
+    conn, d = setup([s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 61_000, 1000)]])
     assert d.update("car1", None, 61_000) == ([], [])
     assert d.update("car1", None, 62_000) == ([], [])
-    assert d.stored_trips("car1", 10) == [] and d.stored_charges("car1", 10) == []
+    assert d.stored_trips("car1", 10) == []
     assert conn.execute("SELECT COUNT(*) FROM trips WHERE end IS NULL").fetchone()[0] == 1
-    assert conn.execute("SELECT COUNT(*) FROM charges WHERE end IS NULL").fetchone()[0] == 1
     db.ingest(conn, "car1", SRC, [s(70_000, "ignition", 2.0)], 0)
     trips, _ = d.update("car1", None, 70_000)
     assert len(trips) == 1 and d.current_trip("car1") is None
@@ -180,6 +178,7 @@ def test_open_charge_not_stored():
     conn, d = setup([s(0, "battery_wh", 20_000.0), s(1000, "plugged", True), s(60_000, "battery_wh", 21_000.0)])
     assert d.update("car1", None, 10 * DAY) == ([], [])
     assert d.stored_charges("car1", 10) == []
+    assert conn.execute("SELECT COUNT(*) FROM charges WHERE end IS NULL").fetchone()[0] == 1
 
 
 def test_backlog_boundary_in_p_stop_keeps_one_trip():
@@ -187,7 +186,7 @@ def test_backlog_boundary_in_p_stop_keeps_one_trip():
     b1 = [s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 60_001, 1000)], s(60_000, "gear", 4.0)]
     conn, d = setup(b1)
     first, _ = d.update("car1", 0, now)
-    assert [t["end"] for t in first] == [60_000]  # closed prematurely at the P sample
+    assert first == [] and d.current_trip("car1")["start"] == 0  # no later sample proves the stop: stays open however old
     b2 = [s(120_000, "gps", [52.0, 5.0]), s(150_000, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(150_000, 300_001, 1000)],
           s(300_000, "gear", 4.0), s(310_000, "ignition", 2.0)]
     db.ingest(conn, "car1", SRC, b2, 0)
@@ -204,17 +203,48 @@ def test_derive_after_distant_closed_trip_does_not_rederive_it():
     assert conn.execute("SELECT COUNT(*) FROM trips WHERE end=110000").fetchone()[0] == 1
 
 
-def test_initial_rebuild_flag():
-    conn, d = setup(trip_samples(0))
-    assert d.initial_rebuild("car1") is False
-    trips, _ = d.update("car1", None, 10 * DAY)
-    assert len(trips) == 1 and d.initial_rebuild("car1") is True  # nothing was stored before this update
-    d.update("car1", None, 10 * DAY)
-    assert d.initial_rebuild("car1") is False
-    conn.execute("UPDATE trips SET algo=?", (ALGO - 1,))
-    d2 = Deriver(conn, lambda la, lo: "Home")  # an ALGO bump drops the rows, so the rebuild is initial again
-    d2.update("car1", None, 10 * DAY)
-    assert d2.initial_rebuild("car1") is True and d2.initial_rebuild("other") is False
+def test_backlog_boundary_in_long_p_stop_keeps_one_trip():
+    now = 3 * DAY  # P with ignition on for 4 min, a gps fix every minute, the batch boundary falls inside the stop
+    b1 = [s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 60_001, 1000)], s(60_000, "gear", 4.0),
+          *[s(t, "gps", [52.0, 5.0]) for t in range(120_000, 300_001, 60_000)]]
+    conn, d = setup(b1)
+    first, _ = d.update("car1", 0, now)
+    assert first == []
+    b2 = [s(310_000, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(310_000, 400_001, 1000)],
+          s(400_000, "gear", 4.0), s(410_000, "ignition", 2.0)]
+    db.ingest(conn, "car1", SRC, b2, 0)
+    trips, _ = d.update("car1", 310_000, now)
+    stored = d.stored_trips("car1", 10)
+    assert [(t["start"], t["end"]) for t in stored] == [(0, 410_000)] and trips == stored
+
+
+def test_open_trip_below_the_noise_floor_is_current_but_dropped_once_closed():
+    slow = [s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 1.0) for t in range(0, 20_001, 1000)]]  # 20 m in 20 s
+    conn, d = setup(slow)
+    assert d.update("car1", None, 20_000) == ([], [])
+    cur = d.current_trip("car1")
+    assert cur["start"] == 0 and cur["end"] is None and cur["distance_m"] == 20
+    db.ingest(conn, "car1", SRC, [s(21_000, "ignition", 2.0)], 0)
+    assert d.update("car1", None, 21_000) == ([], [])
+    assert d.current_trip("car1") is None and d.stored_trips("car1", 10) == []
+
+
+def test_open_charge_closed_by_the_next_trip_is_stored():
+    conn, d = setup([s(0, "plugged", True), s(0, "battery_wh", 30000.0), s(500_000, "battery_wh", 40000.0),
+                     s(600_000, "ignition", 4.0), s(600_000, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(600_000, 700_001, 1000)]])
+    trips, charges = d.update("car1", None, DAY)  # the unplug was never seen
+    (c,) = charges
+    assert (c["start"], c["end"], c["added_wh"]) == (0, 600_000, 10000) and trips == []
+    assert d.current_trip("car1")["start"] == 600_000 and d.stored_charges("car1", 10) == [c]
+
+
+def test_samples_beyond_the_future_slack_are_ignored():
+    received = 1_000_000
+    far = trip_samples(received + 2 * DAY)
+    conn, d = setup(far, trip_samples(received - 500_000))
+    trips, _ = d.update("car1", None, received)
+    assert [t["start"] for t in trips] == [received - 500_000]
+    assert d.current_trip("car1") is None
 
 
 def test_stale_row_cleanup_is_atomic():

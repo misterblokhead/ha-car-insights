@@ -10,6 +10,7 @@ from conftest import FakeMqtt, s
 
 SRC = "phone-0000abcd"
 TZ = timezone.utc
+DAY = 86_400_000
 
 
 def trip_samples(t0):
@@ -27,17 +28,33 @@ def env():
 def test_ingest_to_summary_and_sensors(env):
     conn, mqtt, d, sensors = env
     now = 10_000_000
-    db.ingest(conn, "car1", SRC, trip_samples(now - 2_000_000), now)
-    refresh(d, sensors, "car1", now - 2_000_000, now, TZ)  # the first rebuild of history: state, no event
-    assert mqtt.on("car_insights/car1/trip_event") == []
     db.ingest(conn, "car1", SRC, trip_samples(now - 200_000), now)
     out = refresh(d, sensors, "car1", now - 200_000, now, TZ)
-    assert out["last_trip"]["from"] == "Home" and out["last_trip"]["distance_m"] == 1000 and len(out["trips"]) == 2
-    assert mqtt.on("car_insights/car1/last_trip")[-1][0]["distance_km"] == 1.0
+    assert out["last_trip"]["from"] == "Home" and out["last_trip"]["distance_m"] == 1000 and len(out["trips"]) == 1
+    assert mqtt.on("car_insights/car1/last_trip")[0][0]["distance_km"] == 1.0
     assert [e["event_type"] for e, _ in mqtt.on("car_insights/car1/trip_event")] == ["ended"]
     n = len(mqtt.msgs)
     assert refresh(d, sensors, "car1", None, now, TZ)["rev"] == out["rev"]
     assert len(mqtt.msgs) == n  # nothing newly closed, nothing published
+
+
+@pytest.mark.parametrize("age_ms, events", [(3_600_000, 1), (3_600_001, 0), (3 * DAY, 0), (600_000, 1)])
+def test_ended_event_only_for_closes_within_an_hour_of_arrival(env, age_ms, events):
+    conn, mqtt, d, sensors = env
+    now = 10 * DAY
+    db.ingest(conn, "car1", SRC, trip_samples(now - age_ms - 110_000), now)  # the trip ended age_ms before arrival
+    refresh(d, sensors, "car1", None, now, TZ)
+    assert len(mqtt.on("car_insights/car1/trip_event")) == events
+    assert mqtt.on("car_insights/car1/last_trip")[0][0]["distance_km"] == 1.0  # the state follows every close
+
+
+def test_old_charge_publishes_state_but_no_event(env):
+    conn, mqtt, d, sensors = env
+    now = 10 * DAY
+    db.ingest(conn, "car1", SRC, [s(0, "battery_wh", 20_000.0), s(1000, "plugged", True), s(3_600_000, "battery_wh", 25_000.0),
+                                  s(3_700_000, "plugged", False)], now)
+    refresh(d, sensors, "car1", None, now, TZ)
+    assert mqtt.on("car_insights/car1/charge_event") == [] and mqtt.on("car_insights/car1/last_charge")[0][0]["added_kwh"] == 5.0
 
 
 def test_empty_vehicle(env):

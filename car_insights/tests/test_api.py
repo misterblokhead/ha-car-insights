@@ -120,3 +120,16 @@ def test_summarize_runs_after_on_ingested():
     c, _ = make(on_ingested=lambda *a: order.append("ingested"), summarize=lambda *a: order.append("summarize"))
     c.post("/ingest", content=VALID, headers=AUTH)
     assert order == ["ingested", "summarize"]
+
+
+def test_summarize_min_t_ignores_bogus_timestamps():
+    seen = []
+    received = 100 * 86_400_000
+    c = TestClient(create_app(connect(":memory:"), TOKEN, lambda *a: None, lambda: received, summarize=lambda v, m, r: seen.append(m)))
+    def post(*ts):
+        samples = [{"seq": i + 1, "t": t, "k": "speed", "v": 1.0} for i, t in enumerate(ts)]
+        c.post("/ingest", content=body(samples=samples), headers=AUTH)
+    post(1, received - 1000, received + 2 * 86_400_000)  # a clock-reset sample, a good one, a far-future one
+    post(1, received + 2 * 86_400_000)
+    post(received - 31 * 86_400_000, received + 86_400_000)  # exactly at both limits
+    assert seen == [received - 1000, None, received - 31 * 86_400_000]

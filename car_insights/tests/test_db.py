@@ -168,7 +168,7 @@ def _plan(conn, run):
 def test_derive_queries_use_indexes(conn):
     from car_insights.db import latest_at_or_before, samples_after
     ingest(conn, "car1", S, [Sample(1, 5, "speed", 1.0), Sample(2, 9, "gear", 1.0)], 0)
-    (plan,) = _plan(conn, lambda: samples_after(conn, "car1", 3))
+    (plan,) = _plan(conn, lambda: samples_after(conn, "car1", 3, 100))
     assert "samples_vt" in plan and "SCAN samples" not in plan
     plans = _plan(conn, lambda: latest_at_or_before(conn, "car1", 50))
     assert plans and all("samples_vkt" in p and "SCAN samples" not in p for p in plans)

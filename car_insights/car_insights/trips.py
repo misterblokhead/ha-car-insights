@@ -29,13 +29,10 @@ class Trip:
     last_fix: tuple[float, float] | None
 
 
-def _p_over(p_t: int, prev_t: int, t: int, has_ignition: bool) -> bool:
-    # with an ignition signal P alone proves nothing: only silence (car asleep) ends the trip
-    return t - (prev_t if has_ignition else p_t) >= MERGE_GAP_MS
-
-
-def find_trips(samples: list[Sample], seed: dict[str, Any], now_ms: int, has_ignition: bool) -> list[Trip]:
-    """samples are sorted by (t, seq); seed holds the latest value per key before the first sample."""
+def find_trips(samples: list[Sample], seed: dict[str, Any], has_ignition: bool) -> list[Trip]:
+    """samples are sorted by (t, seq); seed holds the latest value per key before the first sample.
+    A trip closes only on evidence in the samples (ignition off/lock, or a stop in P proven by a later sample):
+    arrival time proves nothing, as a backlog arrives late. A tail without proof stays open."""
     gear, wh, temp = num(seed.get("gear")), num(seed.get("battery_wh")), num(seed.get("outside_temp"))
     out: list[Trip] = []
     cur: tuple[int, float | None, float | None] | None = None  # first index, wh and temp at start
@@ -49,7 +46,9 @@ def find_trips(samples: list[Sample], seed: dict[str, Any], now_ms: int, has_ign
         cur = p = None
 
     for i, s in enumerate(samples):
-        if cur and p is not None and _p_over(samples[p].t, prev_t, s.t, has_ignition):
+        # P held for MERGE_GAP_MS ends the trip at its first P sample; with an ignition signal P alone proves
+        # nothing, only silence (the car asleep: two samples that far apart) does
+        if cur and p is not None and s.t - (prev_t if has_ignition else samples[p].t) >= MERGE_GAP_MS:
             close(p + 1, True)
         v = num(s.v)
         if v is not None:
@@ -66,11 +65,9 @@ def find_trips(samples: list[Sample], seed: dict[str, Any], now_ms: int, has_ign
                 cur, p = (i, wh, temp), None
         prev_t = s.t
     if cur:
-        if p is not None and _p_over(samples[p].t, prev_t, now_ms, has_ignition):
-            close(p + 1, True)
-        else:
-            close(len(samples), False)
-    return [t for t in out if t.distance_m >= NOISE_DISTANCE_M or t.duration_s >= NOISE_DURATION_S]
+        close(len(samples), False)
+    # noise is dropped once closed: an open trip shows from its first second
+    return [t for t in out if t.end is None or t.distance_m >= NOISE_DISTANCE_M or t.duration_s >= NOISE_DURATION_S]
 
 
 def _build(seg: list[Sample], wh0: float | None, temp0: float | None, closed: bool) -> Trip:

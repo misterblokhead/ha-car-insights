@@ -4,9 +4,9 @@ from car_insights.charges import find_charges
 from conftest import s
 
 
-def charges(samples, seed=None, now_ms=None):
+def charges(samples, seed=None):
     samples = sorted(samples, key=lambda x: (x.t, x.seq))
-    return find_charges(samples, seed or {}, samples[-1].t if now_ms is None else now_ms)
+    return find_charges(samples, seed or {})
 
 
 def session(wh1=50500, end=3_600_000):
@@ -64,3 +64,29 @@ def test_no_battery_before_start_gives_null_energy():
                s(3_600_000, "plugged", False)]
     (c,) = charges(samples)
     assert (c.start_wh, c.end_wh, c.added_wh, c.avg_w) == (None,) * 4
+
+
+def test_open_charge_ends_when_a_trip_starts():
+    samples = [s(0, "plugged", True), s(0, "battery_wh", 30000), s(3_000_000, "battery_wh", 40000),
+               s(3_600_000, "gear", 1.0), s(3_601_000, "speed", 10.0), s(3_602_000, "battery_wh", 39900)]  # the unplug was missed
+    (c,) = charges(samples)
+    assert (c.start, c.end, c.added_wh) == (0, 3_601_000, 10000)
+    assert charges([*samples, s(3_700_000, "plugged", False)]) == [c]  # a late unplug changes nothing
+
+
+def test_charge_not_ended_by_standing_still_or_speed_in_park():
+    samples = [s(0, "plugged", True), s(0, "gear", 4.0), s(0, "battery_wh", 30000), s(10_000, "speed", 0.0),
+               s(20_000, "speed", 5.0), s(50_000, "battery_wh", 40000)]  # 0 m/s is standing, 5 m/s in P is no trip
+    (c,) = charges(samples)
+    assert c.end is None and c.added_wh == 10000
+
+
+def test_seed_gear_decides_whether_speed_starts_a_trip():
+    samples = [s(1000, "battery_wh", 30500), s(2000, "battery_wh", 31000), s(2000, "speed", 5.0)]
+    assert charges(samples, {"plugged": True, "gear": 4.0})[0].end is None
+    assert charges(samples, {"plugged": True, "gear": 1.0})[0].end == 2000
+
+
+def test_session_ended_at_its_own_start_is_dropped():
+    # a stale plugged flag reopens a session at the first sample after a trip; when that sample is the next trip's start
+    assert charges([s(2000, "speed", 5.0)], {"plugged": True, "gear": 1.0}) == []

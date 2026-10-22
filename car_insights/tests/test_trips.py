@@ -8,9 +8,9 @@ def drive(t0, t1, v=10.0, step=1000):
     return [s(t, "speed", v) for t in range(t0, t1 + 1, step)]
 
 
-def trips(samples, seed=None, now_ms=None, has_ignition=True):
+def trips(samples, seed=None, has_ignition=True):
     samples = sorted(samples, key=lambda x: (x.t, x.seq))
-    return find_trips(samples, seed or {}, samples[-1].t if now_ms is None else now_ms, has_ignition)
+    return find_trips(samples, seed or {}, has_ignition)
 
 
 def test_trip_ends_on_ignition_off():
@@ -33,24 +33,42 @@ def test_stop_in_p_with_ignition_on_stays_one_trip():
     assert (t.start, t.end) == (0, 400_000)
 
 
+STOP = [s(0, "gear", 1.0), *drive(0, 60_000), s(60_000, "gear", 4.0)]  # parks at 60 s
+
+
 def test_without_ignition_p_for_merge_gap_ends_trip():
-    samples = [s(0, "gear", 1.0), *drive(0, 60_000), s(60_000, "gear", 4.0), s(300_000, "speed", 0.0)]
-    (t,) = trips(samples, has_ignition=False)
+    (t,) = trips(STOP + [s(60_000 + MERGE_GAP_MS, "speed", 0.0)], has_ignition=False)
     assert t.end == 60_000
     assert t.distance_m == pytest.approx(600)
+    (t,) = trips(STOP + [s(60_000 + MERGE_GAP_MS - 1, "speed", 0.0)], has_ignition=False)
+    assert t.end is None  # not yet P for the whole merge gap
+    (t,) = trips(STOP, has_ignition=False)
+    assert t.end is None  # no later sample proves it, however long ago the car parked
+
+
+def test_without_ignition_leaving_p_after_the_gap_ends_trip_and_starts_the_next():
+    a, b = trips(STOP + [s(300_000, "gear", 1.0), *drive(300_000, 400_000)], has_ignition=False)
+    assert (a.start, a.end, b.start, b.end) == (0, 60_000, 300_000, None)
 
 
 def test_without_ignition_short_p_stays_one_trip():
     samples = [s(0, "gear", 1.0), *drive(0, 60_000), s(60_000, "gear", 4.0), s(200_000, "gear", 1.0), *drive(200_000, 260_000)]
-    (t,) = trips(samples, has_ignition=False, now_ms=270_000)
+    (t,) = trips(samples, has_ignition=False)
     assert t.end is None and t.start == 0
 
 
 def test_car_asleep_ends_trip():
-    samples = [s(0, "gear", 1.0), *drive(0, 60_000), s(60_000, "gear", 4.0)]
-    (t,) = trips(samples, now_ms=60_000 + MERGE_GAP_MS)
+    (t,) = trips(STOP + [s(60_000 + MERGE_GAP_MS, "gps", [52.0, 5.0])])
     assert t.end == 60_000
-    (t,) = trips(samples, now_ms=60_000 + MERGE_GAP_MS - 1)
+    (t,) = trips(STOP + [s(60_000 + MERGE_GAP_MS - 1, "gps", [52.0, 5.0])])
+    assert t.end is None
+    (t,) = trips(STOP)
+    assert t.end is None  # silence is no proof: the next sample may still continue the trip
+
+
+def test_parked_with_ignition_on_and_samples_keeps_trip_open():
+    parked = [s(t, "gps", [52.0, 5.0]) for t in range(120_000, 600_001, 60_000)]  # a sample every minute, never asleep
+    (t,) = trips(STOP + parked)
     assert t.end is None
 
 
@@ -60,6 +78,13 @@ def test_open_trip_returned_last():
     a, b = trips(first + second)
     assert a.end == 100_000
     assert b.end is None and b.start == 500_000 and b.duration_s == 60
+
+
+def test_noise_filter_applies_to_closed_trips_only():
+    slow = [s(0, "gear", 1.0), *drive(0, 20_000, v=1.0)]  # 20 m in 20 s
+    (t,) = trips(slow)
+    assert t.end is None and t.distance_m == 20  # an open trip shows from its first second
+    assert trips(slow + [s(20_000, "ignition", 2.0)]) == []
 
 
 def test_noise_trip_discarded():

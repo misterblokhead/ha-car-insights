@@ -8,11 +8,13 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from .db import ingest
+from .live import FUTURE_SLACK_MS
 from .protocol import ProtocolError, Sample, parse_batch
 
 log = logging.getLogger(__name__)
 # Layered limits: car batches <= 256 KB, receiver accepts 300 KB, this add-on 1 MiB (deliberately the largest so it never rejects what the receiver forwarded).
 MAX_BODY = 1024 * 1024
+LATE_WINDOW_MS = 31 * 86_400_000  # older samples are stored but never trigger a re-derive of the history
 
 
 def create_app(
@@ -60,7 +62,8 @@ def create_app(
         out = {"acked_seq": acked}
         if summarize:
             try:
-                s = summarize(batch.vehicle_id, min((x.t for x in batch.samples), default=None), received)
+                late = [x.t for x in batch.samples if received - LATE_WINDOW_MS <= x.t <= received + FUTURE_SLACK_MS]
+                s = summarize(batch.vehicle_id, min(late, default=None), received)
                 if s is not None and s["rev"] != batch.summary_rev:
                     out["summary"] = s
             except Exception:

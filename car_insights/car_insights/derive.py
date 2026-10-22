@@ -4,7 +4,8 @@ from typing import Callable
 
 from . import db
 from .charges import Charge, find_charges
-from .trips import MERGE_GAP_MS, Trip, find_trips
+from .live import FUTURE_SLACK_MS
+from .trips import Trip, find_trips
 
 ALGO = 1  # bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
 _TABLES = ("trips", "charges")
@@ -31,7 +32,6 @@ class Deriver:
         with db.tx(conn):
             for t in _TABLES:
                 conn.executemany(f"DELETE FROM {t} WHERE vehicle_id=?", [(v,) for v in stale])
-        self._initial: dict[str, bool] = {}
 
     def _newest_end(self, vid: str, below: int | None = None) -> int:
         """newest closed end over both tables (strictly below `below` when given), or -1"""
@@ -39,11 +39,7 @@ class Deriver:
         args = (vid,) if below is None else (vid, below)
         return max(self._conn.execute(f"SELECT MAX(end) FROM {t} WHERE vehicle_id=?{cap}", args).fetchone()[0] or -1 for t in _TABLES)
 
-    def initial_rebuild(self, vid: str) -> bool:
-        """True when the last update started with nothing stored for the vehicle (first run or after an ALGO bump)."""
-        return self._initial.get(vid, False)
-
-    def update(self, vid: str, min_t: int | None, now_ms: int) -> tuple[list[dict], list[dict]]:
+    def update(self, vid: str, min_t: int | None, received_ms: int) -> tuple[list[dict], list[dict]]:
         """Re-derive everything after the last closed segment (or before min_t when late data arrived).
         Open segments are stored with a NULL end and replaced on every call. Returns the trips and
         charges that closed or changed since they were last stored."""
@@ -53,11 +49,11 @@ class Deriver:
         # shortcut: the first full rebuild (fresh install or ALGO bump) loads all history in one request and find_charges is
         # O(n x sessions); chunk the rebuild by window if it gets slow.
         with db.tx(conn):
-            self._initial[vid] = not any(conn.execute(f"SELECT 1 FROM {t} WHERE vehicle_id=? LIMIT 1", (vid,)).fetchone() for t in _TABLES)
             w = self._newest_end(vid)
-            # new data within MERGE_GAP_MS of a closed end may continue it: the end was decided against arrival time (backlog)
-            if min_t is not None and min_t - MERGE_GAP_MS <= w:
-                w = self._newest_end(vid, min_t - MERGE_GAP_MS)
+            # shortcut: late data landing after a closed end (inside its P-stop proof window) does not reopen it; senders
+            # upload oldest-first, so that needs two sources interleaving.
+            if min_t is not None and min_t <= w:  # late data: back to the newest closed end below it
+                w = self._newest_end(vid, min_t)
             while True:  # a stored segment (open or closed) straddling the window start must be re-derived whole
                 starts = [r[0] for t in _TABLES for r in conn.execute(
                     f"SELECT start FROM {t} WHERE vehicle_id=? AND (end IS NULL OR end>?) AND start<=?", (vid, w, w))]
@@ -68,9 +64,10 @@ class Deriver:
                    for t in _TABLES}
             for t in _TABLES:
                 conn.execute(f"DELETE FROM {t} WHERE vehicle_id=? AND (end IS NULL OR end>?)", (vid, w))
-            samples, seed = db.samples_after(conn, vid, w), db.latest_at_or_before(conn, vid, w)
-            trips = [_trip_wire(t, self._zones) for t in find_trips(samples, seed, now_ms, db.has_key(conn, vid, "ignition"))]
-            charges = [_charge_wire(c, self._zones) for c in find_charges(samples, seed, now_ms)]
+            # samples stamped far in the future (a bad clock) are no data yet
+            samples, seed = db.samples_after(conn, vid, w, received_ms + FUTURE_SLACK_MS), db.latest_at_or_before(conn, vid, w)
+            trips = [_trip_wire(t, self._zones) for t in find_trips(samples, seed, db.has_key(conn, vid, "ignition"))]
+            charges = [_charge_wire(c, self._zones) for c in find_charges(samples, seed)]
             new: dict[str, list[dict]] = {"trips": [], "charges": []}
             for table, rows in (("trips", trips), ("charges", charges)):
                 for r in rows:
