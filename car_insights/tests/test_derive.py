@@ -1,5 +1,7 @@
 import itertools
 
+import pytest
+
 from car_insights import db
 from car_insights.derive import ALGO, Deriver
 from car_insights.protocol import Sample
@@ -185,3 +187,61 @@ def test_open_charge_not_stored():
     conn, d = setup([s(0, "battery_wh", 20_000.0), s(1000, "plugged", True), s(60_000, "battery_wh", 21_000.0)])
     assert d.update("car1", None, 10 * DAY) == ([], [])
     assert d.stored_charges("car1", 10) == []
+
+
+def test_backlog_boundary_in_p_stop_keeps_one_trip():
+    now = 3 * DAY  # backlog arrives days later, so the first batch's trailing P stop looks like a closed trip
+    b1 = [s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 60_001, 1000)], s(60_000, "gear", 4.0)]
+    conn, d = setup(b1)
+    first, _ = d.update("car1", 0, now)
+    assert [t["end"] for t in first] == [60_000]  # closed prematurely at the P sample
+    b2 = [s(120_000, "gps", [52.0, 5.0]), s(150_000, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(150_000, 300_001, 1000)],
+          s(300_000, "gear", 4.0), s(310_000, "ignition", 2.0)]
+    db.ingest(conn, "car1", SRC, b2, 0)
+    trips, _ = d.update("car1", 120_000, now)
+    stored = d.stored_trips("car1", 10)
+    assert [(t["start"], t["end"]) for t in stored] == [(0, 310_000)] and trips == stored
+
+
+def test_derive_after_distant_closed_trip_does_not_rederive_it():
+    conn, d = setup(trip_samples(0))
+    d.update("car1", None, 10 * DAY)
+    db.ingest(conn, "car1", SRC, [s(DAY, "speed", 10.0)], 0)
+    d.update("car1", DAY, 10 * DAY)
+    assert conn.execute("SELECT COUNT(*) FROM trips WHERE end=110000").fetchone()[0] == 1
+
+
+def test_initial_rebuild_flag():
+    conn, d = setup(trip_samples(0))
+    assert d.initial_rebuild("car1") is False
+    trips, _ = d.update("car1", None, 10 * DAY)
+    assert len(trips) == 1 and d.initial_rebuild("car1") is True  # nothing was stored before this update
+    d.update("car1", None, 10 * DAY)
+    assert d.initial_rebuild("car1") is False
+    conn.execute("UPDATE trips SET algo=?", (ALGO - 1,))
+    d2 = Deriver(conn, lambda la, lo: "Home")  # an ALGO bump drops the rows, so the rebuild is initial again
+    d2.update("car1", None, 10 * DAY)
+    assert d2.initial_rebuild("car1") is True and d2.initial_rebuild("other") is False
+
+
+def test_stale_row_cleanup_is_atomic():
+    conn, _ = setup()
+    for t in ("trips", "charges"):
+        conn.execute(f"INSERT INTO {t} VALUES('car1', 1, 2, ?, '{{}}')", (ALGO - 1,))
+
+    class FailOnCharges:
+        def __init__(self, c):
+            self._c = c
+
+        def __getattr__(self, n):
+            return getattr(self._c, n)
+
+        def executemany(self, sql, *a):
+            if sql.startswith("DELETE FROM charges"):
+                raise RuntimeError("boom")
+            return self._c.executemany(sql, *a)
+
+    with pytest.raises(RuntimeError):
+        Deriver(FailOnCharges(conn), lambda la, lo: None)
+    assert not conn.in_transaction
+    assert conn.execute("SELECT COUNT(*) FROM trips").fetchone()[0] == 1  # the trips delete was rolled back

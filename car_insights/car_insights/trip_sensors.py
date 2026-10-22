@@ -65,7 +65,8 @@ class TripSensors:
         r = self._conn.execute(f"SELECT json FROM {table} WHERE vehicle_id=? AND end IS NOT NULL ORDER BY start DESC LIMIT 1", (vid,)).fetchone()
         return None if r is None else json.loads(r[0])
 
-    def publish_closed(self, vid: str, trips: list[dict], charges: list[dict]) -> None:
+    def publish_closed(self, vid: str, trips: list[dict], charges: list[dict], events: bool = True) -> None:
+        """State is always published; events=False (a history rebuild) skips the per-item ended events."""
         if not trips and not charges:
             return
         if vid not in self._announced:
@@ -78,7 +79,7 @@ class TripSensors:
                 state.append((live._topic(vid, leaf), json.dumps(conv(newest))))
         if state:
             self._mqtt.publish(state)
-        events = [(live._topic(vid, f"{e}_event"), json.dumps({"event_type": "ended", **w}))
-                  for e, items in (("trip", trips), ("charge", charges)) for w in items]
-        if events:
-            self._mqtt.publish(events, retain=False)
+        evs = [(live._topic(vid, f"{e}_event"), json.dumps({"event_type": "ended", **w}))
+                for e, items in (("trip", trips), ("charge", charges)) for w in items]
+        if events and evs:
+            self._mqtt.publish(evs, retain=False)

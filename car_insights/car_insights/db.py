@@ -19,6 +19,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS gaps_uniq ON gaps(vehicle_id, source_id, from_
 """, """
 CREATE TABLE trips(vehicle_id TEXT, start INTEGER, end INTEGER, algo INTEGER, json TEXT, PRIMARY KEY(vehicle_id, start));
 CREATE TABLE charges(vehicle_id TEXT, start INTEGER, end INTEGER, algo INTEGER, json TEXT, PRIMARY KEY(vehicle_id, start));
+CREATE INDEX IF NOT EXISTS samples_vt ON samples(vehicle_id, t);
 """]
 
 
@@ -73,9 +74,19 @@ def samples_after(conn, vehicle_id: str, after_t: int) -> list[Sample]:
     return [Sample(seq, t, k, json.loads(v)) for seq, t, k, v in rows]
 
 
+_DERIVE_KEYS = ("gear", "ignition", "speed", "battery_wh", "outside_temp", "plugged", "range_m", "gps")
+
+
 def latest_at_or_before(conn, vehicle_id: str, t: int) -> dict:
-    """key -> value of the newest sample per key with sample t <= t."""
-    return {s.k: s.v for s in latest_per_key(conn, vehicle_id, t)}
+    """key -> value of the newest sample (ties: highest seq) of each key derivation uses with sample t <= t.
+    One indexed lookup per key; latest_per_key would scan the vehicle's whole history."""
+    out = {}
+    for k in _DERIVE_KEYS:
+        r = conn.execute("SELECT value_json FROM samples WHERE vehicle_id=? AND key=? AND t<=? ORDER BY t DESC, seq DESC LIMIT 1",
+                         (vehicle_id, k, t)).fetchone()
+        if r is not None:
+            out[k] = json.loads(r[0])
+    return out
 
 
 def has_key(conn, vehicle_id: str, key: str) -> bool:

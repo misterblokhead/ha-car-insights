@@ -117,3 +117,12 @@ def test_nothing_published_for_empty_lists(env):
     _, mqtt, ts = env
     ts.publish_closed("car1", [], [])
     assert mqtt.msgs == []
+
+
+def test_events_suppressed_for_initial_rebuild_but_state_published(env):
+    conn, mqtt, ts = env
+    store(conn, "trips", trip(1000))
+    store(conn, "charges", {"start": 5, "end": 9, "added_wh": 1000.0})
+    ts.publish_closed("car1", [trip(1000)], [{"start": 5, "end": 9, "added_wh": 1000.0}], events=False)
+    assert mqtt.on("car_insights/car1/trip_event") == [] and mqtt.on("car_insights/car1/charge_event") == []
+    assert mqtt.on("car_insights/car1/last_trip") and mqtt.on("car_insights/car1/last_charge")

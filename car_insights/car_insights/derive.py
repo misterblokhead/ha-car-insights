@@ -3,7 +3,7 @@ from typing import Callable
 
 from . import db
 from .charges import find_charges
-from .trips import find_trips
+from .trips import MERGE_GAP_MS, find_trips
 
 ALGO = 1  # bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
 _TABLES = ("trips", "charges")
@@ -32,8 +32,16 @@ class Deriver:
         self._conn, self._zones = conn, zones
         # a vehicle with any old-version row in either table is rebuilt whole
         stale = {r[0] for t in _TABLES for r in conn.execute(f"SELECT vehicle_id FROM {t} WHERE algo!=?", (ALGO,))}
-        for t in _TABLES:
-            conn.executemany(f"DELETE FROM {t} WHERE vehicle_id=?", [(v,) for v in stale])
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            for t in _TABLES:
+                conn.executemany(f"DELETE FROM {t} WHERE vehicle_id=?", [(v,) for v in stale])
+            conn.execute("COMMIT")
+        except BaseException:
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+            raise
+        self._initial: dict[str, bool] = {}
 
     def _newest_end(self, vid: str, below: int | None = None) -> int:
         """newest closed end over both tables (strictly below `below` when given), or -1"""
@@ -41,17 +49,26 @@ class Deriver:
         args = (vid,) if below is None else (vid, below)
         return max(self._conn.execute(f"SELECT MAX(end) FROM {t} WHERE vehicle_id=?{cap}", args).fetchone()[0] or -1 for t in _TABLES)
 
+    def initial_rebuild(self, vid: str) -> bool:
+        """True when the last update started with nothing stored for the vehicle (first run or after an ALGO bump)."""
+        return self._initial.get(vid, False)
+
     def update(self, vid: str, min_t: int | None, now_ms: int) -> tuple[list[dict], list[dict]]:
         """Re-derive everything after the last closed segment (or before min_t when late data arrived).
         Open segments are stored with a NULL end and replaced on every call. Returns the trips and
         charges that closed or changed since they were last stored."""
         conn = self._conn
-        # shortcut: re-reads all samples since the last closed segment per batch; fine for hours of driving, index by window if it gets slow
+        # shortcut: each batch re-reads the samples since the start of the oldest open/overlapping segment (a 2 h drive is
+        # ~43k samples, ~0.1 s), fine until a trip runs for many hours; checkpoint open segments if it gets slow.
+        # shortcut: the first full rebuild (fresh install or ALGO bump) loads all history in one request and find_charges is
+        # O(n x sessions); chunk the rebuild by window if it gets slow.
         conn.execute("BEGIN IMMEDIATE")
         try:
+            self._initial[vid] = not any(conn.execute(f"SELECT 1 FROM {t} WHERE vehicle_id=? LIMIT 1", (vid,)).fetchone() for t in _TABLES)
             w = self._newest_end(vid)
-            if min_t is not None and min_t <= w:
-                w = self._newest_end(vid, min_t)
+            # new data within MERGE_GAP_MS of a closed end may continue it: the end was decided against arrival time (backlog)
+            if min_t is not None and min_t - MERGE_GAP_MS <= w:
+                w = self._newest_end(vid, min_t - MERGE_GAP_MS)
             while True:  # a stored segment (open or closed) straddling the window start must be re-derived whole
                 starts = [r[0] for t in _TABLES for r in conn.execute(
                     f"SELECT start FROM {t} WHERE vehicle_id=? AND (end IS NULL OR end>?) AND start<=?", (vid, w, w))]

@@ -38,7 +38,9 @@ def main() -> None:
     tz = fetch_time_zone(sup_token)
 
     def summarize(vid: str, min_t: int | None, received: int) -> dict:
-        sensors.publish_closed(vid, *deriver.update(vid, min_t, received))  # after update: it reads the newest stored row
+        closed = deriver.update(vid, min_t, received)
+        # after update: it reads the newest stored row; a first rebuild of history must not fire an event per old trip
+        sensors.publish_closed(vid, *closed, events=not deriver.initial_rebuild(vid))
         # shortcut: 500 rows bound the week's totals, a week with more trips undercounts; page by date if that ever shows
         return summary.build(deriver.current_trip(vid), deriver.stored_trips(vid, 500), deriver.stored_charges(vid, 500), received, tz)
 

@@ -154,3 +154,33 @@ def test_latest_per_key_newest_across_sources_and_bounded(conn):
     ingest(conn, "car2", S, [Sample(1, 8, "speed", 4.0)], 0)
     got = {s.k: (s.t, s.v) for s in latest_per_key(conn, "car1", 50)}
     assert got == {"speed": (9, 2.0)}
+
+
+def _plan(conn, run):
+    """EXPLAIN QUERY PLAN of every statement `run` executes (traced with its parameters expanded)"""
+    seen = []
+    conn.set_trace_callback(seen.append)
+    run()
+    conn.set_trace_callback(None)
+    return [" | ".join(r[3] for r in conn.execute("EXPLAIN QUERY PLAN " + q)) for q in seen if q.lstrip().startswith("SELECT")]
+
+
+def test_derive_queries_use_indexes(conn):
+    from car_insights.db import latest_at_or_before, samples_after
+    ingest(conn, "car1", S, [Sample(1, 5, "speed", 1.0), Sample(2, 9, "gear", 1.0)], 0)
+    (plan,) = _plan(conn, lambda: samples_after(conn, "car1", 3))
+    assert "samples_vt" in plan and "SCAN samples" not in plan
+    plans = _plan(conn, lambda: latest_at_or_before(conn, "car1", 50))
+    assert plans and all("samples_vkt" in p and "SCAN samples" not in p for p in plans)
+
+
+def test_latest_at_or_before_newest_per_derivation_key(conn):
+    from car_insights.db import latest_at_or_before
+    ingest(conn, "car1", S, [Sample(1, 5, "speed", 1.0), Sample(2, 9, "speed", 2.0), Sample(3, 9, "gear", 1.0),
+                             Sample(4, 9, "gear", 4.0), Sample(5, 3, "meta", {}), Sample(6, 7, "gps", [1, 2]),
+                             Sample(7, 8, "soc", 50.0), Sample(8, 100, "range_m", 9.0)], 0)
+    ingest(conn, "car1", "car_app-1111abcd", [Sample(1, 8, "speed", 3.0)], 0)
+    ingest(conn, "car2", S, [Sample(1, 8, "ignition", 4.0)], 0)
+    # newest t wins (across sources), a tie on t goes to the higher seq, other keys and later samples are ignored
+    assert latest_at_or_before(conn, "car1", 50) == {"speed": 2.0, "gear": 4.0, "gps": [1, 2]}
+    assert latest_at_or_before(conn, "car1", 6) == {"speed": 1.0}
