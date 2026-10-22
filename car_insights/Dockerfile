@@ -4,4 +4,4 @@ COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r /app/requirements.txt
 COPY car_insights /app/car_insights
 WORKDIR /app
-CMD ["python3", "-m", "car_insights"]
+CMD ["/usr/bin/with-contenv", "python3", "-m", "car_insights"]
