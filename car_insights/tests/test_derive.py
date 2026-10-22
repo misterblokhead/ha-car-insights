@@ -79,7 +79,7 @@ def test_open_trip_rebuilt_after_restart():
     d.update("car1", None, 61_000)
     cur = d.current_trip("car1")
     d2 = Deriver(conn, lambda la, lo: "Home")
-    assert d2.current_trip("car1") is None
+    assert d2.current_trip("car1") == cur  # persisted, no update needed
     d2.update("car1", None, 61_000)
     assert d2.current_trip("car1") == cur
 
@@ -92,6 +92,82 @@ def test_algo_change_clears_rows():
     assert d2.stored_trips("car1", 10) == []
     trips, _ = d2.update("car1", None, 10 * DAY)
     assert len(trips) == 1 and len(d2.stored_trips("car1", 10)) == 1
+
+
+def test_late_batch_inside_open_trip_keeps_trip_start():
+    conn, d = setup([s(200_000, "battery_wh", 20_000.0), s(201_000, "plugged", True),
+                     s(3_600_000, "battery_wh", 25_000.0), s(3_700_000, "plugged", False)])
+    d.update("car1", None, DAY)  # a later charge is stored, so the batches below take the late path
+    db.ingest(conn, "car1", SRC, [s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 51_000, 1000)]], 0)
+    d.update("car1", 0, DAY)
+    assert d.current_trip("car1")["start"] == 0
+    db.ingest(conn, "car1", SRC, [*[s(t, "speed", 10.0) for t in range(51_000, 100_001, 1000)],
+                                   s(100_000, "gear", 4.0), s(110_000, "ignition", 2.0)], 0)
+    trips, _ = d.update("car1", 51_000, DAY)
+    (t,) = d.stored_trips("car1", 10)
+    assert t["start"] == 0 and t["distance_m"] == 1000 and trips == [t]
+    assert len(d.stored_charges("car1", 10)) == 1 and d.current_trip("car1") is None
+
+
+def _plug_before_ignition_off():
+    return [s(0, "ignition", 4.0), s(0, "gear", 1.0), s(0, "battery_wh", 20_000.0),
+            *[s(t, "speed", 10.0) for t in range(0, 100_001, 1000)], s(100_000, "gear", 4.0), s(100_000, "gps", [52.0, 5.0]),
+            s(120_000, "plugged", True), s(150_000, "ignition", 2.0)]
+
+
+def _unplug_after_charge():
+    return [s(3_600_000, "battery_wh", 30_000.0), s(3_700_000, "plugged", False)]
+
+
+def test_charge_plugged_before_ignition_off_survives():
+    conn, d = setup(_plug_before_ignition_off())
+    trips, charges = d.update("car1", None, DAY)
+    assert trips[0]["end"] == 150_000 and charges == []
+    db.ingest(conn, "car1", SRC, _unplug_after_charge(), 0)
+    _, charges = d.update("car1", None, DAY)
+    (c,) = d.stored_charges("car1", 10)
+    assert charges == [c] and c["start"] == 120_000 and c["added_wh"] == 10_000 and len(d.stored_trips("car1", 10)) == 1
+
+
+def test_open_charge_survives_restart():
+    conn, d = setup(_plug_before_ignition_off())
+    d.update("car1", None, DAY)
+    d = Deriver(conn, lambda la, lo: "Home")
+    db.ingest(conn, "car1", SRC, _unplug_after_charge(), 0)
+    d.update("car1", None, DAY)
+    (c,) = d.stored_charges("car1", 10)
+    assert c["start"] == 120_000 and c["added_wh"] == 10_000
+
+
+def test_open_trip_row_not_listed_or_newly_closed():
+    conn, d = setup([s(0, "ignition", 4.0), s(0, "gear", 1.0), s(0, "plugged", True),
+                     *[s(t, "speed", 10.0) for t in range(0, 61_000, 1000)]])
+    assert d.update("car1", None, 61_000) == ([], [])
+    assert d.update("car1", None, 62_000) == ([], [])
+    assert d.stored_trips("car1", 10) == [] and d.stored_charges("car1", 10) == []
+    assert conn.execute("SELECT COUNT(*) FROM trips WHERE end IS NULL").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) FROM charges WHERE end IS NULL").fetchone()[0] == 1
+    db.ingest(conn, "car1", SRC, [s(70_000, "ignition", 2.0)], 0)
+    trips, _ = d.update("car1", None, 70_000)
+    assert len(trips) == 1 and d.current_trip("car1") is None
+    assert conn.execute("SELECT COUNT(*) FROM trips").fetchone()[0] == 1
+
+
+def test_stale_algo_in_one_table_rebuilds_both():
+    conn, d = setup(_plug_before_ignition_off(), _unplug_after_charge())
+    d.update("car1", None, DAY)
+    assert len(d.stored_trips("car1", 10)) == 1 and len(d.stored_charges("car1", 10)) == 1
+    conn.execute("UPDATE trips SET algo=?", (ALGO - 1,))
+    d2 = Deriver(conn, lambda la, lo: "Home")
+    assert d2.stored_trips("car1", 10) == [] and d2.stored_charges("car1", 10) == []
+
+
+def test_late_batch_extends_trip_earlier_dropped_as_noise():
+    conn, d = setup([s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 6_000, 1000)], s(20_000, "ignition", 2.0)], trip_samples(DAY))
+    d.update("car1", None, 10 * DAY)  # the early 50 m / 20 s trip is noise; the later trip makes the next batch late
+    db.ingest(conn, "car1", SRC, [s(t, "speed", 10.0) for t in range(6_000, 16_000, 1000)], 0)
+    trips, _ = d.update("car1", 6_000, 10 * DAY)
+    assert [(t["start"], t["distance_m"]) for t in trips] == [(0, 150)]
 
 
 def test_charge_stored_with_place():
