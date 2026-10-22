@@ -1,5 +1,5 @@
 name: Car Insights
-version: "0.1.0"
+version: "0.2.0"
 slug: car_insights
 url: https://github.com/misterblokhead/ha-car-insights
 description: Trips, charging and costs from your car
@@ -8,6 +8,7 @@ init: false
 startup: application
 boot: auto
 services: ["mqtt:need"]
+homeassistant_api: true
 map: ["share:rw"]
 options:
   default_capacity_kwh: 60

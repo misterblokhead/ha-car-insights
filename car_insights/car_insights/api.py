@@ -20,6 +20,8 @@ def create_app(
     token: str,
     on_ingested: Callable[[str, list[Sample], int], None],
     now_ms: Callable[[], int] = lambda: int(time.time() * 1000),
+    *,
+    summarize: Callable[[str, int | None, int], dict | None] | None = None,
 ) -> FastAPI:
     if not token:
         raise ValueError("token must not be empty")
@@ -55,6 +57,14 @@ def create_app(
             on_ingested(batch.vehicle_id, batch.samples, received)
         except Exception:
             log.exception("on_ingested failed")
-        return {"acked_seq": acked}
+        out = {"acked_seq": acked}
+        if summarize:
+            try:
+                s = summarize(batch.vehicle_id, min((x.t for x in batch.samples), default=None), received)
+                if s is not None and s["rev"] != batch.summary_rev:
+                    out["summary"] = s
+            except Exception:
+                log.exception("summarize failed")
+        return out
 
     return app

@@ -27,6 +27,7 @@ How a sender (a car app, logger or script) delivers data to the Car Insights rec
 - `source_id`: `<lowercase letters/underscore>-<8 hex chars>`, generated once per sender install. A sender that restarts `seq` at 1 must use a new source id.
 - `samples`: at most 5000 per batch. Each has integer `seq` >= 1 (per vehicle and source, strictly increasing), integer `t` (epoch ms), `k` (string, 1-32 chars) and `v` (any JSON value).
 - Samples with `t` more than 24 h in the future are ignored for live state.
+- `summary_rev` (optional string, at most 64 chars; `null` counts as absent): the `rev` of the last summary the sender holds. Any other type or a longer string is a `400`. An empty `samples` list is valid: it only asks for the current summary.
 
 ## Keys the add-on understands
 
@@ -56,11 +57,21 @@ Sender batches should stay <= 256 KB. The receiver integration accepts up to 300
 
 | Status | Meaning | Sender should |
 |---|---|---|
-| `200 {"acked_seq": N}` | Accepted | Drop samples with `seq <= N` |
+| `200 {"acked_seq": N}` or `200 {"acked_seq": N, "summary": {...}}` | Accepted | Drop samples with `seq <= N`; store `summary` if present |
 | `400` | Vehicle id mismatch or invalid batch | Back off and retry; check vehicle id / sender version |
 | `401` | Bad signature | Stop uploading; check the secret |
 | `413` | Batch too large | Halve the batch size |
 | `503` | Add-on or token unavailable | Back off and retry |
+
+## Summary
+
+The add-on derives trips and charging sessions and returns a `summary` in the 200 body when its `rev` differs from the `summary_rev` in the request (or none was sent). Add-ons older than 0.2.0 never send `summary`; a sender must treat it as optional. The receiver passes the body through unchanged. Units are SI (m, m/s, Wh, s, deg C), times are epoch ms, `null` means not available.
+
+Summary keys: `rev` (first 12 hex chars of the sha1 of the compact, key-sorted JSON of everything except `rev` and `updated`), `updated` (ms), `current_trip` (or `null`), `today`, `last_trip` (or `null`), `last_charge` (or `null`), `trips` (closed, newest first, at most 20), `charges` (closed, newest first, at most 20), `week` (7 days, oldest first, today last).
+
+- Trip: `start`, `end` (`null` while open), `from`, `to` (HA zone names or `null`), `distance_m`, `duration_s`, `avg_speed_mps`, `max_speed_mps`, `start_wh`, `end_wh`, `net_wh`, `gross_wh`, `recup_wh`, `avg_temp_c`.
+- Charge: `start`, `end`, `place` (zone name or `null`), `start_wh`, `end_wh`, `added_wh`, `duration_s`, `range_added_m`, `avg_w`.
+- Day (`today` and each `week` entry): `date` (`YYYY-MM-DD`, local date in the Home Assistant time zone), `distance_m`, `net_wh`, `charged_wh`. A trip or charge counts on the day it started; the open trip counts too. Days without data are zeros (sums, not measurements).
 
 ## Acknowledgement and gaps
 

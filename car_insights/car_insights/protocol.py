@@ -21,6 +21,7 @@ class Batch:
     vehicle_id: str
     source_id: str
     samples: list[Sample]
+    summary_rev: str | None = None
 
 
 class ProtocolError(ValueError):
@@ -62,4 +63,7 @@ def parse_batch(raw: bytes) -> Batch:
         raise ProtocolError("bad source_id")
     if not isinstance(samples, list) or len(samples) > MAX_SAMPLES:
         raise ProtocolError("bad samples")
-    return Batch(vid, sid, [_sample(s) for s in samples])
+    rev = d.get("summary_rev")  # null counts as absent: a sender with no summary yet may send it
+    if rev is not None and (not isinstance(rev, str) or len(rev) > 64):
+        raise ProtocolError("bad summary_rev")
+    return Batch(vid, sid, [_sample(s) for s in samples], rev)

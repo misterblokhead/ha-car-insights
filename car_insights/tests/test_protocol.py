@@ -48,3 +48,16 @@ def test_parse_rejects(bad):  # noqa
 
 def test_parse_valid_gap():
     assert parse_batch(_gap({"from_seq": 1, "to_seq": 3})).samples[0].v == {"from_seq": 1, "to_seq": 3}
+
+
+def test_parse_summary_rev():
+    assert parse_batch(VALID_WITH(summary_rev="abc123")).summary_rev == "abc123"
+    assert parse_batch(VALID_WITH()).summary_rev is None
+    assert parse_batch(VALID_WITH(summary_rev=None)).summary_rev is None
+    assert parse_batch(VALID_WITH(summary_rev="a" * 64)).summary_rev == "a" * 64
+
+
+@pytest.mark.parametrize("bad", ["a" * 65, 5, ["x"]])
+def test_parse_summary_rev_rejects(bad):
+    with pytest.raises(ProtocolError, match="bad summary_rev"):
+        parse_batch(VALID_WITH(summary_rev=bad))
