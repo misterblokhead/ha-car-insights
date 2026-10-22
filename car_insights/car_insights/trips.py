@@ -72,7 +72,7 @@ def find_trips(samples: list[Sample], seed: dict[str, Any], now_ms: int, has_ign
                 wh = v
             elif s.k == "outside_temp":
                 temp = v
-            elif s.k == "speed" and not cur and v > MOVING_MPS and gear != PARK_GEAR:
+            elif s.k == "speed" and not cur and abs(v) > MOVING_MPS and gear != PARK_GEAR:
                 cur, p = (i, wh, temp), None
         prev_t = s.t
     if cur:
@@ -86,7 +86,7 @@ def find_trips(samples: list[Sample], seed: dict[str, Any], now_ms: int, has_ign
 
 def _build(seg: list[Sample], wh0: float | None, temp0: float | None, closed: bool) -> Trip:
     start, end = seg[0].t, seg[-1].t
-    speeds = [(s.t, v) for s in seg if s.k == "speed" and (v := _num(s.v)) is not None]
+    speeds = [(s.t, abs(v)) for s in seg if s.k == "speed" and (v := _num(s.v)) is not None]  # reverse is negative
     distance = moving = 0.0
     for (t0, v), (t1, _) in zip(speeds, speeds[1:]):
         dt = min(t1 - t0, MAX_SPEED_STEP_MS) / 1000

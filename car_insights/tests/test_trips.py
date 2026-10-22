@@ -115,3 +115,12 @@ def test_fixes_and_temp():
     assert t.avg_temp_c == 8.0
     (t,) = trips(samples, seed={"outside_temp": 5.0})
     assert t.avg_temp_c == pytest.approx(7.0)
+
+
+def test_reverse_speed_counts_as_distance():
+    samples = [s(0, "gear", 1.0), *drive(0, 60_000), *drive(61_000, 121_000, v=-2.0), s(130_000, "ignition", 2.0)]
+    (t,) = trips(samples)
+    assert t.distance_m == pytest.approx(730)  # 600 forward + 10 for the 1 s hop into reverse + 120 reverse
+    assert t.max_speed_mps == 10
+    (t,) = trips([s(0, "gear", 2.0), *drive(0, 100_000, v=-5.0), s(100_000, "ignition", 2.0)])
+    assert t.distance_m == pytest.approx(500) and t.max_speed_mps == 5 and t.avg_speed_mps == pytest.approx(5)
