@@ -9,6 +9,6 @@ class MqttOut:
         self._c.connect_async(host, port)
         self._c.loop_start()
 
-    def publish(self, messages: list[tuple[str, str]]) -> None:
-        for topic, payload in messages:  # retained: HA and restarts must see the last state and discovery
-            self._c.publish(topic, payload, qos=1, retain=True)
+    def publish(self, messages: list[tuple[str, str]], retain: bool = True) -> None:
+        for topic, payload in messages:  # retained by default: HA and restarts must see the last state and discovery
+            self._c.publish(topic, payload, qos=1, retain=retain)

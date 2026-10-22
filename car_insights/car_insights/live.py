@@ -112,14 +112,18 @@ def _topic(vehicle_id: str, leaf: str) -> str:
     return f"car_insights/{vehicle_id}/{leaf}"
 
 
+def device(vehicle_id: str, name: str, make: str | None, model: str | None) -> dict:
+    d = {"identifiers": [f"car_insights_{vehicle_id}"], "name": name, "manufacturer": make, "model": model}
+    return {k: v for k, v in d.items() if v is not None}  # HA rejects null strings
+
+
 def discovery_messages(vehicle_id: str, name: str, make: str | None, model: str | None, fields: set[str]) -> list[tuple[str, str]]:
-    device = {"identifiers": [f"car_insights_{vehicle_id}"], "name": name, "manufacturer": make, "model": model}
-    device = {k: v for k, v in device.items() if v is not None}  # HA rejects null strings
+    dev = device(vehicle_id, name, make, model)
     out = []
     for f, (comp, extra) in FIELDS.items():
         if f not in fields:
             continue
-        cfg: dict[str, Any] = {"unique_id": f"car_insights_{vehicle_id}_{f}", "device": device}
+        cfg: dict[str, Any] = {"unique_id": f"car_insights_{vehicle_id}_{f}", "device": dev}
         cfg.update({k: _topic(vehicle_id, v) if k.endswith("_topic") else v for k, v in extra.items()})
         if "state_topic" in cfg:
             cfg["value_template"] = "{{ value_json.%s if '%s' in value_json else None }}" % (f, f)

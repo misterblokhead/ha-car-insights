@@ -10,7 +10,7 @@ log = logging.getLogger(__name__)
 
 
 class Sink(Protocol):
-    def publish(self, messages: list[tuple[str, str]]) -> None: ...
+    def publish(self, messages: list[tuple[str, str]], retain: bool = True) -> None: ...
 
 
 class Publisher:
