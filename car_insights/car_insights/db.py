@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS vehicles(vehicle_id TEXT PRIMARY KEY, name TEXT, meta
 CREATE TABLE IF NOT EXISTS gaps(vehicle_id TEXT, source_id TEXT, from_seq INTEGER, to_seq INTEGER);
 DELETE FROM gaps WHERE rowid NOT IN (SELECT MIN(rowid) FROM gaps GROUP BY vehicle_id, source_id, from_seq, to_seq);
 CREATE UNIQUE INDEX IF NOT EXISTS gaps_uniq ON gaps(vehicle_id, source_id, from_seq, to_seq);
+""", """
+CREATE TABLE trips(vehicle_id TEXT, start INTEGER, end INTEGER, algo INTEGER, json TEXT, PRIMARY KEY(vehicle_id, start));
+CREATE TABLE charges(vehicle_id TEXT, start INTEGER, end INTEGER, algo INTEGER, json TEXT, PRIMARY KEY(vehicle_id, start));
 """]
 
 
@@ -60,6 +63,23 @@ def latest_per_key(conn, vehicle_id: str, max_t: int) -> list[Sample]:
         (vehicle_id, max_t),
     )
     return [Sample(0, t, k, json.loads(v)) for k, t, v in rows]
+
+
+def samples_after(conn, vehicle_id: str, after_t: int) -> list[Sample]:
+    """Samples with t > after_t across all sources, ignoring meta/gap, ordered by (t, seq)."""
+    rows = conn.execute(
+        "SELECT seq, t, key, value_json FROM samples WHERE vehicle_id=? AND t>? AND key NOT IN ('meta','gap') "
+        "ORDER BY t, seq, source_id", (vehicle_id, after_t))
+    return [Sample(seq, t, k, json.loads(v)) for seq, t, k, v in rows]
+
+
+def latest_at_or_before(conn, vehicle_id: str, t: int) -> dict:
+    """key -> value of the newest sample per key with sample t <= t."""
+    return {s.k: s.v for s in latest_per_key(conn, vehicle_id, t)}
+
+
+def has_key(conn, vehicle_id: str, key: str) -> bool:
+    return conn.execute("SELECT 1 FROM samples WHERE vehicle_id=? AND key=? LIMIT 1", (vehicle_id, key)).fetchone() is not None
 
 
 def ingest(conn, vehicle_id: str, source_id: str, samples: Sequence[Sample], received_ms: int) -> int:

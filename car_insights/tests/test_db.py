@@ -111,10 +111,10 @@ def _version(c):
 def test_fresh_db_sets_version_and_reopen_keeps_it(tmp_path):
     path = str(tmp_path / "m.db")
     c = connect(path)
-    assert _version(c) == 1
+    assert _version(c) == 2
     c.close()
     c = connect(path)
-    assert _version(c) == 1
+    assert _version(c) == 2
 
 
 def test_newer_schema_refused(tmp_path):
@@ -133,7 +133,7 @@ def test_unversioned_db_with_duplicate_gaps_is_upgraded(tmp_path):
     old.commit()
     old.close()
     c = connect(path)
-    assert c.execute("SELECT COUNT(*) FROM gaps").fetchone()[0] == 1 and _version(c) == 1
+    assert c.execute("SELECT COUNT(*) FROM gaps").fetchone()[0] == 1 and _version(c) == 2
 
 
 def test_failed_migration_rolls_back_and_keeps_version(tmp_path, monkeypatch):
