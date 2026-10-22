@@ -108,6 +108,12 @@ def latest_at_or_before(conn, vehicle_id: str, t: int, keys: Sequence[str]) -> d
     return out
 
 
+def latest_t(conn, vehicle_id: str, key: str, t: int) -> int | None:
+    """t of the newest sample of key with sample t <= t, or None."""
+    r = conn.execute("SELECT MAX(t) FROM samples WHERE vehicle_id=? AND key=? AND t<=?", (vehicle_id, key, t)).fetchone()
+    return r[0]
+
+
 def has_key(conn, vehicle_id: str, key: str) -> bool:
     return conn.execute("SELECT 1 FROM samples WHERE vehicle_id=? AND key=? LIMIT 1", (vehicle_id, key)).fetchone() is not None
 

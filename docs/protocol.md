@@ -26,7 +26,7 @@ How a sender (a car app, logger or script) delivers data to the Car Insights rec
 - `vehicle_id`: `[A-Za-z0-9_-]{1,64}`.
 - `source_id`: `<lowercase letters/underscore>-<8 hex chars>`, generated once per sender install. A sender that restarts `seq` at 1 must use a new source id.
 - `samples`: at most 5000 per batch. Each has integer `seq` >= 1 (per vehicle and source, strictly increasing), integer `t` (epoch ms), `k` (string, 1-32 chars) and `v` (any JSON value).
-- Samples with `t` more than 24 h in the future are ignored for live state.
+- Samples with `t` more than 24 h in the future are ignored for live state and for trips/charges.
 - `summary_rev` (optional string, at most 64 chars; `null` counts as absent): the `rev` of the last summary the sender holds. Any other type or a longer string is a `400`. An empty `samples` list is valid: it only asks for the current summary.
 
 ## Keys the add-on understands

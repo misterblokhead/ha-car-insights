@@ -73,6 +73,12 @@ class Deriver:
             # samples stamped far in the future (a bad clock) are no data yet
             samples = db.samples_after(conn, vid, w, received_ms + FUTURE_SLACK_MS, KEYS)
             seed = db.latest_at_or_before(conn, vid, w, KEYS)
+            # a trip that started after the plugged=True seed means that charge's unplug was missed (find_charges closed it
+            # at the trip start); the stale flag must not open a new session after the trip
+            if seed.get("plugged") is True:
+                last_trip_start = conn.execute("SELECT MAX(start) FROM trips WHERE vehicle_id=?", (vid,)).fetchone()[0] or -1
+                if last_trip_start > (db.latest_t(conn, vid, "plugged", w) or -1):
+                    seed["plugged"] = False
             trips = [_trip_wire(t, self._zones) for t in find_trips(samples, seed, vid in self._ignition)]
             charges = [_charge_wire(c, self._zones) for c in find_charges(samples, seed)]
             new: dict[str, list[dict]] = {"trips": [], "charges": []}

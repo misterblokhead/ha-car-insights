@@ -337,3 +337,20 @@ def test_stored_rows_since_a_start_time_newest_first_and_limited():
     assert [t["start"] for t in d.stored_trips("car1")] == [2 * DAY, DAY, 0]
     assert [t["start"] for t in d.stored_trips("car1", since=DAY)] == [2 * DAY, DAY]
     assert [t["start"] for t in d.stored_trips("car1", 1, since=DAY)] == [2 * DAY]
+
+
+def test_stale_plugged_seed_after_forced_close_opens_no_session():
+    conn, d = setup([s(0, "gear", 4.0), s(0, "ignition", 2.0), s(0, "battery_wh", 20000.0), s(1000, "plugged", True),
+                     s(3_600_000, "battery_wh", 30000.0)])
+    d.update("car1", 0, DAY)  # a charge is open; the unplug is never seen
+    db.ingest(conn, "car1", SRC, [s(4_000_000, "ignition", 4.0), s(4_000_000, "gear", 1.0),
+                                  *[s(t, "speed", 10.0) for t in range(4_000_000, 4_100_001, 1000)],
+                                  s(4_100_000, "gear", 4.0), s(4_110_000, "ignition", 2.0)], 0)
+    d.update("car1", 4_000_000, DAY)  # the trip start closes the charge, the trip ends
+    (c,) = d.stored_charges("car1", 10)
+    assert c["end"] == 4_000_000 and len(d.stored_trips("car1", 10)) == 1
+    db.ingest(conn, "car1", SRC, [s(t, "speed", 0.0) for t in range(4_200_000, 4_500_000, 60_000)] + [s(4_500_000, "battery_wh", 30150.0)], 0)
+    d.update("car1", 4_200_000, DAY)  # parked, +150 Wh: the stale plugged flag must not make that a charge
+    db.ingest(conn, "car1", SRC, [s(5_000_000, "ignition", 4.0), s(5_000_000, "gear", 1.0), s(5_001_000, "speed", 10.0)], 0)
+    _, charges = d.update("car1", 5_000_000, DAY)
+    assert charges == [] and d.stored_charges("car1", 10) == [c]

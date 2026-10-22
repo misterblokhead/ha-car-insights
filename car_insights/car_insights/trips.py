@@ -48,7 +48,7 @@ def find_trips(samples: list[Sample], seed: dict[str, Any], has_ignition: bool) 
 
     for i, s in enumerate(samples):
         # P held for MERGE_GAP_MS ends the trip at its first P sample; with an ignition signal P alone proves
-        # nothing, only silence (the car asleep: two samples that far apart) does
+        # nothing, only silence (the car asleep: two samples that far apart, counting only the keys derivation loads) does
         if cur and p is not None and s.t - (prev_t if has_ignition else samples[p].t) >= MERGE_GAP_MS:
             close(p + 1, True)
         v = num(s.v)
