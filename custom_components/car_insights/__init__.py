@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 
 from aiohttp import web
-from homeassistant.components import persistent_notification, webhook
+from homeassistant.components import cloud, persistent_notification, webhook
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
@@ -35,6 +35,20 @@ def _write_conf(path: Path, text: str) -> bool:
     except FileExistsError:
         return False
     return True
+
+
+def _uses_cloud(hass: HomeAssistant) -> bool:
+    return "cloud" in hass.config.components and cloud.async_active_subscription(hass)
+
+
+async def _webhook_url(hass: HomeAssistant, webhook_id: str) -> str:
+    """Nabu Casa cloudhook (always https, independent of the external URL) when subscribed, else the external URL."""
+    if _uses_cloud(hass):
+        try:
+            return await cloud.async_get_or_create_cloudhook(hass, webhook_id)
+        except (cloud.CloudNotAvailable, cloud.CloudNotConnected) as err:
+            raise ConfigEntryNotReady("Nabu Casa cloud not connected") from err
+    return webhook.async_generate_url(hass, webhook_id, allow_internal=False, prefer_external=True)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -74,7 +88,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return web.Response(status=mapped_status, body=mapped_body, content_type="application/json")
 
     try:
-        url = webhook.async_generate_url(hass, webhook_id, allow_internal=False, prefer_external=True)
+        url = await _webhook_url(hass, webhook_id)
     except NoURLAvailableError as err:
         persistent_notification.async_create(
             hass,
@@ -123,3 +137,8 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     # a re-added vehicle gets a new secret, so the stale .conf must go
     path = CONF_DIR / f"{entry.data['vehicle_id']}.conf"
     await hass.async_add_executor_job(lambda: path.unlink(missing_ok=True))
+    if _uses_cloud(hass):
+        try:
+            await cloud.async_delete_cloudhook(hass, entry.data["webhook_id"])
+        except (cloud.CloudNotAvailable, ValueError):
+            pass  # cloud gone or hook already deleted

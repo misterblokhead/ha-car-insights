@@ -11,7 +11,7 @@ The car-side sender is a separate project. Any sender that follows [docs/protoco
 
 ## Requirements
 
-- An https external URL for Home Assistant (Nabu Casa or your own TLS domain).
+- Nabu Casa (the receiver then uses a cloudhook, `https://hooks.nabu.casa/...`), or an https external URL for Home Assistant (your own TLS domain).
 - The Mosquitto broker add-on.
 
 ## Install

@@ -1,6 +1,7 @@
 {
   "domain": "car_insights",
   "name": "Car Insights receiver",
+  "after_dependencies": ["cloud"],
   "codeowners": ["@misterblokhead"],
   "config_flow": true,
   "dependencies": ["webhook"],
