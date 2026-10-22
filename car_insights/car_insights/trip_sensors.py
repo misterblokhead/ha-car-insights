@@ -7,13 +7,13 @@ from .publisher import Sink
 
 MIN_CONSUMPTION_M = 100
 
-# field -> (state leaf, value key, unit, attribute keys)
+# field -> (state leaf, value key, name, unit, device_class)
 _SENSORS = {
-    "last_trip_distance": ("last_trip", "distance_km", "Last trip distance", "km", "distance", ("from", "to", "start", "end")),
-    "last_trip_net": ("last_trip", "net_kwh", "Last trip energy", "kWh", "energy", ("from", "to", "start", "end")),
-    "last_trip_consumption": ("last_trip", "consumption", "Last trip consumption", "kWh/100km", None, ("from", "to", "start", "end")),
-    "last_charge_added": ("last_charge", "added_kwh", "Last charge added", "kWh", "energy", ("place", "start", "end")),
-    "last_charge_avg_power": ("last_charge", "avg_power_kw", "Last charge average power", "kW", "power", ("place", "start", "end")),
+    "last_trip_distance": ("last_trip", "distance_km", "Last trip distance", "km", "distance"),
+    "last_trip_net": ("last_trip", "net_kwh", "Last trip energy", "kWh", "energy"),
+    "last_trip_consumption": ("last_trip", "consumption", "Last trip consumption", "kWh/100km", "energy_distance"),
+    "last_charge_added": ("last_charge", "added_kwh", "Last charge added", "kWh", "energy"),
+    "last_charge_avg_power": ("last_charge", "avg_power_kw", "Last charge average power", "kW", "power"),
 }
 _EVENTS = {"trip": "Trip", "charge": "Charge"}
 
@@ -45,13 +45,15 @@ class TripSensors:
         meta = (db.vehicle(self._conn, vid) or {}).get("meta") or {}
         dev = live.device(vid, meta.get("vehicle_name") or vid, meta.get("make"), meta.get("model"))
         out = []
-        for f, (leaf, key, name, unit, dclass, attrs) in _SENSORS.items():
+        for f, (leaf, key, name, unit, dclass) in _SENSORS.items():
             cfg: dict[str, Any] = {"unique_id": f"car_insights_{vid}_{f}", "device": dev, "name": name,
                                    "state_topic": live._topic(vid, leaf), "value_template": "{{ value_json.%s }}" % key,
-                                   "unit_of_measurement": unit, "state_class": "measurement",
+                                   "unit_of_measurement": unit,
                                    "json_attributes_topic": live._topic(vid, leaf)}
             if dclass:
                 cfg["device_class"] = dclass
+            if dclass != "energy":  # HA rejects state_class measurement on energy; a per-trip value is no running total
+                cfg["state_class"] = "measurement"
             out.append((f"homeassistant/sensor/{vid}_{f}/config", json.dumps(cfg)))
         for e, name in _EVENTS.items():
             cfg = {"unique_id": f"car_insights_{vid}_{e}", "device": dev, "name": name,

@@ -100,3 +100,20 @@ def test_same_device_as_live(env):
     ts.publish_closed("car1", [trip(1000)], [])
     devs = [json.loads(p)["device"] for t, p, _ in mqtt.msgs if t.startswith("homeassistant/")]
     assert devs and all(d == live.device("car1", "Test car", "Acme", None) for d in devs)
+
+
+def test_energy_sensors_have_no_state_class(env):
+    conn, mqtt, ts = env
+    store(conn, "trips", trip(1000))
+    ts.publish_closed("car1", [trip(1000)], [])
+    cfgs = {t: json.loads(p) for t, p, _ in mqtt.msgs if t.startswith("homeassistant/sensor/")}
+    energy = [c for c in cfgs.values() if c.get("device_class") == "energy"]
+    assert energy and all("state_class" not in c for c in energy)
+    assert cfgs["homeassistant/sensor/car1_last_trip_consumption/config"]["device_class"] == "energy_distance"
+    assert cfgs["homeassistant/sensor/car1_last_trip_distance/config"]["state_class"] == "measurement"
+
+
+def test_nothing_published_for_empty_lists(env):
+    _, mqtt, ts = env
+    ts.publish_closed("car1", [], [])
+    assert mqtt.msgs == []
