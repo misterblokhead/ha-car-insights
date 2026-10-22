@@ -5,20 +5,9 @@ import pytest
 from car_insights.db import connect, ingest
 from car_insights.protocol import Sample
 from car_insights.publisher import Publisher
+from conftest import FakeMqtt
 
 S = "car_app-0000abcd"
-
-
-class FakeMqtt:
-    def __init__(self):
-        self.batches = []
-
-    def publish(self, messages):
-        self.batches.append(messages)
-
-    @property
-    def topics(self):
-        return [t for b in self.batches for t, _ in b]
 
 
 @pytest.fixture

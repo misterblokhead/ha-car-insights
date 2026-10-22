@@ -9,7 +9,7 @@ from typing import Callable
 from zoneinfo import ZoneInfo
 
 log = logging.getLogger(__name__)
-_CORE = "http://supervisor/core/api"
+_SUPERVISOR = "http://supervisor"
 
 
 @dataclass(frozen=True)
@@ -32,15 +32,16 @@ def name_at(zones: list[Zone], lat: float, lon: float) -> str | None:
     return min(inside)[1] if inside else None
 
 
-def _get(path: str, token: str):
-    req = urllib.request.Request(f"{_CORE}{path}", headers={"Authorization": f"Bearer {token}"})
+def supervisor_get(path: str, token: str):
+    """JSON of GET http://supervisor<path> (Core's API lives under /core/api)"""
+    req = urllib.request.Request(f"{_SUPERVISOR}{path}", headers={"Authorization": f"Bearer {token}"})
     with urllib.request.urlopen(req, timeout=10) as r:  # raises HTTPError on non-2xx
         return json.load(r)
 
 
 def fetch_zones(token: str) -> list[Zone]:
     zones = []
-    for s in _get("/states", token):
+    for s in supervisor_get("/core/api/states", token):
         a = s.get("attributes") or {}
         if str(s.get("entity_id", "")).startswith("zone.") and all(k in a for k in ("latitude", "longitude", "radius", "friendly_name")):
             zones.append(Zone(a["friendly_name"], a["latitude"], a["longitude"], a["radius"]))
@@ -50,7 +51,7 @@ def fetch_zones(token: str) -> list[Zone]:
 def fetch_time_zone(token: str) -> tzinfo:
     """HA's configured time zone; the host's local zone (with a warning) when it cannot be read."""
     try:
-        return ZoneInfo(_get("/config", token)["time_zone"])
+        return ZoneInfo(supervisor_get("/core/api/config", token)["time_zone"])
     except Exception:
         log.warning("could not read the Home Assistant time zone, using the local one", exc_info=True)
         return datetime.now().astimezone().tzinfo

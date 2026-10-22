@@ -184,3 +184,22 @@ def test_latest_at_or_before_newest_per_derivation_key(conn):
     # newest t wins (across sources), a tie on t goes to the higher seq, other keys and later samples are ignored
     assert latest_at_or_before(conn, "car1", 50) == {"speed": 2.0, "gear": 4.0, "gps": [1, 2]}
     assert latest_at_or_before(conn, "car1", 6) == {"speed": 1.0}
+
+
+def test_tx_commits_and_rolls_back(conn):
+    from car_insights.db import tx
+    with tx(conn):
+        conn.execute("INSERT INTO vehicles(vehicle_id) VALUES('a')")
+    with pytest.raises(RuntimeError):
+        with tx(conn):
+            conn.execute("INSERT INTO vehicles(vehicle_id) VALUES('b')")
+            raise RuntimeError("x")
+    assert not conn.in_transaction
+    assert [r[0] for r in conn.execute("SELECT vehicle_id FROM vehicles")] == ["a"]
+
+
+def test_device_info_falls_back_to_vehicle_id(conn):
+    from car_insights.db import device_info
+    assert device_info(conn, "car1") == ("car1", None, None)
+    ingest(conn, "car1", S, [Sample(1, 1, "meta", {"vehicle_name": "Meg", "make": "Renault"})], 0)
+    assert device_info(conn, "car1") == ("Meg", "Renault", None)

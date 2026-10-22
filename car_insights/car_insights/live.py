@@ -4,14 +4,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
-from .protocol import Sample
+from .protocol import PARK_GEAR, Sample, num
 
-PARK_GEAR = 4
 FUTURE_SLACK_MS = 86_400_000
 MODES = ("driving", "charging", "parked")
 
 
-def _sensor(name: str, unit: str | None = None, device_class: str | None = None, measurement: bool = True, **extra) -> tuple[str, dict]:
+def sensor(name: str, unit: str | None = None, device_class: str | None = None, measurement: bool = True, **extra) -> tuple[str, dict]:
     cfg = {"name": name, "state_topic": "state", **extra}
     for k, v in (("unit_of_measurement", unit), ("device_class", device_class), ("state_class", "measurement" if measurement else None)):
         if v:
@@ -21,14 +20,14 @@ def _sensor(name: str, unit: str | None = None, device_class: str | None = None,
 
 # field -> (component, extra discovery config); keys ending in _topic hold a leaf under car_insights/<vehicle>/
 FIELDS: dict[str, tuple[str, dict]] = {
-    "speed_kmh": _sensor("Speed", "km/h", "speed"),
-    "soc": _sensor("State of charge", "%", "battery"),
-    "battery_kwh": _sensor("Battery energy", "kWh", "energy_storage"),
-    "range_km": _sensor("Range", "km", "distance"),
-    "power_kw": _sensor("Power", "kW", "power"),
-    "outside_temp": _sensor("Outside temperature", "°C", "temperature"),
-    "status": _sensor("Status", None, "enum", measurement=False, options=list(MODES)),
-    "last_seen": _sensor("Last seen", None, "timestamp", measurement=False),
+    "speed_kmh": sensor("Speed", "km/h", "speed"),
+    "soc": sensor("State of charge", "%", "battery"),
+    "battery_kwh": sensor("Battery energy", "kWh", "energy_storage"),
+    "range_km": sensor("Range", "km", "distance"),
+    "power_kw": sensor("Power", "kW", "power"),
+    "outside_temp": sensor("Outside temperature", "°C", "temperature"),
+    "status": sensor("Status", None, "enum", measurement=False, options=list(MODES)),
+    "last_seen": sensor("Last seen", None, "timestamp", measurement=False),
     "plugged": ("binary_sensor", {"name": "Plugged in", "state_topic": "state", "device_class": "plug", "payload_on": "ON", "payload_off": "OFF"}),
     "location": ("device_tracker", {"name": "Location", "json_attributes_topic": "location", "source_type": "gps"}),
 }
@@ -56,10 +55,7 @@ def apply(state: LiveState, samples: Iterable[Sample], received_ms: int) -> tupl
 
 
 def _num(state: LiveState, key: str) -> float | None:
-    v = state.values.get(key, (0, None))[1]
-    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
-        return None
-    return float(v)
+    return num(state.values.get(key, (0, None))[1])
 
 
 def snapshot(state: LiveState, capacity_wh: float) -> dict:
@@ -108,7 +104,7 @@ def location(state: LiveState) -> dict | None:
     return {"latitude": g[0], "longitude": g[1], "gps_accuracy": g[2]}
 
 
-def _topic(vehicle_id: str, leaf: str) -> str:
+def topic(vehicle_id: str, leaf: str) -> str:
     return f"car_insights/{vehicle_id}/{leaf}"
 
 
@@ -117,14 +113,20 @@ def device(vehicle_id: str, name: str, make: str | None, model: str | None) -> d
     return {k: v for k, v in d.items() if v is not None}  # HA rejects null strings
 
 
+def config(vehicle_id: str, unique: str, extra: dict, dev: dict) -> dict:
+    """Discovery config shared with the trip sensors: keys ending in _topic hold a leaf, expanded to the full topic."""
+    cfg: dict[str, Any] = {"unique_id": f"car_insights_{vehicle_id}_{unique}", "device": dev}
+    cfg.update({k: topic(vehicle_id, v) if k.endswith("_topic") else v for k, v in extra.items()})
+    return cfg
+
+
 def discovery_messages(vehicle_id: str, name: str, make: str | None, model: str | None, fields: set[str]) -> list[tuple[str, str]]:
     dev = device(vehicle_id, name, make, model)
     out = []
     for f, (comp, extra) in FIELDS.items():
         if f not in fields:
             continue
-        cfg: dict[str, Any] = {"unique_id": f"car_insights_{vehicle_id}_{f}", "device": dev}
-        cfg.update({k: _topic(vehicle_id, v) if k.endswith("_topic") else v for k, v in extra.items()})
+        cfg = config(vehicle_id, f, extra, dev)
         if "state_topic" in cfg:
             cfg["value_template"] = "{{ value_json.%s if '%s' in value_json else None }}" % (f, f)
         out.append((f"homeassistant/{comp}/{vehicle_id}_{f}/config", json.dumps(cfg)))
@@ -132,8 +134,8 @@ def discovery_messages(vehicle_id: str, name: str, make: str | None, model: str 
 
 
 def state_message(vehicle_id: str, snap: dict) -> tuple[str, str]:
-    return (_topic(vehicle_id, "state"), json.dumps(snap))
+    return (topic(vehicle_id, "state"), json.dumps(snap))
 
 
 def location_message(vehicle_id: str, loc: dict) -> tuple[str, str]:
-    return (_topic(vehicle_id, "location"), json.dumps(loc))
+    return (topic(vehicle_id, "location"), json.dumps(loc))

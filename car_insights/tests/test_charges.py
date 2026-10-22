@@ -1,15 +1,7 @@
-import itertools
-
 import pytest
 
 from car_insights.charges import find_charges
-from car_insights.protocol import Sample
-
-_seq = itertools.count(1)
-
-
-def s(t, k, v):
-    return Sample(next(_seq), t, k, v)
+from conftest import s
 
 
 def charges(samples, seed=None, now_ms=None):

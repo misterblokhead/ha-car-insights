@@ -43,8 +43,7 @@ class Publisher:
         msgs: list[tuple[str, str]] = []
         device = self._device.get(vid)
         if fields - announced or (meta_seen and announced):
-            meta = (db.vehicle(self._conn, vid) or {}).get("meta") or {}
-            device = (meta.get("vehicle_name") or vid, meta.get("make"), meta.get("model"))
+            device = db.device_info(self._conn, vid)
             # a changed name/make/model re-announces everything already announced, so HA updates the device
             redo = fields | announced if device != self._device.get(vid) else fields - announced
             msgs += live.discovery_messages(vid, *device, redo)

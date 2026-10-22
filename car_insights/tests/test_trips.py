@@ -1,15 +1,7 @@
-import itertools
-
 import pytest
 
-from car_insights.protocol import Sample
 from car_insights.trips import MERGE_GAP_MS, find_trips
-
-_seq = itertools.count(1)
-
-
-def s(t, k, v):
-    return Sample(next(_seq), t, k, v)
+from conftest import s
 
 
 def drive(t0, t1, v=10.0, step=1000):

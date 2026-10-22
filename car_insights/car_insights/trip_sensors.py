@@ -1,6 +1,5 @@
 import json
 import sqlite3
-from typing import Any
 
 from . import db, live
 from .publisher import Sink
@@ -35,51 +34,38 @@ def _charge_state(w: dict) -> dict:
 
 
 class TripSensors:
-    """Publishes the last closed trip/charge as retained sensors and each closed one as a non-retained event."""
+    """Publishes the last closed trip/charge as retained sensors and each ended one as a non-retained event."""
 
     def __init__(self, conn: sqlite3.Connection, mqtt: Sink):
         self._conn, self._mqtt = conn, mqtt
         self._announced: set[str] = set()
 
     def _discovery(self, vid: str) -> list[tuple[str, str]]:
-        meta = (db.vehicle(self._conn, vid) or {}).get("meta") or {}
-        dev = live.device(vid, meta.get("vehicle_name") or vid, meta.get("make"), meta.get("model"))
+        dev = live.device(vid, *db.device_info(self._conn, vid))
         out = []
         for f, (leaf, key, name, unit, dclass) in _SENSORS.items():
-            cfg: dict[str, Any] = {"unique_id": f"car_insights_{vid}_{f}", "device": dev, "name": name,
-                                   "state_topic": live._topic(vid, leaf), "value_template": "{{ value_json.%s }}" % key,
-                                   "unit_of_measurement": unit,
-                                   "json_attributes_topic": live._topic(vid, leaf)}
-            if dclass:
-                cfg["device_class"] = dclass
-            if dclass != "energy":  # HA rejects state_class measurement on energy; a per-trip value is no running total
-                cfg["state_class"] = "measurement"
-            out.append((f"homeassistant/sensor/{vid}_{f}/config", json.dumps(cfg)))
+            # HA rejects state_class measurement on energy; a per-trip value is no running total anyway
+            comp, extra = live.sensor(name, unit, dclass, measurement=dclass != "energy", state_topic=leaf,
+                                      json_attributes_topic=leaf, value_template="{{ value_json.%s }}" % key)
+            out.append((f"homeassistant/{comp}/{vid}_{f}/config", json.dumps(live.config(vid, f, extra, dev))))
         for e, name in _EVENTS.items():
-            cfg = {"unique_id": f"car_insights_{vid}_{e}", "device": dev, "name": name,
-                   "state_topic": live._topic(vid, f"{e}_event"), "event_types": ["ended"]}
-            out.append((f"homeassistant/event/{vid}_{e}/config", json.dumps(cfg)))
+            extra = {"name": name, "state_topic": f"{e}_event", "event_types": ["ended"]}
+            out.append((f"homeassistant/event/{vid}_{e}/config", json.dumps(live.config(vid, e, extra, dev))))
         return out
 
-    def _newest(self, table: str, vid: str) -> dict | None:
-        r = self._conn.execute(f"SELECT json FROM {table} WHERE vehicle_id=? AND end IS NOT NULL ORDER BY start DESC LIMIT 1", (vid,)).fetchone()
-        return None if r is None else json.loads(r[0])
-
-    def publish_closed(self, vid: str, trips: list[dict], charges: list[dict], events: bool = True) -> None:
-        """State is always published; events=False (a history rebuild) skips the per-item ended events."""
-        if not trips and not charges:
+    def publish(self, vid: str, last_trip: dict | None, last_charge: dict | None, ended_trips: list[dict], ended_charges: list[dict]) -> None:
+        """last_trip/last_charge: the newest stored row of a kind that just had a segment close (None: leave the state alone).
+        ended_*: the closed segments worth an event (a backlog's old ones are left out)."""
+        if not (last_trip or last_charge or ended_trips or ended_charges):
             return
         if vid not in self._announced:
             self._mqtt.publish(self._discovery(vid))
             self._announced.add(vid)
-        state: list[tuple[str, str]] = []
-        for table, leaf, items, conv in (("trips", "last_trip", trips, _trip_state), ("charges", "last_charge", charges, _charge_state)):
-            newest = self._newest(table, vid) if items else None
-            if newest is not None:
-                state.append((live._topic(vid, leaf), json.dumps(conv(newest))))
+        state = [(live.topic(vid, leaf), json.dumps(conv(w))) for leaf, w, conv in
+                 (("last_trip", last_trip, _trip_state), ("last_charge", last_charge, _charge_state)) if w]
         if state:
             self._mqtt.publish(state)
-        evs = [(live._topic(vid, f"{e}_event"), json.dumps({"event_type": "ended", **w}))
-                for e, items in (("trip", trips), ("charge", charges)) for w in items]
-        if events and evs:
+        evs = [(live.topic(vid, f"{e}_event"), json.dumps({"event_type": "ended", **w}))
+               for e, items in (("trip", ended_trips), ("charge", ended_charges)) for w in items]
+        if evs:
             self._mqtt.publish(evs, retain=False)

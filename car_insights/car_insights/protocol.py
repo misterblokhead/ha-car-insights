@@ -1,9 +1,11 @@
 import json
+import math
 import re
 from dataclasses import dataclass
 from typing import Any
 
 MAX_SAMPLES = 5000
+PARK_GEAR = 4
 _VEHICLE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 _SOURCE = re.compile(r"[a-z_]+-[0-9a-f]{8}")
 
@@ -26,6 +28,21 @@ class Batch:
 
 class ProtocolError(ValueError):
     pass
+
+
+def num(v: Any) -> float | None:
+    """v as a finite float, else None (bools are not numbers)"""
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        return None
+    return float(v)
+
+
+def fix(v: Any) -> tuple[float, float] | None:
+    """(lat, lon) of a gps value, else None"""
+    if not isinstance(v, list) or len(v) < 2:
+        return None
+    lat, lon = num(v[0]), num(v[1])
+    return None if lat is None or lon is None else (lat, lon)
 
 
 def _int(x) -> bool:

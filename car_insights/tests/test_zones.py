@@ -55,5 +55,5 @@ def test_fetch_time_zone_falls_back_to_local(monkeypatch):
     import car_insights.zones as z
     def down(*a):
         raise OSError("down")
-    monkeypatch.setattr(z, "_get", down)
+    monkeypatch.setattr(z, "supervisor_get", down)
     assert z.fetch_time_zone("tok") is not None

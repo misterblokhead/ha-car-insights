@@ -1,6 +1,7 @@
 import json
 import sqlite3
-from typing import Sequence
+from contextlib import contextmanager
+from typing import Iterator, Sequence
 
 from .protocol import Sample
 
@@ -23,8 +24,21 @@ CREATE INDEX IF NOT EXISTS samples_vt ON samples(vehicle_id, t);
 """]
 
 
-def _json(v) -> str:
+def json_dumps(v) -> str:
     return json.dumps(v, separators=(",", ":"))
+
+
+@contextmanager
+def tx(conn: sqlite3.Connection) -> Iterator[None]:
+    """One immediate write transaction: commit on success, roll back on any exception."""
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        yield
+        conn.execute("COMMIT")
+    except BaseException:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        raise
 
 
 def connect(path: str) -> sqlite3.Connection:
@@ -39,12 +53,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if version > len(_MIGRATIONS):
         raise RuntimeError(f"database schema v{version} is newer than this add-on supports (v{len(_MIGRATIONS)})")
     for i in range(version, len(_MIGRATIONS)):
-        try:  # user_version is transactional, so a step and its version bump commit together
-            conn.executescript(f"BEGIN;{_MIGRATIONS[i]}PRAGMA user_version={i + 1};COMMIT;")
-        except BaseException:
-            if conn.in_transaction:
-                conn.execute("ROLLBACK")
-            raise
+        with tx(conn):  # user_version is transactional, so a step and its version bump commit together
+            for stmt in _MIGRATIONS[i].split(";"):  # executescript would commit first; no migration holds a ';' inside a literal
+                if stmt.strip():
+                    conn.execute(stmt)
+            conn.execute(f"PRAGMA user_version={i + 1}")
 
 
 def acked_seq(conn, vehicle_id: str, source_id: str) -> int:
@@ -55,6 +68,12 @@ def acked_seq(conn, vehicle_id: str, source_id: str) -> int:
 def vehicle(conn, vehicle_id: str) -> dict | None:
     r = conn.execute("SELECT name, meta_json FROM vehicles WHERE vehicle_id=?", (vehicle_id,)).fetchone()
     return None if r is None else {"name": r[0], "meta": json.loads(r[1]) if r[1] else None}
+
+
+def device_info(conn, vehicle_id: str) -> tuple[str, str | None, str | None]:
+    """(name, make, model) of the HA device for a vehicle; the name falls back to the vehicle id."""
+    meta = (vehicle(conn, vehicle_id) or {}).get("meta") or {}
+    return (meta.get("vehicle_name") or vehicle_id, meta.get("make"), meta.get("model"))
 
 
 def latest_per_key(conn, vehicle_id: str, max_t: int) -> list[Sample]:
@@ -95,11 +114,10 @@ def has_key(conn, vehicle_id: str, key: str) -> bool:
 
 def ingest(conn, vehicle_id: str, source_id: str, samples: Sequence[Sample], received_ms: int) -> int:
     vid, sid = vehicle_id, source_id
-    conn.execute("BEGIN IMMEDIATE")
-    try:
+    with tx(conn):
         conn.execute("INSERT OR IGNORE INTO sources(vehicle_id, source_id, type) VALUES(?,?,?)", (vid, sid, sid.split("-")[0]))
         for s in samples:
-            conn.execute("INSERT OR IGNORE INTO samples VALUES(?,?,?,?,?,?)", (vid, sid, s.seq, s.t, s.k, _json(s.v)))
+            conn.execute("INSERT OR IGNORE INTO samples VALUES(?,?,?,?,?,?)", (vid, sid, s.seq, s.t, s.k, json_dumps(s.v)))
             if s.k == "gap":  # the unique index makes retried batches idempotent
                 conn.execute("INSERT OR IGNORE INTO gaps VALUES(?,?,?,?)", (vid, sid, s.v["from_seq"], s.v["to_seq"]))
         metas = [s for s in samples if s.k == "meta"]
@@ -108,7 +126,7 @@ def ingest(conn, vehicle_id: str, source_id: str, samples: Sequence[Sample], rec
             conn.execute(
                 "INSERT INTO vehicles(vehicle_id, name, meta_json) VALUES(?,?,?) "
                 "ON CONFLICT(vehicle_id) DO UPDATE SET name=excluded.name, meta_json=excluded.meta_json",
-                (vid, m.v.get("vehicle_name"), _json(m.v)),
+                (vid, m.v.get("vehicle_name"), json_dumps(m.v)),
             )
         acked = acked_seq(conn, vid, sid)
         # the sender never sends a seq while holding a lower unacked one, so everything below the batch is resolved
@@ -129,9 +147,4 @@ def ingest(conn, vehicle_id: str, source_id: str, samples: Sequence[Sample], rec
                 continue
             break
         conn.execute("UPDATE sources SET acked_seq=?, last_received_ms=? WHERE vehicle_id=? AND source_id=?", (acked, received_ms, vid, sid))
-        conn.execute("COMMIT")
-        return acked
-    except BaseException:
-        if conn.in_transaction:
-            conn.execute("ROLLBACK")
-        raise
+    return acked

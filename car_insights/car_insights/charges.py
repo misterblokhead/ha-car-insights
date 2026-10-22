@@ -1,8 +1,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from .protocol import Sample
-from .trips import _fix, _num
+from .protocol import Sample, fix, num
 
 MIN_ADDED_WH = 100
 
@@ -22,20 +21,21 @@ class Charge:
 
 def find_charges(samples: list[Sample], seed: dict[str, Any], now_ms: int) -> list[Charge]:
     """samples are sorted by (t, seq); seed holds the latest value per key before the first sample."""
-    spans: list[list[int | None]] = []  # [start t, end t or None]
+    spans: list[tuple[int, int | None]] = []  # (start t, end t or None)
     on = seed.get("plugged") is True
-    if on and samples:
-        spans.append([samples[0].t, None])
+    start = samples[0].t if on and samples else 0
     for s in samples:
         if s.k != "plugged" or not isinstance(s.v, bool) or s.v == on:
             continue
         on = s.v
         if on:
-            spans.append([s.t, None])
+            start = s.t
         else:
-            spans[-1][1] = s.t
+            spans.append((start, s.t))
+    if on and samples:
+        spans.append((start, None))
 
-    def latest(k: str, t: int | None, conv: Any = _num) -> Any:
+    def latest(k: str, t: int | None, conv: Any = num) -> Any:
         """latest value of k at or before t (None: no limit), falling back to the seed"""
         val = conv(seed.get(k))
         for s in samples:
@@ -58,6 +58,6 @@ def find_charges(samples: list[Sample], seed: dict[str, Any], now_ms: int) -> li
             start=start, end=end, start_wh=wh0, end_wh=wh1 if wh0 is not None else None, added_wh=added,
             duration_s=duration, range_added_m=r1 - r0 if r0 is not None and r1 is not None else None,
             avg_w=added / (duration / 3600) if added is not None and duration > 0 else None,
-            fix=latest("gps", start, _fix),
+            fix=latest("gps", start, fix),
         ))
     return out

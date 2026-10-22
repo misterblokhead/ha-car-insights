@@ -1,46 +1,36 @@
 import json
+from dataclasses import asdict
 from typing import Callable
 
 from . import db
-from .charges import find_charges
-from .trips import MERGE_GAP_MS, find_trips
+from .charges import Charge, find_charges
+from .trips import MERGE_GAP_MS, Trip, find_trips
 
 ALGO = 1  # bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
 _TABLES = ("trips", "charges")
+Zones = Callable[[float, float], str | None]
 
 
-def _trip_wire(t, zones) -> dict:
-    return {
-        "start": t.start, "end": t.end,
-        "from": zones(*t.first_fix) if t.first_fix else None, "to": zones(*t.last_fix) if t.last_fix else None,
-        "distance_m": t.distance_m, "duration_s": round(t.duration_s), "avg_speed_mps": t.avg_speed_mps,
-        "max_speed_mps": t.max_speed_mps, "start_wh": t.start_wh, "end_wh": t.end_wh, "net_wh": t.net_wh,
-        "gross_wh": t.gross_wh, "recup_wh": t.recup_wh, "avg_temp_c": t.avg_temp_c,
-    }
+def _trip_wire(t: Trip, zones: Zones) -> dict:
+    d = asdict(t)
+    first, last = d.pop("first_fix"), d.pop("last_fix")
+    return {**d, "from": zones(*first) if first else None, "to": zones(*last) if last else None, "duration_s": round(t.duration_s)}
 
 
-def _charge_wire(c, zones) -> dict:
-    return {
-        "start": c.start, "end": c.end, "place": zones(*c.fix) if c.fix else None, "start_wh": c.start_wh,
-        "end_wh": c.end_wh, "added_wh": c.added_wh, "duration_s": round(c.duration_s),
-        "range_added_m": c.range_added_m, "avg_w": c.avg_w,
-    }
+def _charge_wire(c: Charge, zones: Zones) -> dict:
+    d = asdict(c)
+    fix = d.pop("fix")
+    return {**d, "place": zones(*fix) if fix else None, "duration_s": round(c.duration_s)}
 
 
 class Deriver:
-    def __init__(self, conn, zones: Callable[[float, float], str | None]):
+    def __init__(self, conn, zones: Zones):
         self._conn, self._zones = conn, zones
         # a vehicle with any old-version row in either table is rebuilt whole
         stale = {r[0] for t in _TABLES for r in conn.execute(f"SELECT vehicle_id FROM {t} WHERE algo!=?", (ALGO,))}
-        conn.execute("BEGIN IMMEDIATE")
-        try:
+        with db.tx(conn):
             for t in _TABLES:
                 conn.executemany(f"DELETE FROM {t} WHERE vehicle_id=?", [(v,) for v in stale])
-            conn.execute("COMMIT")
-        except BaseException:
-            if conn.in_transaction:
-                conn.execute("ROLLBACK")
-            raise
         self._initial: dict[str, bool] = {}
 
     def _newest_end(self, vid: str, below: int | None = None) -> int:
@@ -62,8 +52,7 @@ class Deriver:
         # ~43k samples, ~0.1 s), fine until a trip runs for many hours; checkpoint open segments if it gets slow.
         # shortcut: the first full rebuild (fresh install or ALGO bump) loads all history in one request and find_charges is
         # O(n x sessions); chunk the rebuild by window if it gets slow.
-        conn.execute("BEGIN IMMEDIATE")
-        try:
+        with db.tx(conn):
             self._initial[vid] = not any(conn.execute(f"SELECT 1 FROM {t} WHERE vehicle_id=? LIMIT 1", (vid,)).fetchone() for t in _TABLES)
             w = self._newest_end(vid)
             # new data within MERGE_GAP_MS of a closed end may continue it: the end was decided against arrival time (backlog)
@@ -85,15 +74,10 @@ class Deriver:
             new: dict[str, list[dict]] = {"trips": [], "charges": []}
             for table, rows in (("trips", trips), ("charges", charges)):
                 for r in rows:
-                    js = db._json(r)
+                    js = db.json_dumps(r)
                     conn.execute(f"INSERT INTO {table} VALUES(?,?,?,?,?)", (vid, r["start"], r["end"], ALGO, js))
                     if r["end"] is not None and old[table].get(r["start"]) != js:
                         new[table].append(r)
-            conn.execute("COMMIT")
-        except BaseException:
-            if conn.in_transaction:
-                conn.execute("ROLLBACK")
-            raise
         return new["trips"], new["charges"]
 
     def current_trip(self, vid: str) -> dict | None:

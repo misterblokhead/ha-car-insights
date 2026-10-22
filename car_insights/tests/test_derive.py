@@ -1,18 +1,11 @@
-import itertools
-
 import pytest
 
 from car_insights import db
 from car_insights.derive import ALGO, Deriver
-from car_insights.protocol import Sample
+from conftest import s
 
-_seq = itertools.count(1)
 DAY = 86_400_000
 SRC = "phone-0000abcd"
-
-
-def s(t, k, v):
-    return Sample(next(_seq), t, k, v)
 
 
 def trip_samples(t0, step=1000, secs=100):
