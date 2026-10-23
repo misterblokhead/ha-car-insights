@@ -88,7 +88,7 @@ A vehicle can also be read from a cloud-connected car integration in Home Assist
 | `soc_percent` | number, % | energy estimate for a charge |
 | `odometer_km` | number, km | trip odometer values |
 
-`charging_state` and `soc_percent` are stamped with the cloud's own report time (Renault `last_battery_activity`), not the time Home Assistant noticed the change; `odometer_km` uses the state-change time. Only the car sends `battery_wh`.
+`charging_state` and `soc_percent` are stamped with the cloud's own report time (Renault `last_battery_activity`) when it is at most 30 min older than, and not after, the time Home Assistant noticed the change; otherwise with that change time. `odometer_km` always uses the change time. Only the car sends `battery_wh`.
 
 A cloud charge session may start and end while the car sleeps, so its energy is the car's `battery_wh` before and after when available (`energy_source` `"car"`), otherwise an estimate from `soc_percent` and the usable capacity learned from the car's own samples (`"soc_estimate"`). An estimated charge is held up to 7 days and refined in place when the car's value arrives; no second `ended` event is sent.
 
