@@ -40,3 +40,7 @@ export function when(ms, now = Date.now()) {
 
 // "52.08990, 5.00000" for a position; null → not available.
 export const latlon = (lat, lon) => (lat == null || lon == null ? NA : `${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+
+// "42.1 % added (85.3 % to 100.0 %)"; the range only when both ends are known.
+export const chargeLevel = ({ added, from, to }) =>
+  added == null ? NA : `${pct(added)} added${from == null || to == null ? "" : ` (${pct(from)} to ${pct(to)})`}`;

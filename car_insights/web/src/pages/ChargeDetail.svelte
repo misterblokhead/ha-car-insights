@@ -1,6 +1,6 @@
 <script>
   import { get } from "../lib/api.js";
-  import { km, kwh, kw, pct, duration, when } from "../lib/format.js";
+  import { km, kwh, kw, duration, when, chargeLevel } from "../lib/format.js";
   import { chargeCharts, chargePercents } from "../lib/series.js";
   import Chart from "../lib/Chart.svelte";
 
@@ -43,7 +43,7 @@
       <dt>Added</dt><dd>{added}</dd>
       <dt>Charge level</dt>
       <dd>
-        {pct(pc.added)} added ({pct(pc.from)} to {pct(pc.to)})
+        {chargeLevel(pc)}
         {#if pc.from != null && pc.to != null}
           <div class="bar" role="img" aria-label={`Charge from ${pc.from.toFixed(0)} to ${pc.to.toFixed(0)} percent`}>
             <span style={`left:${clamp(pc.from)}%;width:${Math.max(0, clamp(pc.to) - clamp(pc.from))}%`}></span>

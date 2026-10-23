@@ -44,3 +44,10 @@ test("latlon", async () => {
   assert.equal(latlon(52.089900000002984, 5), "52.08990, 5.00000");
   assert.equal(latlon(null, 5), "not available");
 });
+
+test("chargeLevel", async () => {
+  const { chargeLevel } = await import("./format.js");
+  assert.equal(chargeLevel({ added: 42.1, from: 85.3, to: 100 }), "42.1 % added (85.3 % to 100.0 %)");
+  assert.equal(chargeLevel({ added: 42.1, from: null, to: 100 }), "42.1 % added");
+  assert.equal(chargeLevel({ added: null, from: 1, to: 2 }), "not available");
+});
