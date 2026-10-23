@@ -16,7 +16,7 @@ NOW = ms("2026-10-23T12:00:00+00:00")
 CONF = SourceConf("car1", "renault", "zoe")
 SID = source_id(CONF)
 IDS = entity_ids(MAPPINGS["renault"], "zoe")
-CHARGE, SOC, ODO, REPORT = IDS
+CHARGE, SOC, ODO, PLUG, REPORT = IDS
 
 
 def iso(t):
@@ -43,7 +43,7 @@ class Fetch:
 
 T = NOW - 3_600_000
 FULL = [rows(CHARGE, (T, "charge_in_progress"), (T + 600_000, "charge_ended")), rows(SOC, (T, "50"), (T + 600_000, "55")),
-        rows(ODO, (T, "1000")), rows(REPORT, (T - 1000, iso(T - 30_000)), (T + 599_000, iso(T + 570_000)))]
+        rows(ODO, (T, "1000")), rows(PLUG, (T, "plugged"), (T + 600_000, "unplugged")), rows(REPORT, (T - 1000, iso(T - 30_000)), (T + 599_000, iso(T + 570_000)))]
 
 
 def make(fetch, conn=None):
@@ -72,7 +72,8 @@ def test_first_poll_ingests_samples_and_notifies():
     poll(p)
     got = conn.execute("SELECT t, key, value_json FROM samples WHERE source_id=? ORDER BY seq", (SID,)).fetchall()
     assert got == [(T - 30_000, "charging_state", "true"), (T - 30_000, "soc_percent", "50.0"), (T, "odometer_km", "1000.0"),
-                   (T + 570_000, "charging_state", "false"), (T + 570_000, "soc_percent", "55.0")]
+                   (T, "plug_state", "true"), (T + 570_000, "charging_state", "false"), (T + 570_000, "soc_percent", "55.0"),
+                   (T + 600_000, "plug_state", "false")]
     assert calls == [("car1", T - 30_000, NOW)]
 
 
@@ -80,12 +81,12 @@ def test_seqs_contiguous_and_acked():
     f = Fetch(FULL)
     p, conn, _ = make(f)
     poll(p)
-    assert conn.execute("SELECT MIN(seq), MAX(seq), COUNT(*) FROM samples").fetchone() == (1, 5, 5)
-    assert db.acked_seq(conn, "car1", SID) == 5
+    assert conn.execute("SELECT MIN(seq), MAX(seq), COUNT(*) FROM samples").fetchone() == (1, 7, 7)
+    assert db.acked_seq(conn, "car1", SID) == 7
     f.payload = FULL[:2] + [rows(ODO, (T, "1000"), (T + 900_000, "1005"))] + FULL[3:]
     poll(p)
-    assert conn.execute("SELECT MAX(seq), COUNT(*) FROM samples").fetchone() == (6, 6)
-    assert db.acked_seq(conn, "car1", SID) == 6
+    assert conn.execute("SELECT MAX(seq), COUNT(*) FROM samples").fetchone() == (8, 8)
+    assert db.acked_seq(conn, "car1", SID) == 8
 
 
 def test_second_poll_overlapping_history_adds_nothing():
@@ -94,7 +95,7 @@ def test_second_poll_overlapping_history_adds_nothing():
     poll(p)
     calls.clear()
     poll(p)
-    assert conn.execute("SELECT COUNT(*) FROM samples").fetchone()[0] == 5 and calls == []
+    assert conn.execute("SELECT COUNT(*) FROM samples").fetchone()[0] == 7 and calls == []
     assert f.calls[1] == (IDS, min(db.cursors(conn, "car1", SID).values()) - REPORT_MAX_AGE_MS, NOW - 10_000)
 
 
@@ -107,7 +108,7 @@ def test_restart_resumes_from_stored_cursor_without_duplicates():
     p2, _, calls = make(f, conn)
     poll(p2)
     assert f.calls[0][1] == min(cursor.values()) - REPORT_MAX_AGE_MS
-    assert conn.execute("SELECT COUNT(*) FROM samples").fetchone()[0] == 5 and calls == []
+    assert conn.execute("SELECT COUNT(*) FROM samples").fetchone()[0] == 7 and calls == []
 
 
 def test_report_time_row_older_than_the_metric_cursor_is_still_found():
@@ -130,7 +131,7 @@ def test_missing_entity_logged_once_others_ingested(caplog):
         poll(p)
     msgs = [r.getMessage() for r in caplog.records if ODO in r.getMessage()]
     assert len(msgs) == 1
-    assert conn.execute("SELECT COUNT(*) FROM samples").fetchone()[0] == 4
+    assert conn.execute("SELECT COUNT(*) FROM samples").fetchone()[0] == 6
 
 
 def test_fetch_error_keeps_cursor_and_retries(caplog):

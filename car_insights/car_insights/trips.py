@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Iterator
 
 from .protocol import PARK_GEAR, Sample, fix, num
 
@@ -48,7 +48,7 @@ def find_trips(samples: list[Sample], seed: dict[str, Any], has_ignition: bool) 
 
     for i, s in enumerate(samples):
         # P held for MERGE_GAP_MS ends the trip at its first P sample; with an ignition signal P alone proves
-        # nothing, only silence (the car asleep: two samples that far apart, counting only the keys derivation loads) does
+        # nothing, only silence (the car asleep: two samples that far apart, counting only the keys find_trips reads) does
         if cur and p is not None and s.t - (prev_t if has_ignition else samples[p].t) >= MERGE_GAP_MS:
             close(p + 1, True)
         v = num(s.v)
@@ -71,40 +71,61 @@ def find_trips(samples: list[Sample], seed: dict[str, Any], has_ignition: bool) 
     return [t for t in out if t.end is None or t.distance_m >= NOISE_DISTANCE_M or t.duration_s >= NOISE_DURATION_S]
 
 
-def _build(seg: list[Sample], wh0: float | None, temp0: float | None, closed: bool) -> Trip:
-    start, end = seg[0].t, seg[-1].t
-    speeds = [(s.t, abs(v)) for s in seg if s.k == "speed" and (v := num(s.v)) is not None]  # reverse is negative
-    distance = moving = 0.0
-    for (t0, v), (t1, _) in zip(speeds, speeds[1:]):
-        dt = min(t1 - t0, MAX_SPEED_STEP_MS) / 1000
-        distance += v * dt
-        if v > MOVING_MPS:
-            moving += dt
+def distance_steps(samples: list[Sample]) -> Iterator[tuple[int, float, float]]:
+    """(t, cumulative distance m, speed m/s) per speed sample; a sample stands for at most MAX_SPEED_STEP_MS"""
+    distance, prev = 0.0, None
+    for s in samples:
+        if s.k == "speed" and (v := num(s.v)) is not None:
+            if prev:
+                distance += prev[1] * (min(s.t - prev[0], MAX_SPEED_STEP_MS) / 1000)
+            prev = (s.t, abs(v))  # reverse is negative
+            yield s.t, distance, prev[1]
 
-    # energy: walk the battery readings; a reading at the start instant is the start value, not a step
+
+def _wh_readings(samples: list[Sample], wh0: float | None, start: int) -> tuple[float | None, list[tuple[int, float]]]:
+    """the base wh and the later readings; a reading at the start instant is the base, not a step"""
     base, readings = wh0, []
-    for s in seg:
+    for s in samples:
         if s.k == "battery_wh" and (v := num(s.v)) is not None:
             if s.t == start:
                 base = v
             else:
-                readings.append(v)
+                readings.append((s.t, v))
+    return base, readings
+
+
+def energy_steps(samples: list[Sample], wh0: float | None, start: int) -> Iterator[tuple[int, float, float, float]]:
+    """(t, net, gross, recup) wh since the base, cumulative, per battery_wh reading; nothing without a base"""
+    base, readings = _wh_readings(samples, wh0, start)
+    if base is None:
+        return
+    cur, gross, recup = base, 0.0, 0.0
+    for t, v in readings:
+        if v < cur:
+            gross += cur - v
+        else:
+            recup += v - cur
+        cur = v
+        yield t, base - cur, gross, recup
+
+
+def _build(seg: list[Sample], wh0: float | None, temp0: float | None, closed: bool) -> Trip:
+    start, end = seg[0].t, seg[-1].t
+    steps = list(distance_steps(seg))
+    distance = steps[-1][1] if steps else 0.0
+    moving = sum(min(t1 - t0, MAX_SPEED_STEP_MS) / 1000 for (t0, _, v), (t1, _, _) in zip(steps, steps[1:]) if v > MOVING_MPS)
+
+    base, readings = _wh_readings(seg, wh0, start)
     end_wh = net = gross = recup = None
     if base is not None:
-        end_wh, gross, recup = base, 0.0, 0.0
-        for v in readings:
-            if v < end_wh:
-                gross += end_wh - v
-            else:
-                recup += v - end_wh
-            end_wh = v
-        net = base - end_wh
+        end_wh = readings[-1][1] if readings else base
+        *_, (_, net, gross, recup) = [(0, 0.0, 0.0, 0.0), *energy_steps(seg, wh0, start)]
 
     temps = [x for x in [temp0, *(num(s.v) for s in seg if s.k == "outside_temp")] if x is not None]
     fixes = [f for s in seg if s.k == "gps" and (f := fix(s.v))]
     return Trip(
         start=start, end=end if closed else None, distance_m=distance, duration_s=(end - start) / 1000,
-        avg_speed_mps=distance / moving if moving > 0 else None, max_speed_mps=max((v for _, v in speeds), default=None),
+        avg_speed_mps=distance / moving if moving > 0 else None, max_speed_mps=max((v for _, _, v in steps), default=None),
         start_wh=base, end_wh=end_wh, net_wh=net, gross_wh=gross, recup_wh=recup,
         avg_temp_c=sum(temps) / len(temps) if temps else None,
         first_fix=fixes[0] if fixes else None, last_fix=fixes[-1] if fixes else None,

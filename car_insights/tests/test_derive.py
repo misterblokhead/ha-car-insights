@@ -314,7 +314,7 @@ def test_derivation_loads_only_the_keys_it_uses(monkeypatch):
     conn, d = setup(trip_samples(0), [s(5000, "soc", 50.0), s(5000, "tire_pressure", 2.5)])
     trips, _, _ = d.update("car1", None, 10 * DAY)
     assert len(trips) == 1 and seen == [derive.KEYS]
-    assert {"gear", "ignition", "speed", "battery_wh", "outside_temp", "gps", "plugged", "range_m", "charging_state", "soc_percent"} == set(derive.KEYS)
+    assert {"gear", "ignition", "speed", "battery_wh", "outside_temp", "gps", "plugged", "range_m", "charging_state", "soc_percent", "plug_state"} == set(derive.KEYS)
 
 
 def test_has_ignition_is_looked_up_until_it_is_true(monkeypatch):
@@ -461,7 +461,7 @@ def test_algo_bump_rebuilds():
     d.update("car1", None, at("11:30:00"))
     conn.execute("UPDATE charges SET algo=1")
     d2 = Deriver(conn, lambda la, lo: "Home")
-    assert d2.stored_charges("car1") == [] and ALGO == 2
+    assert d2.stored_charges("car1") == [] and ALGO == 3
     _, charges, _ = d2.update("car1", None, at("11:30:00"))
     assert len(charges) == 1
 
@@ -491,3 +491,49 @@ def test_estimate_with_no_prior_car_reading_cannot_refine_so_is_not_held(monkeyp
     assert c["energy_source"] == "soc_estimate" and c["start_wh"] is None
     d.update("car1", None, at("11:31:00"))
     assert seen == [-1, at("11:21:29")]  # the second update reads on from the idle watermark, not from the estimate's start
+
+
+# --- series rows live and die with their trip/charge rows ---
+def _count(conn, table, vid="car1"):
+    return conn.execute(f"SELECT COUNT(*) FROM {table} WHERE vehicle_id=?", (vid,)).fetchone()[0]
+
+
+def test_derive_stores_series_with_rows():
+    conn, d = _cloud_setup()
+    db.ingest(conn, "car1", SRC, [*_wake_drive(), s(at("16:18:00"), "ignition", 2.0)], 0)
+    d.update("car1", None, at("16:20:00"))
+    (c,) = d.stored_charges("car1")
+    (t,) = d.stored_trips("car1")
+    cs, ts = d.charge_series("car1", c["start"]), d.trip_series("car1", t["start"])
+    assert cs["car_kwh"] == [] and [p[1] for p in cs["cloud_soc"]] == [40.0, 81.0]  # asleep: only the cloud's points
+    assert ts["rows"][-1][:2] == [at("16:16:40"), 1.0]
+    assert d.trip_series("car1", 1) is None and d.charge_series("other", c["start"]) is None
+
+
+def test_open_rows_series_are_replaced_every_update():
+    conn, d = setup(trip_samples(0, secs=10)[:8])  # ignition, gear, gps, speed samples: still open
+    d.update("car1", None, 10 * DAY)
+    n = len(d.trip_series("car1", 0)["rows"])
+    db.ingest(conn, "car1", SRC, [s(t, "speed", 10.0) for t in range(8000, 12000, 1000)], 0)
+    d.update("car1", None, 10 * DAY)
+    assert _count(conn, "trip_series") == 1 and len(d.trip_series("car1", 0)["rows"]) > n
+
+
+def test_derive_deletes_series_with_rows():
+    conn, d = setup(trip_samples(0))
+    d.update("car1", None, 10 * DAY)
+    assert d.trip_series("car1", 0)["rows"][-1][2] is None
+    db.ingest(conn, "car1", SRC, [s(0, "battery_wh", 20_000.0), s(40_000, "battery_wh", 19_900.0)], 0)
+    d.update("car1", 0, 10 * DAY)
+    assert _count(conn, "trips") == 1 and _count(conn, "trip_series") == 1
+    assert d.trip_series("car1", 0)["rows"][-1][2] == 0.1  # the new row's series, not the old
+
+
+def test_algo_bump_drops_series_of_rebuilt_vehicles():
+    conn, d = _cloud_setup()
+    db.ingest(conn, "car1", SRC, [*_wake_drive(), s(at("16:18:00"), "ignition", 2.0)], 0)
+    d.update("car1", None, at("16:20:00"))
+    assert _count(conn, "trip_series") == 1 and _count(conn, "charge_series") == 1
+    conn.execute("UPDATE charges SET algo=?", (ALGO - 1,))
+    Deriver(conn, lambda la, lo: "Home")
+    assert _count(conn, "trips") == _count(conn, "charges") == _count(conn, "trip_series") == _count(conn, "charge_series") == 0

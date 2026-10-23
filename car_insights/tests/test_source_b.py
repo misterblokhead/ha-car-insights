@@ -96,5 +96,11 @@ def test_parse_history_minimal_response():
 
 
 def test_entity_ids_renault():
-    assert set(entity_ids(RENAULT, "ss")) == {"sensor.ss_charge_state", "sensor.ss_battery", "sensor.ss_mileage", "sensor.ss_last_battery_activity"}
+    assert set(entity_ids(RENAULT, "ss")) == {"sensor.ss_charge_state", "sensor.ss_battery", "sensor.ss_mileage", "sensor.ss_plug_state", "sensor.ss_last_battery_activity"}
     assert MAPPINGS["renault"] is RENAULT
+
+
+def test_renault_plug_state_maps_bool():
+    out, _ = to_samples(RENAULT, "ss", {"sensor.ss_plug_state": [(1000, "plugged"), (2000, "unplugged"), (3000, "unavailable")]}, {})
+    assert out == [(1000, "plug_state", True), (2000, "plug_state", False)]
+    assert "plug_state" not in RENAULT.report_metrics
