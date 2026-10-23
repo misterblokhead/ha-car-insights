@@ -61,24 +61,21 @@ def test_resolve_rejects_unknown_prefix_and_hidden_vehicle(conn):
         assert access.resolve(conn, ADMIN, bad) is None
 
 
-def test_headers_admin_from_groups():
-    h = {"X-Remote-User-Id": "u-admin", "X-Remote-User-Groups": "system-users,system-admin"}
-    assert access.viewer_from_headers(h).is_admin is True
-    h["X-Remote-User-Groups"] = "system-users"
+def test_headers_never_grant_admin():
+    # the groups header is not trusted (the Supervisor neither sets nor strips it): admin comes from HA's user list
+    h = {"X-Remote-User-Id": "u-viewer", "X-Remote-User-Groups": "system-users,system-admin"}
     assert access.viewer_from_headers(h).is_admin is False
     assert access.viewer_from_headers({"X-Remote-User-Id": "u-viewer"}).is_admin is False
-    # a group that merely contains the word must not count
-    assert access.viewer_from_headers({"X-Remote-User-Id": "u", "X-Remote-User-Groups": "not-system-admin"}).is_admin is False
 
 
 def test_headers_are_case_insensitive():
-    v = access.viewer_from_headers({"x-remote-user-id": "u-admin", "x-remote-user-groups": "system-admin"})
-    assert v == Viewer("u-admin", None, True)
+    v = access.viewer_from_headers({"x-remote-user-id": "u-admin", "x-remote-user-display-name": "Ann"})
+    assert v == Viewer("u-admin", "Ann", False)
 
 
 def test_headers_without_user_id_is_none():
     assert access.viewer_from_headers({}) is None
-    assert access.viewer_from_headers({"X-Remote-User-Name": "x", "X-Remote-User-Groups": "system-admin"}) is None
+    assert access.viewer_from_headers({"X-Remote-User-Name": "x"}) is None
     assert access.viewer_from_headers({"X-Remote-User-Id": "  "}) is None
 
 
@@ -144,3 +141,10 @@ def test_settings_shape(conn):
     assert s["vehicles"][0] == {"id": "car1", "name": "Car One", "group_id": gid, "viewers": ["u-a", "u-b"]}
     assert [v["id"] for v in s["vehicles"]] == ["car1", "car2", "car3"] and s["vehicles"][1]["group_id"] is None
     assert s["groups"] == [{"id": gid, "name": "Fleet"}]
+
+
+def test_blank_display_name_falls_back_to_username():
+    h = {"X-Remote-User-Id": "u-viewer", "X-Remote-User-Name": " uname ", "X-Remote-User-Display-Name": "   "}
+    assert access.viewer_from_headers(h).name == "uname"
+    h["X-Remote-User-Name"] = " "
+    assert access.viewer_from_headers(h).name is None

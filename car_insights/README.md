@@ -10,7 +10,7 @@ stores them in SQLite (`/data/car_insights.db`) and publishes live sensors over 
 
 ## Sidebar page
 
-The add-on adds a **Car Insights** entry to the Home Assistant sidebar (ingress, no port to open). It lists trips and charges per vehicle with detail pages and curves, and every user sees only the vehicles and cost groups they may see. HA admins edit cost groups, the vehicle group and viewers on its Settings page. The page's API is internal and answers only Supervisor ingress requests.
+The add-on adds a **Car Insights** entry to the Home Assistant sidebar (ingress, no port to open). It lists trips and charges per vehicle with detail pages and curves, and every user sees only the vehicles and cost groups they may see. HA admins edit cost groups, the vehicle group and viewers on its Settings page. Admin status is read server-side from Home Assistant's user list (the `system-admin` group, via the Core websocket; cached for a minute), never from request headers; when the list cannot be read nobody is treated as admin. The page's API is internal and answers only Supervisor ingress requests.
 
 ## Sensors, dashboard and recorder
 

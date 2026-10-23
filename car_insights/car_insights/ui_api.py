@@ -1,7 +1,8 @@
 """The sidebar page's API: answers only Supervisor ingress requests, and only with what the viewer may see."""
+import dataclasses
 import json
 import time
-from typing import Annotated, Callable
+from typing import Annotated, Awaitable, Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel
@@ -30,7 +31,8 @@ class _VehicleSettings(BaseModel):
     viewers: list[str]
 
 
-def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], float], on_settings: Callable[[], None] = lambda: None,
+def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], float],
+           is_admin: Callable[[str], Awaitable[bool]], on_settings: Callable[[], None] = lambda: None,
            ingress_hosts: tuple[str, ...] = ("172.30.32.2",), now_ms: Callable[[], int] = lambda: int(time.time() * 1000)) -> APIRouter:
     # handlers are async def with no awaits around the DB work (like /ingest): the event loop serializes access to the connection
     async def ingress_guard(request: Request) -> None:
@@ -41,10 +43,14 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
 
     r = APIRouter(prefix="/api/ui", dependencies=[Depends(ingress_guard)])
 
-    def who(request: Request, admin: bool = False) -> Viewer:
-        """Called first by every route: the viewer (admin when asked), whom it then notes as seen."""
+    async def who(request: Request, admin: bool = False) -> Viewer:
+        """Called first by every route: the viewer (admin when asked), whom it then notes as seen.
+        Admin status comes from HA's user list, never from a header."""
         viewer = access.viewer_from_headers(request.headers)
-        if viewer is None or (admin and not viewer.is_admin):
+        if viewer is None:
+            raise HTTPException(403, "forbidden")
+        viewer = dataclasses.replace(viewer, is_admin=await is_admin(viewer.user_id))
+        if admin and not viewer.is_admin:
             raise HTTPException(403, "forbidden")
         access.see(conn, viewer, now_ms())
         return viewer
@@ -106,44 +112,44 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
 
     @r.get("/me")
     async def me(request: Request):
-        v = who(request)
+        v = await who(request)
         return {"user_id": v.user_id, "name": v.name, "is_admin": v.is_admin}
 
     @r.get("/views")
     async def get_views(request: Request):
-        return access.views(conn, who(request))
+        return access.views(conn, await who(request))
 
     @r.get("/overview")
     async def overview(request: Request, view: str = ""):
-        vids, now = vids_of(who(request), view), now_ms()
+        vids, now = vids_of(await who(request), view), now_ms()
         return {"vehicles": [vehicle_card(v, now) for v in vids], "totals": totals(conn, vids, now, tz)}
 
     @r.get("/trips")
     async def trips(request: Request, view: str = "", before: EpochMs | None = None, limit: int = 50):
-        return page("trips", vids_of(who(request), view), before, limit)
+        return page("trips", vids_of(await who(request), view), before, limit)
 
     @r.get("/charges")
     async def charges(request: Request, view: str = "", before: EpochMs | None = None, limit: int = 50):
-        return page("charges", vids_of(who(request), view), before, limit)
+        return page("charges", vids_of(await who(request), view), before, limit)
 
     @r.get("/trips/{vid}/{start}")
     async def trip(request: Request, vid: str, start: StartMs):
-        row, series = detail("trips", deriver.trip_series, who(request), vid, start)
+        row, series = detail("trips", deriver.trip_series, await who(request), vid, start)
         return {"trip": row, "series": series}
 
     @r.get("/charges/{vid}/{start}")
     async def charge(request: Request, vid: str, start: StartMs):
-        row, series = detail("charges", deriver.charge_series, who(request), vid, start)
+        row, series = detail("charges", deriver.charge_series, await who(request), vid, start)
         return {"charge": row, "series": series, "capacity_wh": capacity(vid)}
 
     @r.get("/settings")
     async def get_settings(request: Request):
-        who(request, admin=True)
+        await who(request, admin=True)
         return access.settings(conn)
 
     @r.post("/groups")
     async def create_group(request: Request, body: _Name):
-        who(request, admin=True)
+        await who(request, admin=True)
         try:
             gid = access.create_group(conn, body.name)
         except ValueError as e:
@@ -153,17 +159,17 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
 
     @r.put("/groups/{gid}")
     async def rename_group(request: Request, gid: str, body: _Name):
-        who(request, admin=True)
+        await who(request, admin=True)
         return edit(access.rename_group, conn, gid, body.name)
 
     @r.delete("/groups/{gid}")
     async def delete_group(request: Request, gid: str):
-        who(request, admin=True)
+        await who(request, admin=True)
         return edit(access.delete_group, conn, gid)
 
     @r.put("/vehicles/{vid}")
     async def put_vehicle(request: Request, vid: str, body: _VehicleSettings):
-        who(request, admin=True)
+        await who(request, admin=True)
         return edit(access.set_vehicle, conn, vid, body.group_id, body.viewers)
 
     return r

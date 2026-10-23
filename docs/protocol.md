@@ -96,7 +96,7 @@ A cloud charge session may start and end while the car sleeps, so its energy is 
 
 ## UI API
 
-The add-on's `/api/ui/...` endpoints serve the sidebar page only. They are internal (Supervisor ingress, with the viewer in the ingress headers) and not part of this protocol; senders never call them. The summary above is unchanged.
+The add-on's `/api/ui/...` endpoints serve the sidebar page only. They are internal (Supervisor ingress, with the viewer's id and name in the ingress headers; whether the viewer is an admin is read from Home Assistant's user list, not from any header) and not part of this protocol; senders never call them. The summary above is unchanged.
 
 ## Acknowledgement and gaps
 

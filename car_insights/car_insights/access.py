@@ -18,9 +18,8 @@ def viewer_from_headers(headers: Mapping[str, str]) -> Viewer | None:
     uid = (h.get("x-remote-user-id") or "").strip()
     if not uid:
         return None
-    name = (h.get("x-remote-user-display-name") or h.get("x-remote-user-name") or "").strip() or None
-    groups = [g.strip() for g in (h.get("x-remote-user-groups") or "").split(",")]
-    return Viewer(uid, name, "system-admin" in groups)
+    name = (h.get("x-remote-user-display-name") or "").strip() or (h.get("x-remote-user-name") or "").strip() or None
+    return Viewer(uid, name, False)  # admin is never read from headers: ui_api asks Home Assistant's user list (ha_users.AdminCache)
 
 
 def see(conn, viewer: Viewer, now_ms: int) -> None:

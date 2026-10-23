@@ -9,11 +9,13 @@ from car_insights import access, db, ui_api
 from car_insights.api import create_app
 from car_insights.db import connect, json_dumps
 from car_insights.derive import ALGO, Deriver
+from car_insights.ha_users import AdminCache
 from conftest import s
 
 TZ = ZoneInfo("Europe/Amsterdam")
 NOW = int(datetime(2026, 10, 23, 12, tzinfo=TZ).timestamp() * 1000)
-ADMIN = {"X-Remote-User-Id": "u-admin", "X-Remote-User-Groups": "system-admin"}
+ADMIN = {"X-Remote-User-Id": "u-admin"}  # admin by the (fake) user list below, not by any header
+ADMINS = {"u-admin"}
 VIEWER = {"X-Remote-User-Id": "u-viewer", "X-Remote-User-Name": "viewer"}
 CAP = {"car1": 57_000.0}
 
@@ -28,12 +30,23 @@ def conn():
     return c
 
 
+async def is_admin(uid):
+    return uid in ADMINS
+
+
 def build(conn, **kw):
     zones = lambda lat, lon: "Home"
     cap = lambda vid: CAP.get(vid, 60_000.0)
     calls = []
-    router = ui_api.router(conn, Deriver(conn, zones, cap), zones, TZ, cap, lambda: calls.append(1), now_ms=lambda: NOW, **kw)
+    router = ui_api.router(conn, Deriver(conn, zones, cap), zones, TZ, cap, is_admin, lambda: calls.append(1), now_ms=lambda: NOW, **kw)
     return create_app(conn, "t" * 64, lambda *a: None, lambda: NOW, ui=router), calls
+
+
+def build_with(conn, admins):
+    zones = lambda lat, lon: "Home"
+    cap = lambda vid: 60_000.0
+    router = ui_api.router(conn, Deriver(conn, zones, cap), zones, TZ, cap, admins.is_admin, now_ms=lambda: NOW)
+    return create_app(conn, "t" * 64, lambda *a: None, lambda: NOW, ui=router), None
 
 
 def client(conn, host="172.30.32.2", **kw):
@@ -212,7 +225,7 @@ def test_bad_group_name_400(conn):
 
 def test_static_index_served_and_ingest_still_works(conn, tmp_path):
     (tmp_path / "index.html").write_text("<h1>cars</h1>")
-    router = ui_api.router(conn, Deriver(conn, lambda a, b: None), lambda a, b: None, TZ, lambda v: 1.0, now_ms=lambda: NOW)
+    router = ui_api.router(conn, Deriver(conn, lambda a, b: None), lambda a, b: None, TZ, lambda v: 1.0, is_admin, now_ms=lambda: NOW)
     c = TestClient(create_app(conn, "t" * 64, lambda *a: None, lambda: NOW, ui=router, web_dir=tmp_path), client=("172.30.32.2", 50000))
     assert c.get("/").text == "<h1>cars</h1>"
     assert c.get("/health").json() == {"ok": True}
@@ -242,3 +255,38 @@ def test_huge_integers_are_422_not_500(conn):
                  "/api/ui/trips/car1/99999999999999999999", "/api/ui/charges/car1/-1"):
         assert c.get(path, headers=VIEWER).status_code == 422
     assert c.get("/api/ui/trips?view=v:car1&limit=99999999999999999999", headers=VIEWER).status_code == 200  # clamped
+
+
+def test_forged_groups_header_grants_nothing(conn):
+    c, calls = client(conn)
+    forged = {"X-Remote-User-Id": "u-viewer", "X-Remote-User-Groups": "system-users,system-admin"}
+    assert c.get("/api/ui/me", headers=forged).json()["is_admin"] is False
+    assert c.get("/api/ui/settings", headers=forged).status_code == 403
+    assert c.post("/api/ui/groups", json={"name": "x"}, headers=forged).status_code == 403
+    assert c.put("/api/ui/vehicles/car3", json={"group_id": None, "viewers": ["u-viewer"]}, headers=forged).status_code == 403
+    assert [v["id"] for v in c.get("/api/ui/views", headers=forged).json()["vehicles"]] == ["car1", "car2"]  # own, not car3
+    assert c.get("/api/ui/overview?view=v:car3", headers=forged).status_code == 404
+    assert not calls and conn.execute("SELECT COUNT(*) FROM cost_groups").fetchone()[0] == 0
+
+
+def test_admin_per_user_list_sees_everything(conn):
+    c, _ = client(conn)
+    assert [v["id"] for v in c.get("/api/ui/views", headers=ADMIN).json()["vehicles"]] == ["car1", "car2", "car3"]
+    assert c.get("/api/ui/settings", headers=ADMIN).status_code == 200
+
+
+def test_user_list_failure_means_no_admin(conn):
+    def down():
+        raise OSError("core down")
+    app, _ = build_with(conn, AdminCache(down))
+    c = TestClient(app, client=("172.30.32.2", 50000))
+    assert c.get("/api/ui/me", headers=ADMIN).json()["is_admin"] is False
+    assert c.get("/api/ui/settings", headers=ADMIN).status_code == 403
+    assert c.get("/api/ui/views", headers=ADMIN).json()["vehicles"] == []  # fails closed to "own vehicles", of which it has none
+
+
+def test_admin_cache_wired_into_the_router(conn):
+    app, _ = build_with(conn, AdminCache(lambda: [{"id": "u-admin", "group_ids": ["system-admin"]}, {"id": "u-viewer", "group_ids": ["system-users"]}]))
+    c = TestClient(app, client=("172.30.32.2", 50000))
+    assert c.get("/api/ui/settings", headers=ADMIN).status_code == 200
+    assert c.get("/api/ui/settings", headers=VIEWER).status_code == 403

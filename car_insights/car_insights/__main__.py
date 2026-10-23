@@ -10,8 +10,9 @@ from . import db
 from .db import connect
 from .mqtt_out import MqttOut
 from .poller import Poller, SourceConf
-from . import pipeline, ui_api
+from . import ha_users, pipeline, ui_api
 from .derive import Deriver
+from .ha_users import AdminCache
 from .publisher import Publisher
 from .token_file import load_or_create
 from .totals_sensors import TotalsSensors
@@ -44,7 +45,7 @@ def main() -> None:
     poller = Poller(conn, [SourceConf(**c) for c in opts.get("sources", [])], lambda ids, a, b: fetch_history(sup_token, ids, a, b),
                     lambda vid, min_t, received: summarize(vid, min_t, received))  # the open trip and summary only matter to the webhook ack
     uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity).on_ingested, summarize=summarize, background=[poller.run, totals.run_daily],
-                           ui=ui_api.router(conn, deriver, zones, tz, capacity, on_settings=totals.publish_groups),
+                           ui=ui_api.router(conn, deriver, zones, tz, capacity, AdminCache(lambda: ha_users.fetch_users(sup_token)).is_admin, on_settings=totals.publish_groups),
                            web_dir=Path("/app/web")),
                 host="0.0.0.0", port=8099)
 
