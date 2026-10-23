@@ -6,12 +6,13 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
-from . import db
+from . import capacity, db
 from .protocol import Sample
 from .source_b import MAPPINGS, REPORT_MAX_AGE_MS, entity_ids, parse_history, to_samples
 
 log = logging.getLogger(__name__)
 BACKFILL_MS = 10 * 86_400_000  # HA's default history retention
+LEARN_EVERY_MS = 86_400_000
 SETTLE_MS = 10_000  # a metric row and its report-time row come from one HA update: end the window before "now" so both land in one fetch
 
 
@@ -30,6 +31,7 @@ class Poller:
     def __init__(self, conn, confs: list[SourceConf], fetch: Callable[[list[str], int, int], list[list[dict]]],
                  on_samples: Callable[[str, int, int], None], now_ms: Callable[[], int] = lambda: int(time.time() * 1000)):
         self._conn, self._confs, self._fetch, self._on_samples, self._now = conn, confs, fetch, on_samples, now_ms
+        self._learned: dict[str, int] = {}  # vehicle -> when capacity was last learned (in memory: re-learns after a restart)
         self._missing: set[str] = set()  # entities already reported as absent from HA
 
     async def poll_once(self) -> None:
@@ -38,6 +40,19 @@ class Poller:
                 await self._poll(conf)
             except Exception:
                 log.exception("polling %s failed, retrying next interval", conf.entity_stem)
+            self._learn(conf.vehicle_id)
+
+    def _learn(self, vid: str) -> None:
+        now = self._now()
+        if now - self._learned.get(vid, -LEARN_EVERY_MS) < LEARN_EVERY_MS:
+            return
+        self._learned[vid] = now
+        try:
+            wh = capacity.learn(self._conn, vid, now)
+            if wh is not None:
+                db.set_capacity_wh(self._conn, vid, wh)
+        except Exception:
+            log.exception("learning the capacity of %s failed", vid)
 
     async def _poll(self, conf: SourceConf) -> None:
         vid, sid, mapping = conf.vehicle_id, source_id(conf), MAPPINGS[conf.mapping]

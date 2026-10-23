@@ -76,6 +76,16 @@ def vehicle(conn, vehicle_id: str) -> dict | None:
     return None if r is None else {"name": r[0], "meta": json.loads(r[1]) if r[1] else None}
 
 
+def capacity_wh(conn, vehicle_id: str, default_wh: float) -> float:
+    r = conn.execute("SELECT usable_capacity_wh FROM vehicles WHERE vehicle_id=?", (vehicle_id,)).fetchone()
+    return r[0] if r and r[0] else default_wh
+
+
+def set_capacity_wh(conn, vehicle_id: str, wh: float) -> None:
+    conn.execute("INSERT INTO vehicles(vehicle_id, usable_capacity_wh) VALUES(?,?) "
+                 "ON CONFLICT(vehicle_id) DO UPDATE SET usable_capacity_wh=excluded.usable_capacity_wh", (vehicle_id, wh))
+
+
 def device_info(conn, vehicle_id: str) -> tuple[str, str | None, str | None]:
     """(name, make, model) of the HA device for a vehicle; the name falls back to the vehicle id."""
     meta = (vehicle(conn, vehicle_id) or {}).get("meta") or {}

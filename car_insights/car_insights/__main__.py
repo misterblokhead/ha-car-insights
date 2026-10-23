@@ -6,6 +6,7 @@ from pathlib import Path
 import uvicorn
 
 from .api import create_app
+from . import db
 from .db import connect
 from .mqtt_out import MqttOut
 from .poller import Poller, SourceConf
@@ -21,7 +22,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     opts_path = Path("/data/options.json")
     opts = json.loads(opts_path.read_text()) if opts_path.exists() else {}
-    capacity_wh = float(opts.get("default_capacity_kwh", 60)) * 1000
+    default_wh = float(opts.get("default_capacity_kwh", 60)) * 1000
     sup_token = os.environ["SUPERVISOR_TOKEN"]
     m = supervisor_get("/services/mqtt", sup_token)["data"]
     mqtt = MqttOut(m["host"], m["port"], m.get("username", ""), m.get("password", ""))
@@ -36,7 +37,7 @@ def main() -> None:
 
     poller = Poller(conn, [SourceConf(**c) for c in opts.get("sources", [])], lambda ids, a, b: fetch_history(sup_token, ids, a, b),
                     lambda vid, min_t, received: summarize(vid, min_t, received))  # the open trip and summary only matter to the webhook ack
-    uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity_wh).on_ingested, summarize=summarize, background=[poller.run]),
+    uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, lambda vid: db.capacity_wh(conn, vid, default_wh)).on_ingested, summarize=summarize, background=[poller.run]),
                 host="0.0.0.0", port=8099)
 
 
