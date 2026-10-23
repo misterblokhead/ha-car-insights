@@ -28,7 +28,10 @@ def main() -> None:
     mqtt = MqttOut(m["host"], m["port"], m.get("username", ""), m.get("password", ""))
     conn = connect("/data/car_insights.db")
     token = load_or_create(Path("/share/car_insights/internal_token"))
-    deriver = Deriver(conn, ZoneCache(lambda: fetch_zones(sup_token)))
+    def capacity(vid: str) -> float:
+        return db.capacity_wh(conn, vid, default_wh)
+
+    deriver = Deriver(conn, ZoneCache(lambda: fetch_zones(sup_token)), capacity)
     sensors = TripSensors(conn, mqtt)
     tz = fetch_time_zone(sup_token)
 
@@ -37,7 +40,7 @@ def main() -> None:
 
     poller = Poller(conn, [SourceConf(**c) for c in opts.get("sources", [])], lambda ids, a, b: fetch_history(sup_token, ids, a, b),
                     lambda vid, min_t, received: summarize(vid, min_t, received))  # the open trip and summary only matter to the webhook ack
-    uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, lambda vid: db.capacity_wh(conn, vid, default_wh)).on_ingested, summarize=summarize, background=[poller.run]),
+    uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity).on_ingested, summarize=summarize, background=[poller.run]),
                 host="0.0.0.0", port=8099)
 
 

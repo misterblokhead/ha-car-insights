@@ -6,7 +6,7 @@ from car_insights import db
 from car_insights.derive import Deriver
 from car_insights.pipeline import refresh
 from car_insights.trip_sensors import TripSensors
-from conftest import FakeMqtt, s
+from conftest import FakeMqtt, ms, s
 
 SRC = "phone-0000abcd"
 TZ = timezone.utc
@@ -88,3 +88,19 @@ def test_lists_hold_the_newest_20_and_the_week_only_its_own_days(env):
     assert len(out["trips"]) == 20 and out["trips"][0]["start"] > out["trips"][-1]["start"]
     assert out["last_trip"] == out["trips"][0]
     assert sum(day["distance_m"] for day in out["week"]) == 6 * 1000  # six trips fall in the 7 local days ending today
+
+
+def test_refined_charge_fires_no_second_event(env):
+    conn, mqtt, d, sensors = env
+    now = ms("2026-10-23T16:00:00+02:00")
+    db.ingest(conn, "car1", SRC, [s(now - 4 * 3_600_000, "battery_wh", 22_500.0), s(now - 4 * 3_600_000, "gear", 4.0)], now)
+    db.ingest(conn, "car1", "ha_entities-0000abcd",
+              [s(now - 3_600_000 - 1_800_000, "charging_state", True), s(now - 3_600_000 - 1_800_000, "soc_percent", 40.0),
+               s(now - 1_800_000, "soc_percent", 81.0), s(now - 1_800_000, "charging_state", False)], now)
+    refresh(d, sensors, "car1", None, now, TZ)
+    [(ev, _)] = mqtt.on("car_insights/car1/charge_event")
+    assert ev["added_wh"] == 24_600 and ev["energy_source"] == "soc_estimate"
+    db.ingest(conn, "car1", SRC, [s(now - 600_000, "battery_wh", 46_550.0)], now)
+    refresh(d, sensors, "car1", now - 600_000, now, TZ)
+    assert len(mqtt.on("car_insights/car1/charge_event")) == 1  # the refinement is no new event
+    assert mqtt.on("car_insights/car1/last_charge")[-1][0]["added_kwh"] == 24.05  # but the state follows it
