@@ -230,3 +230,13 @@ def test_cloud_range_added_follows_car_values_only():
     [c] = charges(day(*car), cloud=True)
     assert c.range_added_m == 100_000
     assert charges(day(), cloud=True)[0].range_added_m is None
+
+
+def test_seq_is_per_source_a_cloud_sample_sharing_a_cars_seq_is_no_trip_start():
+    from car_insights.protocol import Sample
+    samples = [Sample(1, at("09:09:35"), "battery_wh", 22_500), Sample(2, at("09:09:40"), "gear", 1),
+               Sample(502, at("09:13:32"), "charging_state", True), Sample(502, at("09:13:33"), "speed", 5.0),
+               Sample(503, at("09:13:34"), "charging_state", False), Sample(7, at("16:14:43"), "battery_wh", 46_550)]
+    samples.sort(key=lambda x: (x.t, x.seq))  # seq 502 is the cloud's charging_state and the car's speed: the speed starts a trip
+    [c] = find_charges(samples, {}, cloud=True)
+    assert c.start == at("09:13:32") and c.end == at("09:13:33")  # closed by the car's trip start, not dropped

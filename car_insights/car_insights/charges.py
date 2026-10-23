@@ -75,7 +75,7 @@ def _spans(samples: list[Sample], seed: dict[str, Any], key: str, moving: set[in
     on = seed.get(key) is True
     start = samples[0].t if on and samples else 0
     for s in samples:
-        if s.seq in moving:
+        if id(s) in moving:
             if on:
                 spans.append((start, s.t))  # a trip started, so the end was missed: a stale span must not stay open
                 on = False
@@ -109,7 +109,7 @@ def _plug_t(samples: list[Sample], plugged: bool, lo: int, hi: int) -> int | Non
 
 
 def _sessions(samples: list[Sample], seed: dict[str, Any], cloud: bool) -> list[_Span]:
-    moving = {s.seq for s in _moving(samples, seed)}
+    moving = {id(s) for s in _moving(samples, seed)}
     car = _spans(samples, seed, "plugged", moving)
     if not cloud:
         return [_Span(a, b) for a, b in car]
