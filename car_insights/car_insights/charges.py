@@ -51,6 +51,11 @@ def _first_after(samples: list[Sample], k: str, t: int, before: int | None) -> f
     return None
 
 
+def _latest_between(samples: list[Sample], k: str, lo: int, hi: int) -> float | None:
+    """latest value of k with lo < t <= hi, no seed"""
+    return next((v for s in reversed(samples) if lo < s.t <= hi and s.k == k and (v := num(s.v)) is not None), None)
+
+
 def _moving(samples: list[Sample], seed: dict[str, Any]) -> list[Sample]:
     """the speed samples that start a trip: moving while not in park"""
     gear = num(seed.get("gear"))
@@ -131,12 +136,13 @@ def find_charges(samples: list[Sample], seed: dict[str, Any], cloud: bool = Fals
     out = []
     for sp in _sessions(samples, seed, cloud):
         start, end = sp.start, sp.end
-        after = None  # where a cloud-timed end's energy reading must come before: the next trip start
-        if end is not None and not sp.end_car:
-            after = next((t for t in trip_starts if t >= end), None)
+        cloud_end = end is not None and not sp.end_car
+        after = next((t for t in trip_starts if t >= end), None) if cloud_end else None  # a cloud-timed end's reading comes before this
 
         def at_end(k: str) -> Any:
-            if end is not None and not sp.end_car:
+            if cloud_end and end == after:  # closed by a trip start: the car woke before it drove, so its latest reading since the start
+                return _latest_between(samples, k, start, end)
+            if cloud_end:
                 return _first_after(samples, k, end, after)
             return _latest(samples, seed, k, end)
 

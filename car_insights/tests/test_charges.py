@@ -185,14 +185,22 @@ def test_two_cloud_spans_with_car_sample_between_stay_two():
     assert (b.start, b.added_wh) == (at("10:30:00"), 16_550)
 
 
+STALE = [s(at("09:09:35"), "battery_wh", 22_500), s(at("09:09:40"), "gear", 4),
+         s(at("09:13:32"), "charging_state", True), s(at("09:13:32"), "soc_percent", 40),
+         s(at("10:00:00"), "soc_percent", 55), s(at("16:15:00"), "gear", 1), s(at("16:15:00"), "speed", 5.0)]
+
+
 def test_stale_cloud_session_closes_at_trip_start():
-    stale = [s(at("09:09:35"), "battery_wh", 22_500), s(at("09:09:40"), "gear", 4),
-             s(at("09:13:32"), "charging_state", True), s(at("09:13:32"), "soc_percent", 40),
-             s(at("10:00:00"), "soc_percent", 55), s(at("16:15:00"), "gear", 1), s(at("16:15:00"), "speed", 5.0)]
-    [c] = charges(stale, cloud=True)  # the cloud never said False; the later False cannot reopen or lengthen it
+    [c] = charges(STALE, cloud=True)  # the cloud never said False; the later False cannot reopen or lengthen it
     assert (c.start, c.end) == (at("09:13:32"), at("16:15:00"))
-    assert c.energy_source == "soc_estimate" and c.added_wh == 9_000
-    assert charges([*stale, s(at("17:00:00"), "charging_state", False)], cloud=True)[0] == c
+    assert c.energy_source == "soc_estimate" and c.added_wh == 9_000 and c.times_source == "cloud"
+    assert charges([*STALE, s(at("17:00:00"), "charging_state", False)], cloud=True)[0] == c
+
+
+def test_stale_cloud_session_takes_the_car_reading_from_before_the_trip():
+    [c] = charges([*STALE, s(at("16:14:43"), "battery_wh", 46_550)], cloud=True)
+    assert (c.end, c.energy_source, c.end_wh, c.added_wh) == (at("16:15:00"), "car", 46_550, 24_050)
+    assert c.times_source == "cloud"
 
 
 def test_cloud_seed_opens_a_span_at_the_first_sample():
