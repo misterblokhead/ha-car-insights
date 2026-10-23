@@ -1,5 +1,6 @@
 import itertools
 import json
+from datetime import datetime, timedelta
 
 from car_insights.protocol import Sample
 
@@ -9,6 +10,11 @@ _seq = itertools.count(1)
 def s(t, k, v):
     """a sample with the next global seq"""
     return Sample(next(_seq), t, k, v)
+
+
+def ms(iso: str) -> int:
+    """epoch ms (floored) of an ISO time with offset"""
+    return (datetime.fromisoformat(iso) - datetime.fromisoformat("1970-01-01T00:00:00+00:00")) // timedelta(milliseconds=1)
 
 
 class FakeMqtt:

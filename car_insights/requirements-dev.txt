@@ -1,3 +1,4 @@
 -r requirements.txt
 pytest==9.1.1
 httpx==0.28.1  # fastapi TestClient only; the add-on itself uses urllib
+tzdata==2026.5  # tests on Windows, which has no system tz database

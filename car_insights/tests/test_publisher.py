@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from car_insights import db
 from car_insights.db import connect, ingest
 from car_insights.protocol import Sample
 from car_insights.publisher import Publisher
@@ -14,7 +15,7 @@ S = "car_app-0000abcd"
 def env():
     conn = connect(":memory:")
     mqtt = FakeMqtt()
-    return conn, mqtt, Publisher(conn, mqtt, 60000.0)
+    return conn, mqtt, Publisher(conn, mqtt, lambda vid: 60000.0)
 
 
 def feed(conn, pub, samples, vid="car1", now=1000):
@@ -50,7 +51,7 @@ def test_device_from_meta_with_vehicle_id_fallback(env):
     feed(conn, pub, [Sample(1, 1, "speed", 1.0)])
     assert discovery(mqtt)[0][1]["device"] == {"identifiers": ["car_insights_car1"], "name": "car1"}
     mqtt2 = FakeMqtt()
-    pub2 = Publisher(conn, mqtt2, 60000.0)
+    pub2 = Publisher(conn, mqtt2, lambda vid: 60000.0)
     meta = {"vehicle_name": "Test car", "make": "Acme", "model": "X1"}
     feed(conn, pub2, [Sample(2, 2, "meta", meta), Sample(3, 3, "speed", 1.0)], vid="car2")
     assert discovery(mqtt2)[0][1]["device"]["name"] == "Test car"
@@ -89,7 +90,7 @@ def test_restart_seeds_state_from_storage(env):
     feed(conn, pub, [Sample(1, 1, "mode", "charging"), Sample(2, 1, "plugged", True), Sample(3, 1, "gear", 4),
                      Sample(4, 1, "range_m", 150000.0), Sample(5, 1, "battery_wh", 30000.0), Sample(6, 1, "power", 7000.0)])
     restarted = FakeMqtt()
-    feed(conn, Publisher(conn, restarted, 60000.0), [Sample(7, 2, "power", 7000.0), Sample(8, 2, "speed", 0.0)], now=2000)
+    feed(conn, Publisher(conn, restarted, lambda vid: 60000.0), [Sample(7, 2, "power", 7000.0), Sample(8, 2, "speed", 0.0)], now=2000)
     snap = last_state(restarted)
     assert snap["status"] == "charging" and snap["range_km"] == 150.0 and snap["plugged"] == "ON" and snap["soc"] == 50.0
 
@@ -97,6 +98,23 @@ def test_restart_seeds_state_from_storage(env):
 def test_seed_skips_future_rows_and_meta(env):
     conn, mqtt, pub = env
     ingest(conn, "car1", S, [Sample(1, 1, "speed", 1.0), Sample(2, 10**13, "speed", 99.0), Sample(3, 10**13, "meta", {"vehicle_name": "X"})], 1000)
-    p2 = Publisher(conn, mqtt, 60000.0)
+    p2 = Publisher(conn, mqtt, lambda vid: 60000.0)
     p2.on_ingested("car1", [Sample(4, 2, "power", 0.0)], 1000)
     assert last_state(mqtt)["speed_kmh"] == 3.6
+
+
+def test_publisher_uses_learned_capacity(env):
+    conn, mqtt, _ = env
+    db.set_capacity_wh(conn, "car1", 57_000.0)
+    pub = Publisher(conn, mqtt, lambda vid: db.capacity_wh(conn, vid, 60_000.0))
+    feed(conn, pub, [Sample(1, 1, "battery_wh", 46_550.0)])
+    state = [json.loads(p) for t, p in mqtt.batches[-1] if t == "car_insights/car1/state"][0]
+    assert state["soc"] == 81.7
+
+
+def test_default_capacity_until_learned(env):
+    conn, mqtt, _ = env
+    pub = Publisher(conn, mqtt, lambda vid: db.capacity_wh(conn, vid, 60_000.0))
+    feed(conn, pub, [Sample(1, 1, "battery_wh", 46_550.0)])
+    state = [json.loads(p) for t, p in mqtt.batches[-1] if t == "car_insights/car1/state"][0]
+    assert state["soc"] == 77.6

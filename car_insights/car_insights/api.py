@@ -1,11 +1,15 @@
+import asyncio
 import hmac
 import logging
 import sqlite3
 import time
-from typing import Callable
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Awaitable, Callable, Sequence
 
-from fastapi import FastAPI, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from .db import ingest
 from .live import FUTURE_SLACK_MS
@@ -24,10 +28,22 @@ def create_app(
     now_ms: Callable[[], int] = lambda: int(time.time() * 1000),
     *,
     summarize: Callable[[str, int | None, int], tuple[dict | None, dict] | None] | None = None,  # -> (open trip, summary)
+    background: Sequence[Callable[[], Awaitable[None]]] = (),  # long-running coroutines (the cloud poller), run on this loop
+    ui: APIRouter | None = None,  # the sidebar page's API (ui_api.router)
+    web_dir: Path | None = None,  # the built sidebar page, served at / when the directory exists
 ) -> FastAPI:
     if not token:
         raise ValueError("token must not be empty")
-    app = FastAPI()
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        tasks = [asyncio.ensure_future(b()) for b in background]
+        yield
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    app = FastAPI(lifespan=lifespan)
 
     @app.get("/health")
     def health():
@@ -73,4 +89,8 @@ def create_app(
                 log.exception("summarize failed")
         return out
 
+    if ui is not None:
+        app.include_router(ui)
+    if web_dir is not None and web_dir.is_dir():
+        app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")  # last: it matches every path the routes above did not
     return app

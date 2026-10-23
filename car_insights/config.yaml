@@ -1,5 +1,5 @@
 name: Car Insights
-version: "0.2.0"
+version: "0.4.0"
 slug: car_insights
 url: https://github.com/misterblokhead/ha-car-insights
 description: Trips, charging and costs from your car
@@ -10,7 +10,17 @@ boot: auto
 services: ["mqtt:need"]
 homeassistant_api: true
 map: ["share:rw"]
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:car-electric
+panel_title: Car Insights
+panel_admin: false
 options:
   default_capacity_kwh: 60
+  sources: []
 schema:
   default_capacity_kwh: "float(10,200)"
+  sources:
+    - vehicle_id: str
+      mapping: "list(renault)"
+      entity_stem: str

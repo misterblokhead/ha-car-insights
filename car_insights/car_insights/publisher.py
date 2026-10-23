@@ -1,6 +1,6 @@
 import logging
 import sqlite3
-from typing import Protocol
+from typing import Callable, Protocol
 
 from . import live
 from . import db
@@ -16,8 +16,8 @@ class Sink(Protocol):
 class Publisher:
     """Turns ingested batches into live MQTT state and (re)announces discovery."""
 
-    def __init__(self, conn: sqlite3.Connection, mqtt: Sink, capacity_wh: float):
-        self._conn, self._mqtt, self._capacity_wh = conn, mqtt, capacity_wh
+    def __init__(self, conn: sqlite3.Connection, mqtt: Sink, capacity: Callable[[str], float]):
+        self._conn, self._mqtt, self._capacity = conn, mqtt, capacity
         self._states: dict[str, live.LiveState] = {}
         self._announced: dict[str, set[str]] = {}
         self._device: dict[str, tuple] = {}  # (name, make, model) the announced fields were published with
@@ -36,7 +36,7 @@ class Publisher:
         meta_seen = any(s.k == "meta" for s in samples)
         if not changed and not meta_seen:
             return
-        snap = live.snapshot(state, self._capacity_wh)
+        snap = live.snapshot(state, self._capacity(vid))
         loc = live.location(state)
         fields = set(snap) | ({"location"} if loc is not None else set())
         announced = self._announced.setdefault(vid, set())

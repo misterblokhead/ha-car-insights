@@ -1,7 +1,7 @@
 import json
 import sqlite3
 from contextlib import contextmanager
-from typing import Iterator, Sequence
+from typing import Callable, Iterator, Sequence
 
 from .protocol import Sample
 
@@ -23,6 +23,15 @@ CREATE TABLE charges(vehicle_id TEXT, start INTEGER, end INTEGER, algo INTEGER, 
 CREATE INDEX IF NOT EXISTS samples_vt ON samples(vehicle_id, t);
 CREATE INDEX IF NOT EXISTS trips_ve ON trips(vehicle_id, end);
 CREATE INDEX IF NOT EXISTS charges_ve ON charges(vehicle_id, end);
+""", """
+CREATE TABLE source_cursors(vehicle_id TEXT, source_id TEXT, entity_id TEXT, last_changed_ms INTEGER,
+  PRIMARY KEY(vehicle_id, source_id, entity_id));
+""", """
+CREATE TABLE cost_groups(group_id TEXT PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE vehicle_viewers(vehicle_id TEXT, user_id TEXT, PRIMARY KEY(vehicle_id, user_id));
+CREATE TABLE seen_users(user_id TEXT PRIMARY KEY, name TEXT, last_seen_ms INTEGER);
+CREATE TABLE trip_series(vehicle_id TEXT, start INTEGER, json TEXT, PRIMARY KEY(vehicle_id, start));
+CREATE TABLE charge_series(vehicle_id TEXT, start INTEGER, json TEXT, PRIMARY KEY(vehicle_id, start));
 """]
 
 
@@ -73,6 +82,16 @@ def vehicle(conn, vehicle_id: str) -> dict | None:
     return None if r is None else {"name": r[0], "meta": json.loads(r[1]) if r[1] else None}
 
 
+def capacity_wh(conn, vehicle_id: str, default_wh: float) -> float:
+    r = conn.execute("SELECT usable_capacity_wh FROM vehicles WHERE vehicle_id=?", (vehicle_id,)).fetchone()
+    return r[0] if r and r[0] else default_wh
+
+
+def set_capacity_wh(conn, vehicle_id: str, wh: float) -> None:
+    conn.execute("INSERT INTO vehicles(vehicle_id, usable_capacity_wh) VALUES(?,?) "
+                 "ON CONFLICT(vehicle_id) DO UPDATE SET usable_capacity_wh=excluded.usable_capacity_wh", (vehicle_id, wh))
+
+
 def device_info(conn, vehicle_id: str) -> tuple[str, str | None, str | None]:
     """(name, make, model) of the HA device for a vehicle; the name falls back to the vehicle id."""
     meta = (vehicle(conn, vehicle_id) or {}).get("meta") or {}
@@ -118,7 +137,19 @@ def has_key(conn, vehicle_id: str, key: str) -> bool:
     return conn.execute("SELECT 1 FROM samples WHERE vehicle_id=? AND key=? LIMIT 1", (vehicle_id, key)).fetchone() is not None
 
 
-def ingest(conn, vehicle_id: str, source_id: str, samples: Sequence[Sample], received_ms: int) -> int:
+def cursors(conn, vehicle_id: str, source_id: str) -> dict[str, int]:
+    """entity id -> last_changed (epoch ms) of the newest history row a polled source has consumed"""
+    return dict(conn.execute("SELECT entity_id, last_changed_ms FROM source_cursors WHERE vehicle_id=? AND source_id=?",
+                             (vehicle_id, source_id)))
+
+
+def save_cursors(conn, vehicle_id: str, source_id: str, cur: dict[str, int]) -> None:
+    conn.executemany("INSERT OR REPLACE INTO source_cursors VALUES(?,?,?,?)", [(vehicle_id, source_id, e, t) for e, t in cur.items()])
+
+
+def ingest(conn, vehicle_id: str, source_id: str, samples: Sequence[Sample], received_ms: int,
+           after: Callable[[sqlite3.Connection], None] | None = None) -> int:
+    """Store a batch and advance the ack. `after` runs in the same transaction just before the commit (a poller saves its cursor there)."""
     vid, sid = vehicle_id, source_id
     with tx(conn):
         conn.execute("INSERT OR IGNORE INTO sources(vehicle_id, source_id, type) VALUES(?,?,?)", (vid, sid, sid.split("-")[0]))
@@ -153,4 +184,6 @@ def ingest(conn, vehicle_id: str, source_id: str, samples: Sequence[Sample], rec
                 continue
             break
         conn.execute("UPDATE sources SET acked_seq=?, last_received_ms=? WHERE vehicle_id=? AND source_id=?", (acked, received_ms, vid, sid))
+        if after:
+            after(conn)
     return acked

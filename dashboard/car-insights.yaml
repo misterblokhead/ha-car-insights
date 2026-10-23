@@ -1,0 +1,67 @@
+# Car Insights dashboard view. Replace every VEHICLE with the entity prefix of your car's device
+# (the device name slugified, e.g. device "My Car" gives sensor.my_car_status).
+# The two charts need apexcharts-card from HACS: https://github.com/RomRider/apexcharts-card
+title: Car Insights
+path: car-insights
+cards:
+  - type: entities
+    title: Live
+    entities:
+      - sensor.VEHICLE_status
+      - sensor.VEHICLE_speed
+      - sensor.VEHICLE_state_of_charge
+      - sensor.VEHICLE_range
+      - binary_sensor.VEHICLE_plugged_in
+  - type: glance
+    title: Last trip and charge
+    columns: 3
+    entities:
+      - entity: sensor.VEHICLE_last_trip_distance
+        name: Trip distance
+      - entity: sensor.VEHICLE_last_trip_energy
+        name: Trip energy
+      - entity: sensor.VEHICLE_last_trip_consumption
+        name: Trip consumption
+      - entity: sensor.VEHICLE_last_charge_added
+        name: Charge added
+      - entity: sensor.VEHICLE_last_charge_percentage
+        name: Charge percentage
+      - entity: sensor.VEHICLE_last_charge_average_power
+        name: Charge avg power
+  - type: entities
+    title: Totals
+    entities:
+      - sensor.VEHICLE_month_distance
+      - sensor.VEHICLE_month_energy
+      - sensor.VEHICLE_month_charged
+      - sensor.VEHICLE_year_distance
+      - sensor.VEHICLE_year_energy
+      - sensor.VEHICLE_year_charged
+  - type: custom:apexcharts-card
+    header:
+      show: true
+      title: Battery (24 h)
+    graph_span: 24h
+    yaxis:
+      - min: 0
+        max: 100
+    series:
+      - entity: sensor.VEHICLE_state_of_charge
+        name: State of charge
+        type: line
+  - type: custom:apexcharts-card
+    header:
+      show: true
+      title: Range (24 h)
+    graph_span: 24h
+    series:
+      - entity: sensor.VEHICLE_range
+        name: Range
+        type: line
+  - type: button
+    name: Open Car Insights
+    icon: mdi:car-electric
+    # replace the slug (local_car_insights) if the add-on is installed from a repository
+    tap_action:
+      action: navigate
+      navigation_path: /hassio/ingress/local_car_insights

@@ -9,6 +9,10 @@ Two parts:
 
 The car-side sender is a separate project. Any sender that follows [docs/protocol.md](docs/protocol.md) works.
 
+## Sidebar page
+
+The add-on adds a **Car Insights** sidebar page (ingress): trip and charge lists per vehicle, detail pages with curves. Vehicles can be put in cost groups (month and year totals per group) and a vehicle group, and viewers choose which HA users see which vehicles and groups; HA admins edit these on the page's Settings. Every user sees only what they may see. A ready-made dashboard is in [dashboard/car-insights.yaml](dashboard/car-insights.yaml) (see the add-on README for the recorder exclude).
+
 ## Requirements
 
 - Nabu Casa (the receiver then uses a cloudhook, `https://hooks.nabu.casa/...`), or an https external URL for Home Assistant (your own TLS domain).

@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import pytest
@@ -135,3 +136,20 @@ def test_summarize_min_t_ignores_bogus_timestamps():
     post(1, received + 2 * 86_400_000)
     post(received - 31 * 86_400_000, received + 86_400_000)  # exactly at both limits
     assert seen == [received - 1000, None, received - 31 * 86_400_000]
+
+
+def test_lifespan_starts_and_cancels_background():
+    state = {"started": False, "cancelled": False}
+
+    async def bg():
+        state["started"] = True
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            state["cancelled"] = True
+            raise
+
+    with TestClient(create_app(connect(":memory:"), TOKEN, lambda *a: None, background=[bg])) as c:
+        assert c.get("/health").json() == {"ok": True}
+        assert state == {"started": True, "cancelled": False}
+    assert state["cancelled"]
