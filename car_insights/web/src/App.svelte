@@ -5,6 +5,7 @@
   import TripDetail from "./pages/TripDetail.svelte";
   import Charges from "./pages/Charges.svelte";
   import ChargeDetail from "./pages/ChargeDetail.svelte";
+  import Settings from "./pages/Settings.svelte";
 
   let me = $state(null);
   let views = $state({ vehicles: [], groups: [] });
@@ -58,7 +59,9 @@
     </select>
   </header>
   <main>
-    {#if !view}
+    {#if page === "settings" && me.is_admin}
+      <Settings />
+    {:else if !view}
       <p class="msg">No vehicles available to you.</p>
     {:else if page === "overview"}
       {#key view}<Overview {view} />{/key}
