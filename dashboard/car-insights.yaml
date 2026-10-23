@@ -24,7 +24,7 @@ cards:
         name: Trip consumption
       - entity: sensor.VEHICLE_last_charge_added
         name: Charge added
-      - entity: sensor.VEHICLE_last_charge_added_percent
+      - entity: sensor.VEHICLE_last_charge_percentage
         name: Charge added %
       - entity: sensor.VEHICLE_last_charge_average_power
         name: Charge avg power

@@ -18,7 +18,7 @@ _SENSORS = {
     "last_trip_net": ("last_trip", "net_kwh", "Last trip energy", "kWh", "energy"),
     "last_trip_consumption": ("last_trip", "consumption", "Last trip consumption", "kWh/100km", "energy_distance"),
     "last_charge_added": ("last_charge", "added_kwh", "Last charge added", "kWh", "energy"),
-    "last_charge_percent": ("last_charge", "added_percent", "Last charge added %", "%", None),
+    "last_charge_percent": ("last_charge", "added_percent", "Last charge percentage", "%", None),
     "last_charge_avg_power": ("last_charge", "avg_power_kw", "Last charge average power", "kW", "power"),
 }
 _EVENTS = {"trip": "Trip", "charge": "Charge"}
