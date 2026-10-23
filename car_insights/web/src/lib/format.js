@@ -1,0 +1,32 @@
+const NA = "not available";
+const num = (x, f) => (x == null ? NA : f(x));
+
+export const km = (m) => num(m, (v) => `${(v / 1000).toFixed(1)} km`);
+export const kwh = (wh) => num(wh, (v) => `${(v / 1000).toFixed(2)} kWh`);
+export const kw = (w) => num(w, (v) => `${(v / 1000).toFixed(1)} kW`);
+export const pct = (x) => num(x, (v) => `${v.toFixed(1)} %`);
+
+export const duration = (s) =>
+  num(s, (v) => {
+    const min = Math.round(v / 60);
+    return min >= 60 ? `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")} min` : `${min} min`;
+  });
+
+export const time = (ms) =>
+  ms == null ? NA : new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+export const dayKey = (ms) => {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+// Groups items (by their `start` ms) into [dayKey, items], newest day first.
+export function byDay(items, start = (i) => i.start) {
+  const days = new Map();
+  for (const i of [...items].sort((a, b) => start(b) - start(a))) {
+    const k = dayKey(start(i));
+    if (!days.has(k)) days.set(k, []);
+    days.get(k).push(i);
+  }
+  return [...days];
+}
