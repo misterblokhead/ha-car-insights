@@ -10,7 +10,7 @@ from . import db
 from .db import connect
 from .mqtt_out import MqttOut
 from .poller import Poller, SourceConf
-from . import pipeline
+from . import pipeline, ui_api
 from .derive import Deriver
 from .publisher import Publisher
 from .token_file import load_or_create
@@ -31,7 +31,8 @@ def main() -> None:
     def capacity(vid: str) -> float:
         return db.capacity_wh(conn, vid, default_wh)
 
-    deriver = Deriver(conn, ZoneCache(lambda: fetch_zones(sup_token)), capacity)
+    zones = ZoneCache(lambda: fetch_zones(sup_token))
+    deriver = Deriver(conn, zones, capacity)
     sensors = TripSensors(conn, mqtt)
     tz = fetch_time_zone(sup_token)
 
@@ -40,7 +41,8 @@ def main() -> None:
 
     poller = Poller(conn, [SourceConf(**c) for c in opts.get("sources", [])], lambda ids, a, b: fetch_history(sup_token, ids, a, b),
                     lambda vid, min_t, received: summarize(vid, min_t, received))  # the open trip and summary only matter to the webhook ack
-    uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity).on_ingested, summarize=summarize, background=[poller.run]),
+    uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity).on_ingested, summarize=summarize, background=[poller.run],
+                           ui=ui_api.router(conn, deriver, zones, tz, capacity)),
                 host="0.0.0.0", port=8099)
 
 
