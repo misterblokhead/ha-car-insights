@@ -92,6 +92,12 @@ A vehicle can also be read from a cloud-connected car integration in Home Assist
 
 A cloud charge session may start and end while the car sleeps, so its energy is the car's `battery_wh` before and after when available (`energy_source` `"car"`), otherwise an estimate from `soc_percent` and the usable capacity learned from the car's own samples (`"soc_estimate"`). An estimated charge is held up to 7 days (only when the car reported `battery_wh` before it started; otherwise it can never be refined) and refined in place when the car's value arrives; no second `ended` event is sent. After that it stays an estimate.
 
+`plug_state` (cloud key, boolean, from `sensor.<stem>_plug_state`: `plugged`/`unplugged` only) is stored with the other cloud samples but is not a car key: it never opens a car span. It is used only to draw plugged periods in the detail curves.
+
+## UI API
+
+The add-on's `/api/ui/...` endpoints serve the sidebar page only. They are internal (Supervisor ingress, with the viewer in the ingress headers) and not part of this protocol; senders never call them. The summary above is unchanged.
+
 ## Acknowledgement and gaps
 
 `acked_seq` is the highest N such that every seq from 1 to N (for that vehicle and source) is stored or covered by a `gap` marker. Inserts are idempotent on `(vehicle_id, source_id, seq)`, so duplicate or out-of-order batches are harmless.
