@@ -1,4 +1,5 @@
 import json
+import logging
 
 import pytest
 
@@ -13,11 +14,14 @@ def trip(start, **kw):
     return {**w, **kw}
 
 
+SERIES = {"cols": ["t", "km"], "rows": [[1000, 0.0], [2000, 0.5]]}
+
+
 @pytest.fixture
 def env():
     conn = connect(":memory:")
     mqtt = FakeMqtt()
-    return conn, mqtt, TripSensors(conn, mqtt)
+    return conn, mqtt, TripSensors(conn, mqtt, lambda vid: 57_000.0, lambda kind, vid, start: SERIES)
 
 
 def test_discovery_once_then_state(env):
@@ -128,3 +132,50 @@ def test_trip_state_carries_odometer(env):
     assert state["odometer_start_km"] == 36979.0 and state["odometer_end_km"] == 36985.5
     ts.publish("car1", trip(2000), None, [], [])
     assert mqtt.on("car_insights/car1/last_trip")[-1][0]["odometer_start_km"] is None
+
+
+def test_curve_published_with_series(env):
+    _, mqtt, ts = env
+    c = {"start": 1000, "end": 4600, "added_wh": 12000.0}
+    ts.publish("car1", trip(1000), c, [], [])
+    for kind in ("trip", "charge"):
+        assert mqtt.on(f"car_insights/car1/last_{kind}_curve") == [(SERIES, True)]
+        assert ("car_insights/car1/last_%s_curve_state" % kind, "1970-01-01T00:00:01+00:00", True) in mqtt.msgs
+        cfg = json.loads(next(p for t, p, _ in mqtt.msgs if t == f"homeassistant/sensor/car1_last_{kind}_curve/config"))
+        assert cfg["device_class"] == "timestamp" and "state_class" not in cfg and "unit_of_measurement" not in cfg
+        assert cfg["state_topic"] == f"car_insights/car1/last_{kind}_curve_state"
+        assert cfg["json_attributes_topic"] == f"car_insights/car1/last_{kind}_curve"
+        assert cfg["unique_id"] == f"car_insights_car1_last_{kind}_curve" and cfg["name"] == f"Last {kind} curve"
+
+
+def test_curve_over_16kb_publishes_empty_and_warns(caplog):
+    conn, mqtt = connect(":memory:"), FakeMqtt()
+    big = {"cols": ["t"], "rows": [[i * 1.123456] for i in range(3000)]}
+    ts = TripSensors(conn, mqtt, lambda vid: 57_000.0, lambda kind, vid, start: big)
+    with caplog.at_level(logging.WARNING):
+        ts.publish("car1", trip(1000), None, [], [])
+    assert mqtt.on("car_insights/car1/last_trip_curve") == [({}, True)]
+    assert [r for r in caplog.records if r.levelno == logging.WARNING and "curve" in r.message] and len(caplog.records) == 1
+    assert ("car_insights/car1/last_trip_curve_state", "1970-01-01T00:00:01+00:00", True) in mqtt.msgs  # the state still follows
+
+
+def test_curve_without_stored_series_is_empty(env):
+    conn, mqtt, _ = env
+    ts = TripSensors(conn, mqtt, lambda vid: 57_000.0, lambda kind, vid, start: None)
+    ts.publish("car1", trip(1000), None, [], [])
+    assert mqtt.on("car_insights/car1/last_trip_curve") == [({}, True)]
+
+
+def test_percent_added_uses_capacity(env):
+    _, mqtt, ts = env
+    ts.publish("car1", None, {"start": 1000, "end": 4600, "added_wh": 24_050.0}, [], [])
+    assert mqtt.on("car_insights/car1/last_charge")[0][0]["added_percent"] == 42.2
+    cfg = json.loads(next(p for t, p, _ in mqtt.msgs if t == "homeassistant/sensor/car1_last_charge_percent/config"))
+    assert cfg["name"] == "Last charge added %" and cfg["unit_of_measurement"] == "%" and cfg["value_template"] == "{{ value_json.added_percent }}"
+    assert cfg["state_topic"] == "car_insights/car1/last_charge" and "device_class" not in cfg
+
+
+def test_percent_added_null_without_energy(env):
+    _, mqtt, ts = env
+    ts.publish("car1", None, {"start": 1000, "end": 4600, "added_wh": None}, [], [])
+    assert mqtt.on("car_insights/car1/last_charge")[0][0]["added_percent"] is None

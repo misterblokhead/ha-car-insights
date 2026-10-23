@@ -14,6 +14,7 @@ from . import pipeline, ui_api
 from .derive import Deriver
 from .publisher import Publisher
 from .token_file import load_or_create
+from .totals_sensors import TotalsSensors
 from .trip_sensors import TripSensors
 from .zones import ZoneCache, fetch_history, fetch_time_zone, fetch_zones, supervisor_get
 
@@ -33,16 +34,17 @@ def main() -> None:
 
     zones = ZoneCache(lambda: fetch_zones(sup_token))
     deriver = Deriver(conn, zones, capacity)
-    sensors = TripSensors(conn, mqtt)
+    sensors = TripSensors(conn, mqtt, capacity, lambda kind, vid, start: getattr(deriver, f"{kind}_series")(vid, start))
     tz = fetch_time_zone(sup_token)
+    totals = TotalsSensors(conn, mqtt, tz)
 
     def summarize(vid: str, min_t: int | None, received: int) -> tuple[dict | None, dict]:
-        return pipeline.refresh(deriver, sensors, vid, min_t, received, tz)
+        return pipeline.refresh(deriver, sensors, totals, vid, min_t, received, tz)
 
     poller = Poller(conn, [SourceConf(**c) for c in opts.get("sources", [])], lambda ids, a, b: fetch_history(sup_token, ids, a, b),
                     lambda vid, min_t, received: summarize(vid, min_t, received))  # the open trip and summary only matter to the webhook ack
-    uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity).on_ingested, summarize=summarize, background=[poller.run],
-                           ui=ui_api.router(conn, deriver, zones, tz, capacity)),
+    uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity).on_ingested, summarize=summarize, background=[poller.run, totals.run_daily],
+                           ui=ui_api.router(conn, deriver, zones, tz, capacity, on_settings=totals.publish_groups)),
                 host="0.0.0.0", port=8099)
 
 
