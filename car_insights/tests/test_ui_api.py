@@ -223,3 +223,22 @@ def test_static_index_served_and_ingest_still_works(conn, tmp_path):
     # a missing web_dir leaves the app without a root page instead of failing to start
     app = create_app(conn, "t" * 64, lambda *a: None, lambda: NOW, web_dir=tmp_path / "nope")
     assert TestClient(app).get("/").status_code == 404
+
+
+def test_guard_runs_before_validation(conn):
+    other, _ = client(conn, host="172.30.33.5")
+    for r in (other.post("/api/ui/groups", json={}, headers=ADMIN), other.post("/api/ui/groups", content=b"not json", headers=ADMIN),
+              other.get("/api/ui/trips?view=v:car1&before=abc", headers=ADMIN), other.get("/api/ui/trips/car1/abc", headers=ADMIN),
+              other.put("/api/ui/vehicles/car1", json={"viewers": 5}, headers=ADMIN)):
+        assert r.status_code == 403
+    c, _ = client(conn)  # ingress address but no user
+    for r in (c.get("/api/ui/trips?view=v:car1&before=abc"), c.post("/api/ui/groups", json={}), c.get("/api/ui/trips/car1/abc")):
+        assert r.status_code == 403
+
+
+def test_huge_integers_are_422_not_500(conn):
+    c, _ = client(conn)
+    for path in ("/api/ui/trips?view=v:car1&before=99999999999999999999", "/api/ui/charges?view=v:car1&before=-1",
+                 "/api/ui/trips/car1/99999999999999999999", "/api/ui/charges/car1/-1"):
+        assert c.get(path, headers=VIEWER).status_code == 422
+    assert c.get("/api/ui/trips?view=v:car1&limit=99999999999999999999", headers=VIEWER).status_code == 200  # clamped

@@ -1,9 +1,9 @@
 """The sidebar page's API: answers only Supervisor ingress requests, and only with what the viewer may see."""
 import json
 import time
-from typing import Callable
+from typing import Annotated, Callable
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel
 
 from . import access, db
@@ -13,6 +13,8 @@ from .protocol import fix
 from .totals import totals
 
 MAX_LIMIT = 200
+EpochMs = Annotated[int, Query(ge=0, lt=2**62)]  # sqlite integers are 64-bit: anything larger would be a 500, not a 422
+StartMs = Annotated[int, Path(ge=0, lt=2**62)]
 
 
 def _not_found() -> HTTPException:
@@ -31,12 +33,16 @@ class _VehicleSettings(BaseModel):
 def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], float], on_settings: Callable[[], None] = lambda: None,
            ingress_hosts: tuple[str, ...] = ("172.30.32.2",), now_ms: Callable[[], int] = lambda: int(time.time() * 1000)) -> APIRouter:
     # handlers are async def with no awaits around the DB work (like /ingest): the event loop serializes access to the connection
-    r = APIRouter(prefix="/api/ui")
+    async def ingress_guard(request: Request) -> None:
+        """Router dependency: runs before FastAPI reports body/query/path errors, so every /api/ui/* request that is not from
+        the ingress address, or has no user, gets 403 and never a 422 that tells it about the API."""
+        if request.client is None or request.client.host not in ingress_hosts or access.viewer_from_headers(request.headers) is None:
+            raise HTTPException(403, "forbidden")
+
+    r = APIRouter(prefix="/api/ui", dependencies=[Depends(ingress_guard)])
 
     def who(request: Request, admin: bool = False) -> Viewer:
-        """The guard every route starts with: ingress address, then viewer headers (and admin when asked), then note the user."""
-        if request.client is None or request.client.host not in ingress_hosts:
-            raise HTTPException(403, "forbidden")
+        """Called first by every route: the viewer (admin when asked), whom it then notes as seen."""
         viewer = access.viewer_from_headers(request.headers)
         if viewer is None or (admin and not viewer.is_admin):
             raise HTTPException(403, "forbidden")
@@ -113,20 +119,20 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
         return {"vehicles": [vehicle_card(v, now) for v in vids], "totals": totals(conn, vids, now, tz)}
 
     @r.get("/trips")
-    async def trips(request: Request, view: str = "", before: int | None = None, limit: int = 50):
+    async def trips(request: Request, view: str = "", before: EpochMs | None = None, limit: int = 50):
         return page("trips", vids_of(who(request), view), before, limit)
 
     @r.get("/charges")
-    async def charges(request: Request, view: str = "", before: int | None = None, limit: int = 50):
+    async def charges(request: Request, view: str = "", before: EpochMs | None = None, limit: int = 50):
         return page("charges", vids_of(who(request), view), before, limit)
 
     @r.get("/trips/{vid}/{start}")
-    async def trip(request: Request, vid: str, start: int):
+    async def trip(request: Request, vid: str, start: StartMs):
         row, series = detail("trips", deriver.trip_series, who(request), vid, start)
         return {"trip": row, "series": series}
 
     @r.get("/charges/{vid}/{start}")
-    async def charge(request: Request, vid: str, start: int):
+    async def charge(request: Request, vid: str, start: StartMs):
         row, series = detail("charges", deriver.charge_series, who(request), vid, start)
         return {"charge": row, "series": series, "capacity_wh": capacity(vid)}
 
