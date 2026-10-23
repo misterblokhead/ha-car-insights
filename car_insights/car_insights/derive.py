@@ -9,7 +9,7 @@ from .live import FUTURE_SLACK_MS
 from .odometer import chain
 from .trips import KEYS as TRIP_KEYS, Trip, find_trips
 
-ALGO = 3  # bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
+ALGO = 4  # bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
 ESTIMATE_HOLD_MS = 7 * 86_400_000  # a SoC-estimated charge this recent is re-derived on every update: the car's value may still arrive
 _TABLES = ("trips", "charges")
 _SERIES = {"trips": "trip_series", "charges": "charge_series"}  # deleted and inserted exactly with their rows

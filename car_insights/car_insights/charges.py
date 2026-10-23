@@ -90,13 +90,16 @@ def _spans(samples: list[Sample], seed: dict[str, Any], key: str, moving: set[in
     return spans
 
 
-def _merge_unmeasured(spans: list[tuple[int, int | None]], samples: list[Sample]) -> list[tuple[int, int | None]]:
-    """two spans with no car battery_wh between them (the car slept through a pause) are one: both would claim the same delta"""
+def _merge_unmeasured(spans: list[tuple[int, int | None]], samples: list[Sample], seed: dict[str, Any]) -> list[tuple[int, int | None]]:
+    """two spans with no car battery_wh between them (the car slept through a pause) are one: both would claim the same delta.
+    Without a car reading before the first span there is no delta to claim (each is a SoC estimate), so they stay apart."""
     wh_times = [s.t for s in samples if s.k == "battery_wh" and num(s.v) is not None]
+    seeded = num(seed.get("battery_wh")) is not None
     out: list[tuple[int, int | None]] = []
     for start, end in spans:
         prev_end = out[-1][1] if out else None
-        if prev_end is not None and not any(prev_end <= t <= start for t in wh_times):
+        if (prev_end is not None and (seeded or any(t <= out[-1][0] for t in wh_times))
+                and not any(prev_end <= t <= start for t in wh_times)):
             out[-1] = (out[-1][0], end)
         else:
             out.append((start, end))
@@ -114,7 +117,7 @@ def _sessions(samples: list[Sample], seed: dict[str, Any], cloud: bool) -> list[
     if not cloud:
         return [_Span(a, b) for a, b in car]
     sessions = []
-    cloud_spans = _merge_unmeasured(_spans(samples, seed, "charging_state", moving), samples)
+    cloud_spans = _merge_unmeasured(_spans(samples, seed, "charging_state", moving), samples, seed)
     for a, b in cloud_spans:
         start = _plug_t(samples, True, a - CAR_SNAP_MS, a)
         end = None if b is None else _plug_t(samples, False, max(b - CAR_SNAP_MS, a), b)  # never before the cloud start

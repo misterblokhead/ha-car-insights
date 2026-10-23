@@ -179,6 +179,13 @@ def test_two_cloud_spans_without_car_sample_merge():
     assert (c.start, c.end, c.added_wh) == (at("09:13:32"), at("11:21:29"), 24_050)  # not 24 050 twice
 
 
+def test_two_cloud_spans_without_any_car_reading_before_stay_two():
+    # live 2026-10-14..20: cloud charges from before the car app ran; nothing to double-claim, each gets its own SoC estimate
+    a, b = charges(two_spans(*WAKE)[1:], cloud=True)
+    assert (a.start, a.end, a.energy_source, a.added_wh) == (at("09:13:32"), at("10:00:00"), "soc_estimate", 12_000)
+    assert (b.start, b.end, b.energy_source) == (at("10:30:00"), at("11:21:29"), "soc_estimate")
+
+
 def test_two_cloud_spans_with_car_sample_between_stay_two():
     a, b = charges(two_spans(s(at("10:15:00"), "battery_wh", 30_000), *WAKE), cloud=True)
     assert (a.end, a.added_wh) == (at("10:00:00"), 7_500)
