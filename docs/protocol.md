@@ -72,11 +72,25 @@ The add-on derives trips and charging sessions and answers in the 200 body with 
 
 Summary keys: `rev` (first 12 hex chars of the sha1 of the compact, key-sorted JSON of everything except `rev` and `updated`), `updated` (ms), `today`, `last_trip` (or `null`), `last_charge` (or `null`), `trips` (closed, newest first, at most 20), `charges` (closed, newest first, at most 20), `week` (7 days, oldest first, today last).
 
-- Trip: `start`, `end` (`null` while open), `from`, `to` (HA zone names or `null`), `distance_m`, `duration_s`, `avg_speed_mps`, `max_speed_mps`, `start_wh`, `end_wh`, `net_wh`, `gross_wh`, `recup_wh`, `avg_temp_c`.
-- Charge: `start`, `end`, `place` (zone name or `null`), `start_wh`, `end_wh`, `added_wh`, `duration_s`, `range_added_m`, `avg_w`.
+- Trip: `start`, `end` (`null` while open), `from`, `to` (HA zone names or `null`), `distance_m`, `duration_s`, `avg_speed_mps`, `max_speed_mps`, `start_wh`, `end_wh`, `net_wh`, `gross_wh`, `recup_wh`, `avg_temp_c`, `odometer_start_km`, `odometer_end_km` (km, from the newest odometer reading at or before the trip start plus the distance of closed trips since; `null` when no reading exists).
+- Charge: `start`, `end`, `place` (zone name or `null`), `start_wh`, `end_wh`, `added_wh`, `duration_s`, `range_added_m`, `avg_w`, `times_source` (`"car"` or `"cloud"`: whether start and end come from the car or from the cloud source), `energy_source` (`"car"`: from the car's `battery_wh` before and after; `"soc_estimate"`: estimated from the cloud's state of charge and the learned usable capacity; `null`: unknown).
 - Day (`today` and each `week` entry): `date` (`YYYY-MM-DD`, local date in the Home Assistant time zone), `distance_m`, `net_wh`, `charged_wh`. A trip or charge counts on the day it started; only closed ones count, so the open trip joins the totals when it ends. Days without data are zeros (sums, not measurements).
 
 When a trip ends: an ignition off/lock sample ends it; without proof it stays open, so a car that falls asleep without sending ignition off keeps its trip open until its next sample arrives. Trips under 100 m and 60 s are dropped once closed, but shown while open. An open charge ends at the next trip start if the unplug was never seen.
+
+## Cloud source
+
+A vehicle can also be read from a cloud-connected car integration in Home Assistant, as a second source next to the car. Set the add-on option `sources: [{vehicle_id, mapping, entity_stem}]`; `mapping` is `renault` and `entity_stem` is the shared prefix of the car's entities (`sensor.<stem>_battery`, `sensor.<stem>_mileage`, ...). The add-on polls their history every 60 s and stores the changes as samples of their own source (`ha_entities-<hex>`) with these keys:
+
+| `k` | `v` | Used for |
+|---|---|---|
+| `charging_state` | boolean | opens and closes charging sessions |
+| `soc_percent` | number, % | energy estimate for a charge |
+| `odometer_km` | number, km | trip odometer values |
+
+`charging_state` and `soc_percent` are stamped with the cloud's own report time (Renault `last_battery_activity`), not the time Home Assistant noticed the change; `odometer_km` uses the state-change time. Only the car sends `battery_wh`.
+
+A cloud charge session may start and end while the car sleeps, so its energy is the car's `battery_wh` before and after when available (`energy_source` `"car"`), otherwise an estimate from `soc_percent` and the usable capacity learned from the car's own samples (`"soc_estimate"`). An estimated charge is held up to 7 days and refined in place when the car's value arrives; no second `ended` event is sent.
 
 ## Acknowledgement and gaps
 

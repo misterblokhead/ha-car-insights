@@ -25,12 +25,12 @@ def _trip_state(w: dict) -> dict:
     dist, net = w.get("distance_m"), w.get("net_wh")
     cons = None if net is None or dist is None or dist < MIN_CONSUMPTION_M else round(net / dist * 100, 2)
     return {"distance_km": _div(dist, 1000), "net_kwh": _div(net, 1000), "consumption": cons,
-            **{k: w.get(k) for k in ("from", "to", "start", "end")}}
+            **{k: w.get(k) for k in ("from", "to", "start", "end", "odometer_start_km", "odometer_end_km")}}
 
 
 def _charge_state(w: dict) -> dict:
     return {"added_kwh": _div(w.get("added_wh"), 1000), "avg_power_kw": _div(w.get("avg_w"), 1000),
-            **{k: w.get(k) for k in ("place", "start", "end")}}
+            **{k: w.get(k) for k in ("place", "start", "end", "times_source", "energy_source")}}
 
 
 class TripSensors:

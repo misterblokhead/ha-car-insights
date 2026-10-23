@@ -110,3 +110,21 @@ def test_state_without_events_for_old_closes(env):
     ts.publish("car1", trip(1000), {"start": 5, "end": 9, "added_wh": 1000.0}, [], [])
     assert mqtt.on("car_insights/car1/trip_event") == [] and mqtt.on("car_insights/car1/charge_event") == []
     assert mqtt.on("car_insights/car1/last_trip") and mqtt.on("car_insights/car1/last_charge")
+
+
+def test_charge_state_carries_source_markers(env):
+    _, mqtt, ts = env
+    c = {"start": 1000, "end": 4600, "added_wh": 12000.0, "times_source": "cloud", "energy_source": "soc_estimate"}
+    ts.publish("car1", None, c, [], [c])
+    state = mqtt.on("car_insights/car1/last_charge")[0][0]
+    assert state["times_source"] == "cloud" and state["energy_source"] == "soc_estimate"
+
+
+def test_trip_state_carries_odometer(env):
+    _, mqtt, ts = env
+    t = trip(1000, odometer_start_km=36979.0, odometer_end_km=36985.5)
+    ts.publish("car1", t, None, [t], [])
+    state = mqtt.on("car_insights/car1/last_trip")[0][0]
+    assert state["odometer_start_km"] == 36979.0 and state["odometer_end_km"] == 36985.5
+    ts.publish("car1", trip(2000), None, [], [])
+    assert mqtt.on("car_insights/car1/last_trip")[-1][0]["odometer_start_km"] is None
