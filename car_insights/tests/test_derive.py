@@ -313,7 +313,7 @@ def test_derivation_loads_only_the_keys_it_uses(monkeypatch):
     conn, d = setup(trip_samples(0), [s(5000, "soc", 50.0), s(5000, "tire_pressure", 2.5)])
     trips, _ = d.update("car1", None, 10 * DAY)
     assert len(trips) == 1 and seen == [derive.KEYS]
-    assert {"gear", "ignition", "speed", "battery_wh", "outside_temp", "gps", "plugged", "range_m"} == set(derive.KEYS)
+    assert {"gear", "ignition", "speed", "battery_wh", "outside_temp", "gps", "plugged", "range_m", "charging_state", "soc_percent"} == set(derive.KEYS)
 
 
 def test_has_ignition_is_looked_up_until_it_is_true(monkeypatch):
