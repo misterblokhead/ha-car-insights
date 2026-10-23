@@ -83,3 +83,17 @@ def test_fetch_history_asks_for_every_change_of_the_entities_in_the_window(monke
     assert seen["url"] == ("http://supervisor/core/api/history/period/2026-10-23T12:00:00.000Z?filter_entity_id=sensor.a,sensor.b"
                            "&end_time=2026-10-23T12:01:40.500Z&minimal_response&no_attributes&significant_changes_only=0")
     assert seen["auth"] == "Bearer tok"
+
+
+def test_fetch_history_waits_longer_than_the_default_call_timeout(monkeypatch):
+    seen = []
+
+    def urlopen(req, timeout):
+        seen.append((req.full_url.split("/core/api/")[1].split("/")[0], timeout))
+        return io.BytesIO(b"[]" if "history" in req.full_url else b'{"time_zone": "UTC"}')
+
+    monkeypatch.setattr("car_insights.zones.urllib.request.urlopen", urlopen)
+    fetch_history("tok", ["sensor.a"], 1_792_756_800_000, 1_792_756_900_500)
+    from car_insights.zones import supervisor_get
+    supervisor_get("/core/api/config", "tok")
+    assert seen == [("history", 60), ("config", 10)]

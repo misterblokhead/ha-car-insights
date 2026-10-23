@@ -140,6 +140,8 @@ def find_charges(samples: list[Sample], seed: dict[str, Any], cloud: bool = Fals
         after = next((t for t in trip_starts if t >= end), None) if cloud_end else None  # a cloud-timed end's reading comes before this
 
         def at_end(k: str) -> Any:
+            if cloud and end is None:  # open: a car reading from before the start says nothing of the charge so far
+                return _latest_between(samples, k, start - 1, float("inf"))
             if cloud_end and end == after:  # closed by a trip start: the car woke before it drove, so its latest reading since the start
                 return _latest_between(samples, k, start, end)
             if cloud_end:

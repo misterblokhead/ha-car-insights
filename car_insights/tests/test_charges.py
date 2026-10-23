@@ -240,3 +240,9 @@ def test_seq_is_per_source_a_cloud_sample_sharing_a_cars_seq_is_no_trip_start():
     samples.sort(key=lambda x: (x.t, x.seq))  # seq 502 is the cloud's charging_state and the car's speed: the speed starts a trip
     [c] = find_charges(samples, {}, cloud=True)
     assert c.start == at("09:13:32") and c.end == at("09:13:33")  # closed by the car's trip start, not dropped
+
+
+def test_open_cloud_session_while_the_car_sleeps_is_estimated_not_zero():
+    [c] = charges([s(0, "battery_wh", 30_000), s(1000, "gear", 4), s(600_000, "charging_state", True), s(600_000, "soc_percent", 40),
+                   s(1_200_000, "soc_percent", 50)], cloud=True, capacity_wh=60_000)
+    assert c.end is None and c.energy_source == "soc_estimate" and c.added_wh == 6_000 and c.end_wh is None

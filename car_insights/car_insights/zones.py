@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 log = logging.getLogger(__name__)
 _SUPERVISOR = "http://supervisor"
+HISTORY_TIMEOUT_S = 60
 
 
 @dataclass(frozen=True)
@@ -32,11 +33,11 @@ def name_at(zones: list[Zone], lat: float, lon: float) -> str | None:
     return min(inside)[1] if inside else None
 
 
-def _call(path: str, token: str, body: dict | None = None) -> bytes:
+def _call(path: str, token: str, body: dict | None = None, timeout: float = 10) -> bytes:
     """GET (POST when there is a JSON body) http://supervisor<path>; Core's API lives under /core/api."""
     headers = {"Authorization": f"Bearer {token}", **({"Content-Type": "application/json"} if body is not None else {})}
     req = urllib.request.Request(f"{_SUPERVISOR}{path}", data=None if body is None else json.dumps(body).encode(), headers=headers)
-    with urllib.request.urlopen(req, timeout=10) as r:  # raises HTTPError on non-2xx
+    with urllib.request.urlopen(req, timeout=timeout) as r:  # raises HTTPError on non-2xx
         return r.read()
 
 
@@ -79,7 +80,8 @@ def _iso_utc(ms: int) -> str:
 def fetch_history(token: str, entity_ids: list[str], start_ms: int, end_ms: int) -> list[list[dict]]:
     """State history of the entities between two epoch-ms times, minimal rows (last_changed + state) with every change kept."""
     q = f"filter_entity_id={','.join(entity_ids)}&end_time={_iso_utc(end_ms)}&minimal_response&no_attributes&significant_changes_only=0"
-    return json.loads(_call(f"/core/api/history/period/{_iso_utc(start_ms)}?{q}", token))
+    # the first poll asks for 10 days and HA may need a while: a timeout would repeat the same query forever (it runs in a thread)
+    return json.loads(_call(f"/core/api/history/period/{_iso_utc(start_ms)}?{q}", token, timeout=HISTORY_TIMEOUT_S))
 
 
 class ZoneCache:
