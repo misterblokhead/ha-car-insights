@@ -1,9 +1,13 @@
+import logging
+import sqlite3
 from datetime import tzinfo
 
 from . import summary
 from .derive import Deriver
 from .totals_sensors import TotalsSensors
 from .trip_sensors import TripSensors
+
+log = logging.getLogger(__name__)
 
 EVENT_MAX_AGE_MS = 3_600_000  # a close older than this at arrival (a backlog) updates the sensors but fires no event
 
@@ -23,3 +27,13 @@ def refresh(deriver: Deriver, sensors: TripSensors, totals: TotalsSensors, vid: 
     since = summary.week_start_ms(received, tz)
     return deriver.current_trip(vid), summary.build(
         last_trips, last_charges, deriver.stored_trips(vid, since=since), deriver.stored_charges(vid, since=since), received, tz)
+
+
+def rebuild(deriver: Deriver, conn: sqlite3.Connection, now_ms: int) -> None:
+    """At start-up, before the first totals publish: derive every vehicle again, so rows dropped by an ALGO bump are back before
+    its next ingest. No sensors, no events: the retained states catch up at the next close."""
+    for (vid,) in conn.execute("SELECT vehicle_id FROM vehicles").fetchall():
+        try:
+            deriver.update(vid, None, now_ms)
+        except Exception:
+            log.exception("rebuild of %s failed", vid)

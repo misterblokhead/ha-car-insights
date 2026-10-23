@@ -4,7 +4,7 @@ import pytest
 
 from car_insights import access, db
 from car_insights.derive import Deriver
-from car_insights.pipeline import refresh
+from car_insights.pipeline import rebuild, refresh
 from car_insights.totals_sensors import TotalsSensors
 from car_insights.trip_sensors import TripSensors
 from conftest import FakeMqtt, ms, s
@@ -24,7 +24,7 @@ def env():
     conn = db.connect(":memory:")
     mqtt = FakeMqtt()
     d = Deriver(conn, lambda la, lo: "Home")
-    return conn, mqtt, d, TripSensors(conn, mqtt, lambda vid: 57_000.0, lambda kind, vid, start: getattr(d, f"{kind}_series")(vid, start)),         TotalsSensors(conn, mqtt, TZ, now_ms=lambda: 10_000_000)
+    return conn, mqtt, d, TripSensors(conn, mqtt, lambda vid: 57_000.0, lambda kind, vid, start: getattr(d, f"{kind}_series")(vid, start)), TotalsSensors(conn, mqtt, TZ, now_ms=lambda: 10_000_000)
 
 
 def test_ingest_to_summary_and_sensors(env):
@@ -130,3 +130,36 @@ def test_refresh_without_group_or_change_publishes_no_group_totals(env):
     n = len(mqtt.msgs)
     refresh(d, sensors, totals, "car1", None, now, TZ)
     assert len(mqtt.msgs) == n  # nothing closed or changed: no totals either
+
+
+def test_rebuild_restores_rows_and_totals_after_an_algo_bump_before_any_ingest(env):
+    conn, mqtt, d, sensors, totals = env
+    now = 10_000_000
+    for vid in ("car1", "car2"):  # car2 has nothing to derive
+        conn.execute("INSERT INTO vehicles(vehicle_id) VALUES(?)", (vid,))
+    db.ingest(conn, "car1", SRC, trip_samples(now - 200_000), now)
+    refresh(d, sensors, totals, "car1", None, now, TZ)
+    conn.execute("UPDATE trips SET algo=algo-1")  # what an install from before the bump holds
+    d2 = Deriver(conn, lambda la, lo: "Home")  # the restart: stale rows are dropped
+    totals.publish_vehicle("car1")
+    assert conn.execute("SELECT COUNT(*) FROM trips").fetchone()[0] == 0 and mqtt.on("car_insights/car1/totals")[-1][0]["month_distance"] == 0.0
+    rebuild(d2, conn, now)
+    assert conn.execute("SELECT COUNT(*) FROM trips WHERE vehicle_id='car1'").fetchone()[0] == 1
+    totals.publish_vehicle("car1")
+    assert mqtt.on("car_insights/car1/totals")[-1][0]["month_distance"] == 1.0
+    assert len(mqtt.on("car_insights/car1/trip_event")) == 1  # only the original one: a rebuild fires no events
+
+
+def test_rebuild_survives_one_vehicle_failing(env):
+    conn, mqtt, d, sensors, totals = env
+    now = 10_000_000
+    for vid in ("car1", "car2"):
+        conn.execute("INSERT INTO vehicles(vehicle_id) VALUES(?)", (vid,))
+        db.ingest(conn, vid, SRC, trip_samples(now - 200_000), now)
+    class Boom(Deriver):
+        def update(self, vid, min_t, received_ms):
+            if vid == "car1":
+                raise RuntimeError("boom")
+            return super().update(vid, min_t, received_ms)
+    rebuild(Boom(conn, lambda la, lo: "Home"), conn, now)
+    assert [r[0] for r in conn.execute("SELECT DISTINCT vehicle_id FROM trips")] == ["car2"]
