@@ -4,6 +4,7 @@ import statistics
 PAIR_MS = 120_000
 WINDOW_MS = 30 * 86_400_000
 MIN_PAIRS = 10
+PLAUSIBLE_WH = (10_000.0, 200_000.0)  # the add-on option's range: a learned value outside it is not stored
 
 
 def learn(conn, vid: str, now_ms: int) -> float | None:

@@ -6,4 +6,4 @@ stores them in SQLite (`/data/car_insights.db`) and publishes live sensors over 
 - Needs the MQTT service (Mosquitto add-on).
 - The internal token is created at `/share/car_insights/internal_token` on first start; the integration reads it from there.
 - Option `default_capacity_kwh` (10-200) is used to derive state of charge.
-- Option `sources` (default none) lists cloud-connected cars read through Home Assistant entities: `vehicle_id`, `mapping` (`renault`) and `entity_stem` (the shared prefix of the car's entity ids, e.g. `zoe` for `sensor.zoe_battery`). The add-on polls their history every minute.
+- Option `sources` (default none) lists cloud-connected cars read through Home Assistant entities: `vehicle_id` (must equal the vehicle id entered in the "Car Insights receiver" integration: a typo creates a separate vehicle), `mapping` (`renault`) and `entity_stem` (the shared prefix of the car's entity ids, e.g. `zoe` for `sensor.zoe_battery`). The `sensor.<stem>_mileage` entity must report km (HA shows miles under the imperial unit system or a per-entity unit override, which this mapping does not convert). The add-on polls their history every minute.

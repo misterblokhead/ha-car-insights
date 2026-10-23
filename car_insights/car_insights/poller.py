@@ -33,6 +33,7 @@ class Poller:
         self._conn, self._confs, self._fetch, self._on_samples, self._now = conn, confs, fetch, on_samples, now_ms
         self._learned: dict[str, int] = {}  # vehicle -> when capacity was last learned (in memory: re-learns after a restart)
         self._missing: set[str] = set()  # entities already reported as absent from HA
+        self._implausible: set[str] = set()  # vehicles whose out-of-range learned capacity was already logged
 
     async def poll_once(self) -> None:
         for conf in self._confs:
@@ -49,8 +50,11 @@ class Poller:
         self._learned[vid] = now
         try:
             wh = capacity.learn(self._conn, vid, now)
-            if wh is not None:
+            if wh is not None and capacity.PLAUSIBLE_WH[0] <= wh <= capacity.PLAUSIBLE_WH[1]:
                 db.set_capacity_wh(self._conn, vid, wh)
+            elif wh is not None and vid not in self._implausible:
+                self._implausible.add(vid)
+                log.warning("learned capacity %.0f Wh of %s is outside %.0f-%.0f Wh, keeping the previous value", wh, vid, *capacity.PLAUSIBLE_WH)
         except Exception:
             log.exception("learning the capacity of %s failed", vid)
 
