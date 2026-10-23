@@ -1,4 +1,5 @@
 <script>
+  import { tick } from "svelte";
   import { get, send } from "../lib/api.js";
   import { when } from "../lib/format.js";
 
@@ -6,6 +7,7 @@
   let error = $state("");
   let newName = $state("");
   let names = $state({});
+  let busy = $state(false);
 
   const fail = (e) => (error = e.detail || `Could not save (${e.message})`);
 
@@ -21,12 +23,25 @@
   // Every change is sent at once; on failure show the error and reload so the form shows the truth.
   async function change(fn) {
     error = "";
+    busy = true;
+    let ok = true;
     try {
       await fn();
     } catch (e) {
+      ok = false;
       fail(e);
     }
     await load();
+    busy = false;
+    return ok;
+  }
+
+  // Svelte skips the DOM write when the bound value is unchanged, so a rejected change must be undone by hand.
+  async function control(e, fn, reset) {
+    const el = e.currentTarget;
+    if (!(await change(fn))) reset(el);
+    await tick();
+    el.focus(); // disabling while busy dropped focus
   }
 
   const addGroup = async () => {
@@ -35,8 +50,7 @@
   };
   const rename = (g) => change(() => send("PUT", `api/ui/groups/${g.id}`, { name: names[g.id] }));
   const remove = (g) => confirm(`Delete group "${g.name}"?`) && change(() => send("DELETE", `api/ui/groups/${g.id}`));
-  const setVehicle = (v, group_id, viewers) => change(() => send("PUT", `api/ui/vehicles/${v.id}`, { group_id, viewers }));
-  const toggle = (v, uid, on) => setVehicle(v, v.group_id, on ? [...v.viewers, uid] : v.viewers.filter((u) => u !== uid));
+  const setVehicle = (v, group_id, viewers) => () => send("PUT", `api/ui/vehicles/${v.id}`, { group_id, viewers });
 
   load();
 </script>
@@ -47,15 +61,15 @@
   {#each data.groups as g (g.id)}
     <form class="row" onsubmit={(e) => { e.preventDefault(); rename(g); }}>
       <label>Group name <input bind:value={names[g.id]} required maxlength="40" /></label>
-      <button type="submit">Rename</button>
-      <button type="button" onclick={() => remove(g)}>Delete</button>
+      <button type="submit" disabled={busy} aria-label={`Rename ${g.name}`}>Rename</button>
+      <button type="button" disabled={busy} aria-label={`Delete ${g.name}`} onclick={() => remove(g)}>Delete</button>
     </form>
   {:else}
     <p class="msg">No groups yet.</p>
   {/each}
   <form class="row" onsubmit={(e) => { e.preventDefault(); addGroup(); }}>
     <label>New group <input bind:value={newName} required maxlength="40" /></label>
-    <button type="submit">Add group</button>
+    <button type="submit" disabled={busy}>Add group</button>
   </form>
 
   <h2>Vehicles</h2>
@@ -64,7 +78,7 @@
     <section class="card">
       <h3>{v.name}</h3>
       <label>Cost group
-        <select value={v.group_id ?? ""} onchange={(e) => setVehicle(v, e.currentTarget.value || null, v.viewers)}>
+        <select disabled={busy} value={v.group_id ?? ""} onchange={(e) => control(e, setVehicle(v, e.currentTarget.value || null, v.viewers), (el) => (el.value = v.group_id ?? ""))}>
           <option value="">No group</option>
           {#each data.groups as g}<option value={g.id}>{g.name}</option>{/each}
         </select>
@@ -73,7 +87,7 @@
         <legend>Viewers</legend>
         {#each data.users as u (u.id)}
           <label class="chk">
-            <input type="checkbox" checked={v.viewers.includes(u.id)} onchange={(e) => toggle(v, u.id, e.currentTarget.checked)} />
+            <input type="checkbox" disabled={busy} checked={v.viewers.includes(u.id)} onchange={(e) => { const on = e.currentTarget.checked; control(e, setVehicle(v, v.group_id, on ? [...v.viewers, u.id] : v.viewers.filter((x) => x !== u.id)), (el) => (el.checked = !on)); }} />
             {u.name} <span class="muted">(last seen {when(u.last_seen)})</span>
           </label>
         {:else}
