@@ -26,6 +26,12 @@ CREATE INDEX IF NOT EXISTS charges_ve ON charges(vehicle_id, end);
 """, """
 CREATE TABLE source_cursors(vehicle_id TEXT, source_id TEXT, entity_id TEXT, last_changed_ms INTEGER,
   PRIMARY KEY(vehicle_id, source_id, entity_id));
+""", """
+CREATE TABLE cost_groups(group_id TEXT PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE vehicle_viewers(vehicle_id TEXT, user_id TEXT, PRIMARY KEY(vehicle_id, user_id));
+CREATE TABLE seen_users(user_id TEXT PRIMARY KEY, name TEXT, last_seen_ms INTEGER);
+CREATE TABLE trip_series(vehicle_id TEXT, start INTEGER, json TEXT, PRIMARY KEY(vehicle_id, start));
+CREATE TABLE charge_series(vehicle_id TEXT, start INTEGER, json TEXT, PRIMARY KEY(vehicle_id, start));
 """]
 
 

@@ -111,10 +111,10 @@ def _version(c):
 def test_fresh_db_sets_version_and_reopen_keeps_it(tmp_path):
     path = str(tmp_path / "m.db")
     c = connect(path)
-    assert _version(c) == 3
+    assert _version(c) == 4
     c.close()
     c = connect(path)
-    assert _version(c) == 3
+    assert _version(c) == 4
 
 
 def test_newer_schema_refused(tmp_path):
@@ -133,7 +133,7 @@ def test_unversioned_db_with_duplicate_gaps_is_upgraded(tmp_path):
     old.commit()
     old.close()
     c = connect(path)
-    assert c.execute("SELECT COUNT(*) FROM gaps").fetchone()[0] == 1 and _version(c) == 3
+    assert c.execute("SELECT COUNT(*) FROM gaps").fetchone()[0] == 1 and _version(c) == 4
 
 
 def test_failed_migration_rolls_back_and_keeps_version(tmp_path, monkeypatch):
@@ -247,3 +247,8 @@ def test_ingest_after_hook_commits_with_samples_and_rolls_back_together(conn):
         ingest(conn, "car1", S, seqs(2), 0, after=boom)
     assert cursors(conn, "car1", S) == {"e": 1}
     assert conn.execute("SELECT COUNT(*) FROM samples").fetchone()[0] == 1
+
+
+def test_migration_3_creates_access_and_series_tables(conn):
+    names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert {"cost_groups", "vehicle_viewers", "seen_users", "trip_series", "charge_series"} <= names
