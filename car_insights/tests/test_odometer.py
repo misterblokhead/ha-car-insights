@@ -48,3 +48,11 @@ def test_no_reading_none():
     assert chain(conn, "car1", D, 1_000) == (None, None)
     reading(conn, D + H, 100)
     assert chain(conn, "car1", D + 2 * H, None) == (100.0, None)
+
+
+def test_malformed_or_non_finite_readings_are_skipped():
+    conn = connect(":memory:")
+    reading(conn, D + H, 100)
+    for i, v in enumerate([None, True, "36979", [1], {"a": 1}, float("nan"), float("inf")]):
+        reading(conn, D + 2 * H + i, v)
+    assert chain(conn, "car1", D + 3 * H, 1_000) == (100.0, 101.0)

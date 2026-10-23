@@ -1,7 +1,7 @@
 def chain(conn, vid: str, start: int, distance_m: float | None) -> tuple[float | None, float | None]:
     """Odometer at a trip's start and end: the newest odometer_km reading (any source) at or before the start,
     plus the distance of closed trips since it. Re-anchoring moves odometer values only, never a trip's distance."""
-    a = conn.execute("SELECT t, value_json FROM samples WHERE vehicle_id=? AND key='odometer_km' AND t<=? ORDER BY t DESC LIMIT 1",
+    a = conn.execute("SELECT t, value_json FROM samples WHERE vehicle_id=? AND key='odometer_km' AND json_type(value_json) IN ('integer','real') AND json_extract(value_json, '$') BETWEEN 0 AND 1e12 AND t<=? ORDER BY t DESC LIMIT 1",
                      (vid, start)).fetchone()
     if a is None:
         return None, None
