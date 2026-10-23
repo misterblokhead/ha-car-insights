@@ -58,14 +58,17 @@ class Deriver:
         # shortcut: the first full rebuild (fresh install or ALGO bump) loads all history in one request and find_charges is
         # O(n x sessions); chunk the rebuild by window if it gets slow.
         # shortcut: late data landing after a closed end (inside its P-stop proof window) does not reopen it; senders
-        # upload oldest-first, so that needs two sources interleaving.
+        # upload oldest-first, so that needs two car senders interleaving (cloud samples never reach find_trips).
         with db.tx(conn):
             w = max(self._newest_end(vid), self._idle.get(vid, -1))
             if min_t is not None and min_t <= w:  # late data: back to the newest closed end below it
                 w = self._newest_end(vid, min_t)
-            # a recent SoC-estimated charge is re-derived until the car's own value replaces it
-            held = conn.execute("SELECT MIN(start) FROM charges WHERE vehicle_id=? AND end>=? AND json_extract(json, '$.energy_source')='soc_estimate'",
-                                (vid, received_ms - ESTIMATE_HOLD_MS)).fetchone()[0]
+            # a recent SoC-estimated charge is re-derived until the car's own value replaces it; one with no car reading
+            # before its start (start_wh null) can never be refined, so it holds nothing
+            # shortcut: a held estimate makes every update (each 5 s batch while driving) re-read all samples since its start,
+            # up to 7 days; checkpoint it (or release the hold once a car reading exists) if that gets slow.
+            held = conn.execute("SELECT MIN(start) FROM charges WHERE vehicle_id=? AND end>=? AND json_extract(json, '$.energy_source')='soc_estimate'"
+                                " AND json_extract(json, '$.start_wh') IS NOT NULL", (vid, received_ms - ESTIMATE_HOLD_MS)).fetchone()[0]
             if held is not None:
                 w = min(w, held - 1)
             while True:  # a stored segment (open or closed) straddling the window start must be re-derived whole
@@ -92,7 +95,8 @@ class Deriver:
                     last_trip_start = conn.execute("SELECT MAX(start) FROM trips WHERE vehicle_id=?", (vid,)).fetchone()[0] or -1
                     if last_trip_start > (db.latest_t(conn, vid, k, w) or -1):
                         seed[k] = False
-            raw_trips = find_trips(samples, seed, vid in self._ignition)
+            # a cloud report is no proof the car slept: find_trips sees only its own keys
+            raw_trips = find_trips([x for x in samples if x.k in TRIP_KEYS], seed, vid in self._ignition)
             charges = [_charge_wire(c, self._zones) for c in find_charges(samples, seed, vid in self._cloud, self._capacity(vid))]
             new: dict[str, list[dict]] = {"trips": [], "charges": []}
             refined: set[tuple[str, int]] = set()
@@ -109,7 +113,7 @@ class Deriver:
                         if r["start"] in old[table] and json.loads(old[table][r["start"]])["end"] is not None:
                             refined.add((table, r["start"]))
         # an estimate still within its hold re-reads its window, so no watermark may skip past it
-        estimating = any(c["energy_source"] == "soc_estimate" and c["end"] >= received_ms - ESTIMATE_HOLD_MS
+        estimating = any(c["energy_source"] == "soc_estimate" and c["start_wh"] is not None and c["end"] >= received_ms - ESTIMATE_HOLD_MS
                          for c in charges if c["end"] is not None)
         if estimating or any(r["end"] is None for r in trips + charges):
             self._idle.pop(vid, None)

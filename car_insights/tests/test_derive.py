@@ -464,3 +464,30 @@ def test_algo_bump_rebuilds():
     assert d2.stored_charges("car1") == [] and ALGO == 2
     _, charges, _ = d2.update("car1", None, at("11:30:00"))
     assert len(charges) == 1
+
+
+def test_cloud_sample_is_not_proof_the_car_slept_in_a_p_stop():
+    # a P stop, the car goes offline, a cloud SoC report lands 4 min later, then the drive goes on: one trip, no early close
+    drive1 = [s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(1000 + i * 1000, "speed", 15.0) for i in range(600)],
+              s(601_000, "speed", 0.0), s(602_000, "gear", 4.0)]
+    conn, d = setup(drive1)
+    d.update("car1", None, 610_000)
+    db.ingest(conn, "car1", CLOUD, [s(602_000 + 240_000, "soc_percent", 50.0)], 0)
+    trips, _, _ = d.update("car1", 842_000, 842_000 + 120_000)
+    assert trips == [] and d.current_trip("car1") is not None
+    db.ingest(conn, "car1", SRC, [s(663_000, "gear", 1.0), *[s(664_000 + i * 1000, "speed", 15.0) for i in range(600)],
+                                  s(1_300_000, "ignition", 2.0)], 0)
+    d.update("car1", 663_000, 1_400_000)
+    (t,) = d.stored_trips("car1")
+    assert (t["start"], t["end"]) == (1000, 1_300_000)
+
+
+def test_estimate_with_no_prior_car_reading_cannot_refine_so_is_not_held(monkeypatch):
+    seen = []
+    _spy_samples_after(monkeypatch, seen, lambda after_t, keys: after_t)
+    conn, d = setup([s(at("09:09:40"), "gear", 4.0)])  # the car never reported battery_wh before the charge
+    db.ingest(conn, "car1", CLOUD, _sleep_day()[1], 0)
+    _, (c,), _ = d.update("car1", None, at("11:30:00"))
+    assert c["energy_source"] == "soc_estimate" and c["start_wh"] is None
+    d.update("car1", None, at("11:31:00"))
+    assert seen == [-1, at("11:21:29")]  # the second update reads on from the idle watermark, not from the estimate's start
