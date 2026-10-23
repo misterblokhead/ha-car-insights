@@ -23,7 +23,19 @@
   const vid = $derived(parts[2]);
   const start = $derived(parts[3]);
 
-  addEventListener("hashchange", () => (route = location.hash || "#/overview"));
+  // groups made on the Settings page show up in the switcher when the user leaves it
+  async function reloadViews() {
+    try {
+      views = await get("api/ui/views");
+      if (!options.some((o) => o.value === view)) view = options[0]?.value || "";
+    } catch {} // keep the lists we have
+  }
+
+  addEventListener("hashchange", () => {
+    const was = page;
+    route = location.hash || "#/overview";
+    if (was === "settings" && page !== "settings") reloadViews();
+  });
 
   $effect(() => {
     if (view) try { localStorage.setItem(KEY, view); } catch {}

@@ -44,11 +44,19 @@
     el.focus(); // disabling while busy dropped focus
   }
 
-  const addGroup = async () => {
+  // Disabling the buttons while busy drops focus: give it back to whatever had it (the input on Enter, the button on click).
+  async function keepFocus(fn) {
+    const el = document.activeElement;
+    await fn();
+    await tick();
+    el?.focus();
+  }
+
+  const addGroup = () => keepFocus(async () => {
     await change(() => send("POST", "api/ui/groups", { name: newName }));
     if (!error) newName = "";
-  };
-  const rename = (g) => change(() => send("PUT", `api/ui/groups/${g.id}`, { name: names[g.id] }));
+  });
+  const rename = (g) => keepFocus(() => change(() => send("PUT", `api/ui/groups/${g.id}`, { name: names[g.id] })));
   const remove = (g) => confirm(`Delete group "${g.name}"?`) && change(() => send("DELETE", `api/ui/groups/${g.id}`));
   const setVehicle = (v, group_id, viewers) => () => send("PUT", `api/ui/vehicles/${v.id}`, { group_id, viewers });
 
@@ -88,7 +96,7 @@
         {#each data.users as u (u.id)}
           <label class="chk">
             <input type="checkbox" disabled={busy} checked={v.viewers.includes(u.id)} onchange={(e) => { const on = e.currentTarget.checked; control(e, setVehicle(v, v.group_id, on ? [...v.viewers, u.id] : v.viewers.filter((x) => x !== u.id)), (el) => (el.checked = !on)); }} />
-            {u.name} <span class="muted">(last seen {when(u.last_seen)})</span>
+            {u.name || u.id} <span class="muted">(last seen {when(u.last_seen)})</span>
           </label>
         {:else}
           <span class="muted">No users yet.</span>
