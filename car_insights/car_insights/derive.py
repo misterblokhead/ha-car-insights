@@ -5,6 +5,7 @@ from typing import Callable
 from . import db
 from .charges import KEYS as CHARGE_KEYS, Charge, find_charges
 from .live import FUTURE_SLACK_MS
+from .odometer import chain
 from .trips import KEYS as TRIP_KEYS, Trip, find_trips
 
 ALGO = 2  # bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
@@ -14,10 +15,11 @@ KEYS = tuple(sorted({*TRIP_KEYS, *CHARGE_KEYS}))  # the only sample keys derivat
 Zones = Callable[[float, float], str | None]
 
 
-def _trip_wire(t: Trip, zones: Zones) -> dict:
+def _trip_wire(t: Trip, zones: Zones, odo: tuple[float | None, float | None]) -> dict:
     d = asdict(t)
     first, last = d.pop("first_fix"), d.pop("last_fix")
-    return {**d, "from": zones(*first) if first else None, "to": zones(*last) if last else None, "duration_s": round(t.duration_s)}
+    return {**d, "from": zones(*first) if first else None, "to": zones(*last) if last else None, "duration_s": round(t.duration_s),
+            "odometer_start_km": odo[0], "odometer_end_km": odo[1]}
 
 
 def _charge_wire(c: Charge, zones: Zones) -> dict:
@@ -90,12 +92,16 @@ class Deriver:
                     last_trip_start = conn.execute("SELECT MAX(start) FROM trips WHERE vehicle_id=?", (vid,)).fetchone()[0] or -1
                     if last_trip_start > (db.latest_t(conn, vid, k, w) or -1):
                         seed[k] = False
-            trips = [_trip_wire(t, self._zones) for t in find_trips(samples, seed, vid in self._ignition)]
+            raw_trips = find_trips(samples, seed, vid in self._ignition)
             charges = [_charge_wire(c, self._zones) for c in find_charges(samples, seed, vid in self._cloud, self._capacity(vid))]
             new: dict[str, list[dict]] = {"trips": [], "charges": []}
             refined: set[tuple[str, int]] = set()
-            for table, rows in (("trips", trips), ("charges", charges)):
+            trips: list[dict] = []
+            for table, rows in (("trips", raw_trips), ("charges", charges)):
                 for r in rows:
+                    if table == "trips":  # in start order: earlier closed trips are already stored, so chain sees them
+                        r = _trip_wire(r, self._zones, chain(conn, vid, r.start, r.distance_m))
+                        trips.append(r)
                     js = db.json_dumps(r)
                     conn.execute(f"INSERT INTO {table} VALUES(?,?,?,?,?)", (vid, r["start"], r["end"], ALGO, js))
                     if r["end"] is not None and old[table].get(r["start"]) != js:
