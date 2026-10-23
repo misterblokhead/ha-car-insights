@@ -1,6 +1,6 @@
 <script>
   import { get } from "../lib/api.js";
-  import { km, kwh, pct, time } from "../lib/format.js";
+  import { km, kwh, pct, when } from "../lib/format.js";
 
   let { view } = $props();
   let data = $state(null);
@@ -9,10 +9,12 @@
   const STATUS = { driving: "Driving", charging: "Charging", parked: "Parked" };
   const where = (p) => (p ? p.place || `${p.lat}, ${p.lon}` : "not available");
 
-  get(`api/ui/overview?view=${encodeURIComponent(view)}`).then(
-    (d) => (data = d),
-    (e) => (error = `Could not load (${e.message})`),
-  );
+  $effect(() => {
+    get(`api/ui/overview?view=${encodeURIComponent(view)}`).then(
+      (d) => (data = d),
+      (e) => (error = `Could not load (${e.message})`),
+    );
+  });
 </script>
 
 {#if error}
@@ -27,7 +29,7 @@
         <dt>Charge</dt><dd>{pct(v.soc_percent)} ({kwh(v.battery_wh)})</dd>
         <dt>Range</dt><dd>{km(v.range_m)}</dd>
         <dt>Position</dt><dd>{where(v.position)}</dd>
-        <dt>Updated</dt><dd>{time(v.updated)}</dd>
+        <dt>Updated</dt><dd>{when(v.updated)}</dd>
       </dl>
     </section>
   {/each}

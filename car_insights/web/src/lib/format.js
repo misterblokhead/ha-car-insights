@@ -30,3 +30,10 @@ export function byDay(items, start = (i) => i.start) {
   }
   return [...days];
 }
+
+// "14:05" today, else "Wed 22 Oct 14:05".
+export function when(ms, now = Date.now()) {
+  if (ms == null) return NA;
+  if (dayKey(ms) === dayKey(now)) return time(ms);
+  return `${new Date(ms).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })} ${time(ms)}`;
+}

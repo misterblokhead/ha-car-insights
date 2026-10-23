@@ -3,7 +3,7 @@
   import Overview from "./pages/Overview.svelte";
 
   let me = $state(null);
-  let views = $state([]);
+  let views = $state({ vehicles: [], groups: [] });
   let view = $state("");
   let route = $state(location.hash || "#/overview");
   let error = $state("");
@@ -23,8 +23,7 @@
 
   (async () => {
     try {
-      me = await get("api/ui/me");
-      views = await get("api/ui/views");
+      [me, views] = await Promise.all([get("api/ui/me"), get("api/ui/views")]);
       let saved = "";
       try { saved = localStorage.getItem(KEY) || ""; } catch {}
       const values = options.map((o) => o.value);
@@ -42,10 +41,10 @@
 {:else}
   <header>
     <nav>
-      <a href="#/overview" class:on={page === "overview"}>Overview</a>
-      <a href="#/trips" class:on={page === "trips"}>Trips</a>
-      <a href="#/charges" class:on={page === "charges"}>Charges</a>
-      {#if me.is_admin}<a href="#/settings" class:on={page === "settings"}>Settings</a>{/if}
+      <a href="#/overview" class:on={page === "overview"} aria-current={page === "overview" ? "page" : undefined}>Overview</a>
+      <a href="#/trips" class:on={page === "trips"} aria-current={page === "trips" ? "page" : undefined}>Trips</a>
+      <a href="#/charges" class:on={page === "charges"} aria-current={page === "charges" ? "page" : undefined}>Charges</a>
+      {#if me.is_admin}<a href="#/settings" class:on={page === "settings"} aria-current={page === "settings" ? "page" : undefined}>Settings</a>{/if}
     </nav>
     <select bind:value={view} aria-label="View">
       {#each options as o}<option value={o.value}>{o.label}</option>{/each}
@@ -64,7 +63,7 @@
 
 <style>
   :global(:root) {
-    --bg: #fafafa; --fg: #1c1c1e; --muted: #6b6b70; --card: #fff; --line: #dcdce0; --accent: #0a84ff;
+    --bg: #fafafa; --fg: #1c1c1e; --muted: #6b6b70; --card: #fff; --line: #dcdce0; --accent: #0060df;
     color-scheme: light dark;
   }
   @media (prefers-color-scheme: dark) {

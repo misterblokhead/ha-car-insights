@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { km, kwh, kw, pct, duration, dayKey, byDay } from "./format.js";
+import { km, kwh, kw, pct, duration, dayKey, byDay, when, time } from "./format.js";
 
 test("units", () => {
   assert.equal(km(26000), "26.0 km");
@@ -29,4 +29,12 @@ test("byDay groups newest day first", () => {
   const out = byDay(items);
   assert.deepEqual(out.map(([k]) => k), ["2026-10-02", "2026-10-01"]);
   assert.equal(out[1][1].length, 2);
+});
+
+test("when shows the date only when not today", () => {
+  const now = new Date(2026, 9, 22, 16).getTime();
+  const today = new Date(2026, 9, 22, 14, 5).getTime();
+  assert.equal(when(today, now), time(today));
+  assert.match(when(new Date(2026, 9, 20, 14, 5).getTime(), now), /^Tue 20 Oct /);
+  assert.equal(when(null), "not available");
 });
