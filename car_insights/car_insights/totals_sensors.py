@@ -72,13 +72,18 @@ class TotalsSensors:
         nxt = datetime.combine(now.date() + timedelta(days=1), dtime.min, self._tz)
         return nxt.timestamp() - now.timestamp() + RUN_DELAY_S  # timestamps: aware datetimes in one zone subtract as wall time, DST-blind
 
+    def _publish_all(self) -> None:
+        try:
+            for (vid,) in self._conn.execute("SELECT vehicle_id FROM vehicles").fetchall():
+                self.publish_vehicle(vid)
+            self.publish_groups()
+        except Exception:
+            log.exception("totals publish failed")
+
     async def run_daily(self) -> None:
-        """At each local midnight (+5 s) republish every vehicle and group, so a new month shows 0 without waiting for a drive."""
+        """Publishes every vehicle and group at start (it also learns the groups, so a later delete clears them, and refreshes totals
+        stale from the downtime), then at each local midnight (+5 s), so a new month shows 0 without waiting for a drive."""
+        self._publish_all()
         while True:
             await asyncio.sleep(self._seconds_to_next_run())
-            try:
-                for (vid,) in self._conn.execute("SELECT vehicle_id FROM vehicles").fetchall():
-                    self.publish_vehicle(vid)
-                self.publish_groups()
-            except Exception:
-                log.exception("daily totals publish failed")
+            self._publish_all()

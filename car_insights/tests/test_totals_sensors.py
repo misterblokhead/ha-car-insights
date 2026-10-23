@@ -139,5 +139,20 @@ def test_run_daily_publishes_all_survives_errors_and_stops_on_cancel(env, monkey
     ts.publish_vehicle = flaky
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(ts.run_daily())
-    assert sleeps == [12 * 3600 + 5] * 4 and calls == ["car1"] * 3  # an error is logged, the loop goes on
+    assert sleeps == [12 * 3600 + 5] * 4 and calls == ["car1"] * 4  # the start-up publish failed: logged, the loop still ran
     assert mqtt.on("car_insights/car1/totals") and mqtt.on(f"car_insights/group_{gid}/totals")
+
+
+def test_group_deleted_after_restart_is_cleared(env, monkeypatch):
+    conn, mqtt, ts = env  # a fresh instance: the groups are only known once run_daily has published at start-up
+    gid = access.create_group(conn, "Gone")
+
+    async def stop(_):
+        raise asyncio.CancelledError
+    monkeypatch.setattr(totals_sensors.asyncio, "sleep", stop)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(ts.run_daily())
+    assert mqtt.on(f"car_insights/group_{gid}/totals")
+    access.delete_group(conn, gid)
+    ts.publish_groups()
+    assert {t for t, p, _ in mqtt.msgs if p == ""} >= {f"homeassistant/sensor/group_{gid}_{s}/config" for s in SENSORS}
