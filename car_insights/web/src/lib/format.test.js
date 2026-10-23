@@ -38,3 +38,9 @@ test("when shows the date only when not today", () => {
   assert.match(when(new Date(2026, 9, 20, 14, 5).getTime(), now), /^Tue 20 Oct /);
   assert.equal(when(null), "not available");
 });
+
+test("latlon", async () => {
+  const { latlon } = await import("./format.js");
+  assert.equal(latlon(52.089900000002984, 5), "52.08990, 5.00000");
+  assert.equal(latlon(null, 5), "not available");
+});

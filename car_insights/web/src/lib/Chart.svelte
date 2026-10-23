@@ -28,7 +28,7 @@
         ],
         series: [
           {},
-          ...series.map((s, i) => ({ label: s.label, scale: s.scale, stroke: COLORS[i % COLORS.length], width: 2, spanGaps: true, points: { show: false } })),
+          ...series.map((s, i) => ({ label: s.label, scale: s.scale, stroke: COLORS[i % COLORS.length], width: 2, spanGaps: true, points: { show: false }, ...(s.scale === "plug" ? { paths: uPlot.paths.stepped({ align: 1 }) } : {}) })),
         ],
       },
       [x, ...series.map((s) => s.values)],
@@ -40,7 +40,7 @@
   });
 </script>
 
-<div bind:this={el} class="chart"></div>
+<div bind:this={el} class="chart" role="img" aria-label={`Chart: ${series.map((s) => s.label).join(", ")}`}></div>
 
 <style>
   .chart { width: 100%; min-width: 0; color: var(--fg); }

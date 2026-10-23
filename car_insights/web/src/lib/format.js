@@ -37,3 +37,6 @@ export function when(ms, now = Date.now()) {
   if (dayKey(ms) === dayKey(now)) return time(ms);
   return `${new Date(ms).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })} ${time(ms)}`;
 }
+
+// "52.08990, 5.00000" for a position; null → not available.
+export const latlon = (lat, lon) => (lat == null || lon == null ? NA : `${lat.toFixed(5)}, ${lon.toFixed(5)}`);

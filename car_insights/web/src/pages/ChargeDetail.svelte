@@ -1,7 +1,7 @@
 <script>
   import { get } from "../lib/api.js";
   import { km, kwh, kw, pct, duration, when } from "../lib/format.js";
-  import { chargeCharts } from "../lib/series.js";
+  import { chargeCharts, chargePercents } from "../lib/series.js";
   import Chart from "../lib/Chart.svelte";
 
   let { vid, start } = $props();
@@ -13,8 +13,7 @@
   const charts = $derived(data ? chargeCharts(data.series) : null);
   const cap = $derived(data?.capacity_wh);
   const clamp = (v) => Math.max(0, Math.min(100, v));
-  const from = $derived(c?.start_wh != null && cap ? clamp((c.start_wh / cap) * 100) : null);
-  const to = $derived(c?.end_wh != null && cap ? clamp((c.end_wh / cap) * 100) : null);
+  const pc = $derived(c ? chargePercents(c, cap) : { added: null, from: null, to: null });
   const added = $derived(
     c?.added_wh == null ? NA : `${c.energy_source === "soc_estimate" ? "~" : ""}${kwh(c.added_wh)}`,
   );
@@ -42,15 +41,15 @@
       <dt>From</dt><dd>{when(c.start)}</dd>
       <dt>To</dt><dd>{c.end == null ? "in progress" : when(c.end)}</dd>
       <dt>Added</dt><dd>{added}</dd>
-      {#if from != null && to != null}
-        <dt>Charge level</dt>
-        <dd>
-          {pct(to - from)} added ({pct(from)} to {pct(to)})
-          <div class="bar" role="img" aria-label={`Charge from ${from.toFixed(0)} to ${to.toFixed(0)} percent`}>
-            <span style={`left:${from}%;width:${Math.max(0, to - from)}%`}></span>
+      <dt>Charge level</dt>
+      <dd>
+        {pct(pc.added)} added ({pct(pc.from)} to {pct(pc.to)})
+        {#if pc.from != null && pc.to != null}
+          <div class="bar" role="img" aria-label={`Charge from ${pc.from.toFixed(0)} to ${pc.to.toFixed(0)} percent`}>
+            <span style={`left:${clamp(pc.from)}%;width:${Math.max(0, clamp(pc.to) - clamp(pc.from))}%`}></span>
           </div>
-        </dd>
-      {/if}
+        {/if}
+      </dd>
       <dt>Battery start</dt><dd>{kwh(c.start_wh)}</dd>
       <dt>Battery end</dt><dd>{kwh(c.end_wh)}</dd>
       <dt>Range added</dt><dd>{c.range_added_m == null ? NA : `~${km(c.range_added_m)}`}</dd>

@@ -1,13 +1,13 @@
 <script>
   import { get } from "../lib/api.js";
-  import { km, kwh, pct, when } from "../lib/format.js";
+  import { km, kwh, pct, when, latlon } from "../lib/format.js";
 
   let { view } = $props();
   let data = $state(null);
   let error = $state("");
 
   const STATUS = { driving: "Driving", charging: "Charging", parked: "Parked" };
-  const where = (p) => (p ? p.place || `${p.lat}, ${p.lon}` : "not available");
+  const where = (p) => (p ? p.place || latlon(p.lat, p.lon) : "not available");
 
   $effect(() => {
     get(`api/ui/overview?view=${encodeURIComponent(view)}`).then(

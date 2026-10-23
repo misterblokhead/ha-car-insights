@@ -44,3 +44,9 @@ export function chargeCharts(s) {
       : null,
   };
 }
+
+// Real (unclamped) percentages of capacity; each is null when an input is unknown.
+export function chargePercents(c, capacity_wh) {
+  const p = (wh) => (wh == null || !capacity_wh ? null : (wh / capacity_wh) * 100);
+  return { added: p(c.added_wh), from: p(c.start_wh), to: p(c.end_wh) };
+}
