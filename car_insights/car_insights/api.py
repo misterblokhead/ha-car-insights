@@ -1,8 +1,10 @@
+import asyncio
 import hmac
 import logging
 import sqlite3
 import time
-from typing import Callable
+from contextlib import asynccontextmanager
+from typing import Awaitable, Callable, Sequence
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -24,10 +26,20 @@ def create_app(
     now_ms: Callable[[], int] = lambda: int(time.time() * 1000),
     *,
     summarize: Callable[[str, int | None, int], tuple[dict | None, dict] | None] | None = None,  # -> (open trip, summary)
+    background: Sequence[Callable[[], Awaitable[None]]] = (),  # long-running coroutines (the cloud poller), run on this loop
 ) -> FastAPI:
     if not token:
         raise ValueError("token must not be empty")
-    app = FastAPI()
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        tasks = [asyncio.ensure_future(b()) for b in background]
+        yield
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    app = FastAPI(lifespan=lifespan)
 
     @app.get("/health")
     def health():

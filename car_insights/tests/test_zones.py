@@ -1,7 +1,7 @@
 import io
 import json
 
-from car_insights.zones import Zone, ZoneCache, fetch_zones, name_at
+from car_insights.zones import Zone, ZoneCache, fetch_history, fetch_zones, name_at
 
 HOME = Zone("Home", 52.0, 5.0, 100)
 DLAT = 1 / 111_195  # degrees of latitude per metre
@@ -69,3 +69,17 @@ def test_fetch_time_zone_falls_back_to_local(monkeypatch):
         raise OSError("down")
     monkeypatch.setattr(z, "supervisor_get", down)
     assert z.fetch_time_zone("tok") is not None
+
+
+def test_fetch_history_asks_for_every_change_of_the_entities_in_the_window(monkeypatch):
+    seen = {}
+
+    def urlopen(req, timeout):
+        seen.update(url=req.full_url, auth=req.get_header("Authorization"))
+        return io.BytesIO(b'[[{"entity_id": "sensor.a", "state": "1", "last_changed": "2026-10-23T12:00:00+00:00"}]]')
+
+    monkeypatch.setattr("car_insights.zones.urllib.request.urlopen", urlopen)
+    assert fetch_history("tok", ["sensor.a", "sensor.b"], 1_792_756_800_000, 1_792_756_900_500)[0][0]["state"] == "1"
+    assert seen["url"] == ("http://supervisor/core/api/history/period/2026-10-23T12:00:00.000Z?filter_entity_id=sensor.a,sensor.b"
+                           "&end_time=2026-10-23T12:01:40.500Z&minimal_response&no_attributes&significant_changes_only=0")
+    assert seen["auth"] == "Bearer tok"

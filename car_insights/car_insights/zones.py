@@ -4,7 +4,7 @@ import math
 import time
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, tzinfo
+from datetime import datetime, timezone, tzinfo
 from typing import Callable
 from zoneinfo import ZoneInfo
 
@@ -70,6 +70,16 @@ def fetch_time_zone(token: str) -> tzinfo:
     except Exception:
         log.warning("could not read the Home Assistant time zone, using the local one", exc_info=True)
         return datetime.now().astimezone().tzinfo
+
+
+def _iso_utc(ms: int) -> str:
+    return datetime.fromtimestamp(ms / 1000, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
+def fetch_history(token: str, entity_ids: list[str], start_ms: int, end_ms: int) -> list[list[dict]]:
+    """State history of the entities between two epoch-ms times, minimal rows (last_changed + state) with every change kept."""
+    q = f"filter_entity_id={','.join(entity_ids)}&end_time={_iso_utc(end_ms)}&minimal_response&no_attributes&significant_changes_only=0"
+    return json.loads(_call(f"/core/api/history/period/{_iso_utc(start_ms)}?{q}", token))
 
 
 class ZoneCache:

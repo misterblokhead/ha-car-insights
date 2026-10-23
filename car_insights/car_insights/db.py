@@ -1,7 +1,7 @@
 import json
 import sqlite3
 from contextlib import contextmanager
-from typing import Iterator, Sequence
+from typing import Callable, Iterator, Sequence
 
 from .protocol import Sample
 
@@ -23,6 +23,9 @@ CREATE TABLE charges(vehicle_id TEXT, start INTEGER, end INTEGER, algo INTEGER, 
 CREATE INDEX IF NOT EXISTS samples_vt ON samples(vehicle_id, t);
 CREATE INDEX IF NOT EXISTS trips_ve ON trips(vehicle_id, end);
 CREATE INDEX IF NOT EXISTS charges_ve ON charges(vehicle_id, end);
+""", """
+CREATE TABLE source_cursors(vehicle_id TEXT, source_id TEXT, entity_id TEXT, last_changed_ms INTEGER,
+  PRIMARY KEY(vehicle_id, source_id, entity_id));
 """]
 
 
@@ -118,7 +121,19 @@ def has_key(conn, vehicle_id: str, key: str) -> bool:
     return conn.execute("SELECT 1 FROM samples WHERE vehicle_id=? AND key=? LIMIT 1", (vehicle_id, key)).fetchone() is not None
 
 
-def ingest(conn, vehicle_id: str, source_id: str, samples: Sequence[Sample], received_ms: int) -> int:
+def cursors(conn, vehicle_id: str, source_id: str) -> dict[str, int]:
+    """entity id -> last_changed (epoch ms) of the newest history row a polled source has consumed"""
+    return dict(conn.execute("SELECT entity_id, last_changed_ms FROM source_cursors WHERE vehicle_id=? AND source_id=?",
+                             (vehicle_id, source_id)))
+
+
+def save_cursors(conn, vehicle_id: str, source_id: str, cur: dict[str, int]) -> None:
+    conn.executemany("INSERT OR REPLACE INTO source_cursors VALUES(?,?,?,?)", [(vehicle_id, source_id, e, t) for e, t in cur.items()])
+
+
+def ingest(conn, vehicle_id: str, source_id: str, samples: Sequence[Sample], received_ms: int,
+           after: Callable[[sqlite3.Connection], None] | None = None) -> int:
+    """Store a batch and advance the ack. `after` runs in the same transaction just before the commit (a poller saves its cursor there)."""
     vid, sid = vehicle_id, source_id
     with tx(conn):
         conn.execute("INSERT OR IGNORE INTO sources(vehicle_id, source_id, type) VALUES(?,?,?)", (vid, sid, sid.split("-")[0]))
@@ -153,4 +168,6 @@ def ingest(conn, vehicle_id: str, source_id: str, samples: Sequence[Sample], rec
                 continue
             break
         conn.execute("UPDATE sources SET acked_seq=?, last_received_ms=? WHERE vehicle_id=? AND source_id=?", (acked, received_ms, vid, sid))
+        if after:
+            after(conn)
     return acked

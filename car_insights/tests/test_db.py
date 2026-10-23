@@ -111,10 +111,10 @@ def _version(c):
 def test_fresh_db_sets_version_and_reopen_keeps_it(tmp_path):
     path = str(tmp_path / "m.db")
     c = connect(path)
-    assert _version(c) == 2
+    assert _version(c) == 3
     c.close()
     c = connect(path)
-    assert _version(c) == 2
+    assert _version(c) == 3
 
 
 def test_newer_schema_refused(tmp_path):
@@ -133,7 +133,7 @@ def test_unversioned_db_with_duplicate_gaps_is_upgraded(tmp_path):
     old.commit()
     old.close()
     c = connect(path)
-    assert c.execute("SELECT COUNT(*) FROM gaps").fetchone()[0] == 1 and _version(c) == 2
+    assert c.execute("SELECT COUNT(*) FROM gaps").fetchone()[0] == 1 and _version(c) == 3
 
 
 def test_failed_migration_rolls_back_and_keeps_version(tmp_path, monkeypatch):
@@ -223,3 +223,27 @@ def test_end_indexes_exist_and_serve_the_newest_end_lookup(conn):
 
 def test_synchronous_normal(conn):
     assert conn.execute("PRAGMA synchronous").fetchone()[0] == 1
+
+
+def test_cursors_roundtrip_per_source_and_overwrite(conn):
+    from car_insights.db import cursors, save_cursors
+    assert cursors(conn, "car1", "a-00000001") == {}
+    save_cursors(conn, "car1", "a-00000001", {"e1": 10, "e2": 20})
+    save_cursors(conn, "car1", "a-00000001", {"e1": 15})
+    save_cursors(conn, "car1", "b-00000002", {"e1": 99})
+    assert cursors(conn, "car1", "a-00000001") == {"e1": 15, "e2": 20}
+    assert cursors(conn, "car1", "b-00000002") == {"e1": 99}
+
+
+def test_ingest_after_hook_commits_with_samples_and_rolls_back_together(conn):
+    from car_insights.db import cursors, save_cursors
+    ingest(conn, "car1", S, seqs(1), 0, after=lambda c: save_cursors(c, "car1", S, {"e": 1}))
+    assert cursors(conn, "car1", S) == {"e": 1}
+
+    def boom(c):
+        save_cursors(c, "car1", S, {"e": 2})
+        raise RuntimeError
+    with pytest.raises(RuntimeError):
+        ingest(conn, "car1", S, seqs(2), 0, after=boom)
+    assert cursors(conn, "car1", S) == {"e": 1}
+    assert conn.execute("SELECT COUNT(*) FROM samples").fetchone()[0] == 1

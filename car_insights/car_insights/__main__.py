@@ -8,12 +8,13 @@ import uvicorn
 from .api import create_app
 from .db import connect
 from .mqtt_out import MqttOut
+from .poller import Poller, SourceConf
 from . import pipeline
 from .derive import Deriver
 from .publisher import Publisher
 from .token_file import load_or_create
 from .trip_sensors import TripSensors
-from .zones import ZoneCache, fetch_time_zone, fetch_zones, supervisor_get
+from .zones import ZoneCache, fetch_history, fetch_time_zone, fetch_zones, supervisor_get
 
 
 def main() -> None:
@@ -33,7 +34,10 @@ def main() -> None:
     def summarize(vid: str, min_t: int | None, received: int) -> tuple[dict | None, dict]:
         return pipeline.refresh(deriver, sensors, vid, min_t, received, tz)
 
-    uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity_wh).on_ingested, summarize=summarize), host="0.0.0.0", port=8099)
+    poller = Poller(conn, [SourceConf(**c) for c in opts.get("sources", [])], lambda ids, a, b: fetch_history(sup_token, ids, a, b),
+                    lambda vid, min_t, received: summarize(vid, min_t, received))  # the open trip and summary only matter to the webhook ack
+    uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity_wh).on_ingested, summarize=summarize, background=[poller.run]),
+                host="0.0.0.0", port=8099)
 
 
 if __name__ == "__main__":
