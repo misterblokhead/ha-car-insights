@@ -104,3 +104,11 @@ def test_renault_plug_state_maps_bool():
     out, _ = to_samples(RENAULT, "ss", {"sensor.ss_plug_state": [(1000, "plugged"), (2000, "unplugged"), (3000, "unavailable")]}, {})
     assert out == [(1000, "plug_state", True), (2000, "plug_state", False)]
     assert "plug_state" not in RENAULT.report_metrics
+
+
+def test_renault_plug_error_and_unknown_are_skipped_not_unplugged():
+    h = {"sensor.ss_plug_state": [(1000, "plug_error"), (2000, "plug_unknown"), (3000, "unplugged")]}
+    out, cur = to_samples(RENAULT, "ss", h, {})
+    assert out == [(3000, "plug_state", False)]
+    out, cur = to_samples(RENAULT, "ss", {"sensor.ss_plug_state": h["sensor.ss_plug_state"][:2]}, {})
+    assert out == [] and cur["sensor.ss_plug_state"] == 2000

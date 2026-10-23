@@ -29,6 +29,13 @@ def _ranged(lo: float, hi: float | None = None) -> Callable[[str], float]:
     return conv
 
 
+def _plug(s: str) -> bool:
+    """plugged/unplugged only; plug_error, plug_unknown and the like are no reading (ValueError: skipped)"""
+    if s not in ("plugged", "unplugged"):
+        raise ValueError(s)
+    return s == "plugged"
+
+
 @dataclass(frozen=True)
 class Mapping:
     metrics: dict[str, tuple[str, Callable[[str], Any]]]  # key -> (entity id template with {stem}, state -> value)
@@ -41,7 +48,7 @@ RENAULT = Mapping(
         "charging_state": ("sensor.{stem}_charge_state", lambda s: s == "charge_in_progress"),
         "soc_percent": ("sensor.{stem}_battery", _ranged(0, 100)),
         "odometer_km": ("sensor.{stem}_mileage", _ranged(0)),
-        "plug_state": ("sensor.{stem}_plug_state", lambda s: s == "plugged"),  # not "plugged": that key opens car spans
+        "plug_state": ("sensor.{stem}_plug_state", _plug),  # not "plugged": that key opens car spans
     },
     report_time="sensor.{stem}_last_battery_activity",
     report_metrics=frozenset({"charging_state", "soc_percent"}),
