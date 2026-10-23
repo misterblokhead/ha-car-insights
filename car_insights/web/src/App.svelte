@@ -1,6 +1,10 @@
 <script>
   import { get } from "./lib/api.js";
   import Overview from "./pages/Overview.svelte";
+  import Trips from "./pages/Trips.svelte";
+  import TripDetail from "./pages/TripDetail.svelte";
+  import Charges from "./pages/Charges.svelte";
+  import ChargeDetail from "./pages/ChargeDetail.svelte";
 
   let me = $state(null);
   let views = $state({ vehicles: [], groups: [] });
@@ -13,7 +17,10 @@
     ...views.vehicles.map((v) => ({ value: `v:${v.id}`, label: v.name })),
     ...views.groups.map((g) => ({ value: `g:${g.id}`, label: `Group: ${g.name}` })),
   ]);
-  const page = $derived(route.split("/")[1] || "overview");
+  const parts = $derived(route.split("/"));
+  const page = $derived(parts[1] || "overview");
+  const vid = $derived(parts[2]);
+  const start = $derived(parts[3]);
 
   addEventListener("hashchange", () => (route = location.hash || "#/overview"));
 
@@ -55,6 +62,10 @@
       <p class="msg">No vehicles available to you.</p>
     {:else if page === "overview"}
       {#key view}<Overview {view} />{/key}
+    {:else if page === "trips"}
+      {#if vid && start}{#key route}<TripDetail {vid} {start} />{/key}{:else}{#key view}<Trips {view} />{/key}{/if}
+    {:else if page === "charges"}
+      {#if vid && start}{#key route}<ChargeDetail {vid} {start} />{/key}{:else}{#key view}<Charges {view} />{/key}{/if}
     {:else}
       <p class="msg">Coming soon.</p>
     {/if}
