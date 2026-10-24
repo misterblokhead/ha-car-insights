@@ -23,11 +23,12 @@
     if (await change(() => send("POST", `api/ui/vehicles/${adding}/fixed_costs`, body))) adding = null;
     saving = false;
   }
-  // a rejected end date (before the start) is undone by hand, as on the Settings page
+  // saved on the Save button, not on every change event: a date input fires one per typed segment. A rejected date is undone by hand.
   async function end(e, c) {
-    const el = e.currentTarget;
-    const ok = await change(() => send("PUT", `api/ui/fixed_costs/${c.id}`, { end: el.value || null }));
-    if (!ok) el.value = c.end ?? "";
+    e.preventDefault();
+    const el = e.currentTarget.elements.end;
+    if (el.value === (c.end ?? "")) return;
+    if (!(await change(() => send("PUT", `api/ui/fixed_costs/${c.id}`, { end: el.value || null })))) el.value = c.end ?? "";
   }
   const remove = (c) => confirm(`Delete "${c.name}"?`) && change(() => send("DELETE", `api/ui/fixed_costs/${c.id}`));
   const focus = (el) => el.focus();
@@ -43,9 +44,10 @@
         <span>{c.name}<br /><span class="muted">{eur(c.amount)} · {c.period} · from {c.start}{c.end ? ` to ${c.end}` : ""}</span></span>
         <button type="button" class="danger" aria-label={`Delete ${c.name}`} onclick={() => remove(c)}>Delete</button>
       </div>
-      <label class="row split">End date
-        <input type="date" aria-label={`End date of ${c.name}`} min={c.start} value={c.end ?? ""} onchange={(e) => end(e, c)} />
-      </label>
+      <form class="row split" onsubmit={(e) => end(e, c)}>
+        <label class="grow inline">End date <input name="end" type="date" aria-label={`End date of ${c.name}`} min={c.start} value={c.end ?? ""} /></label>
+        <button type="submit" aria-label={`Save end date of ${c.name}`}>Save</button>
+      </form>
     {:else}
       <p class="row empty">No fixed costs.</p>
     {/each}

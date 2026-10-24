@@ -28,3 +28,5 @@
 .settings .fields :is(input, select) { padding: 0 8px; background: var(--fill); border-radius: var(--radius-ctl); }
 .settings .fields .wide { flex-basis: 12em; }
 .settings .split > span { padding-block: 6px; } /* two-line rows */
+.settings .inline { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; } /* a label beside its date input */
+.settings .inline input { width: auto; }
