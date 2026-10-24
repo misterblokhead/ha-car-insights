@@ -1,4 +1,5 @@
 import json
+import logging
 from bisect import bisect_left, bisect_right
 from dataclasses import asdict
 from typing import Callable
@@ -9,6 +10,7 @@ from .live import FUTURE_SLACK_MS
 from .odometer import chain
 from .trips import KEYS as TRIP_KEYS, QUIET_MS, Trip, find_trips
 
+log = logging.getLogger(__name__)
 ALGO = 5  # bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
 ESTIMATE_HOLD_MS = 7 * 86_400_000  # a SoC-estimated charge this recent is re-derived on every update: the car's value may still arrive
 _TABLES = ("trips", "charges")
@@ -111,8 +113,14 @@ class Deriver:
             refined: set[tuple[str, int]] = set()
             trips: list[dict] = []
             times = [x.t for x in samples]
+            seen: set[tuple[str, int]] = set()
             for table, rows in (("trips", raw_trips), ("charges", charges)):
                 for r in rows:
+                    key = (table, r.start if table == "trips" else r["start"])
+                    if key in seen:  # a repeated start would break the primary key and roll back every update after
+                        log.warning("duplicate %s start %s for %s skipped", table, key[1], vid)
+                        continue
+                    seen.add(key)
                     if table == "trips":  # in start order: earlier closed trips are already stored, so chain sees them
                         r = _trip_wire(r, self._zones, chain(conn, vid, r.start, r.distance_m))
                         trips.append(r)

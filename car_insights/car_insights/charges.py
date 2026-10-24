@@ -116,20 +116,22 @@ def _sessions(samples: list[Sample], seed: dict[str, Any], cloud: bool) -> list[
     car = _spans(samples, seed, "plugged", moving)
     if not cloud:
         return [_Span(a, b) for a, b in car]
-    sessions: list[_Span] = []
     cloud_spans = _merge_unmeasured(_spans(samples, seed, "charging_state", moving), samples, seed)
-    for a, b in cloud_spans:
-        lo = a - CAR_SNAP_MS if not sessions else max(a - CAR_SNAP_MS, sessions[-1].end + 1)  # never into the previous charge (starts are the key); only the last span has no end
-        start = _plug_t(samples, True, lo, a)
-        end = None if b is None else _plug_t(samples, False, max(b - CAR_SNAP_MS, a), b)  # never before the cloud start
-        sessions.append(_Span(a if start is None else start, b if end is None else end,
-                              start_car=start is not None, end_car=b is None or end is not None))
     inf = float("inf")
 
     def absorbed(a: int, b: int | None) -> bool:
         return any(a < (d if d is not None else inf) and (b if b is not None else inf) > c for c, d in cloud_spans)
 
-    sessions += [_Span(a, b) for a, b in car if not absorbed(a, b)]
+    kept = [(a, b) for a, b in car if not absorbed(a, b)]
+    sessions: list[_Span] = []
+    for a, b in cloud_spans:
+        # a start never snaps into an earlier charge (starts are the key); only the last span has no end
+        floor = [x.end + 1 for x in sessions] + [e + 1 for _, e in kept if e is not None and e <= a]
+        start = _plug_t(samples, True, max([a - CAR_SNAP_MS, *floor]), a)
+        end = None if b is None else _plug_t(samples, False, max(b - CAR_SNAP_MS, a), b)  # never before the cloud start
+        sessions.append(_Span(a if start is None else start, b if end is None else end,
+                              start_car=start is not None, end_car=b is None or end is not None))
+    sessions += [_Span(a, b) for a, b in kept]
     return sorted(sessions, key=lambda x: x.start)
 
 

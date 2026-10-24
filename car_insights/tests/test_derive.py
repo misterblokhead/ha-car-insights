@@ -1,9 +1,9 @@
 import pytest
 
-from car_insights import db
+from car_insights import db, derive
 from car_insights.derive import ALGO, ESTIMATE_HOLD_MS, Deriver
 from car_insights.trips import QUIET_MS
-from conftest import ms, s
+from conftest import ms, paused, plugged_then_cloud, s
 
 DAY = 86_400_000
 SRC = "phone-0000abcd"
@@ -513,10 +513,24 @@ def test_estimate_with_no_prior_car_reading_cannot_refine_so_is_not_held(monkeyp
 
 
 def test_paused_cloud_charge_derives_and_stores_both():
-    from test_charges import paused  # two cloud spans near one plug sample used to share a start: IntegrityError, every update after
-    conn, d = setup(paused())
+    conn, d = setup(paused(at("09:00:00")))  # used to share one start: IntegrityError, and every update after
     _, charges, _ = d.update("car1", None, at("12:00:00"))
     assert len(charges) == 2 and _count(conn, "charges") == 2
+
+
+def test_cloud_charge_after_a_car_charge_derives_and_stores_both():
+    conn, d = setup(plugged_then_cloud(at("09:00:00")))
+    _, charges, _ = d.update("car1", None, at("12:00:00"))
+    assert len(charges) == 2 and _count(conn, "charges") == 2
+
+
+def test_duplicate_start_is_skipped_not_fatal(monkeypatch, caplog):
+    conn, d = setup(paused(at("09:00:00")))
+    real = derive.find_charges
+    monkeypatch.setattr(derive, "find_charges", lambda *a, **k: [c := real(*a, **k)[0], c])
+    _, charges, _ = d.update("car1", None, at("12:00:00"))
+    assert len(charges) == 1 and _count(conn, "charges") == 1 and _count(conn, "charge_series") == 1
+    assert "duplicate charges start" in caplog.text
 
 
 # --- series rows live and die with their trip/charge rows ---

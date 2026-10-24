@@ -1,7 +1,7 @@
 import pytest
 
 from car_insights.charges import KEYS, find_charges
-from conftest import ms, s
+from conftest import ms, paused, plugged_then_cloud, s
 
 
 def charges(samples, seed=None, **kw):
@@ -192,18 +192,15 @@ def test_two_cloud_spans_with_car_sample_between_stay_two():
     assert (b.start, b.added_wh) == (at("10:30:00"), 16_550)
 
 
-def paused(p=at("09:00:00")):
-    """one plug, a cloud charge paused for 3 min, the car reading in between: two spans, both within snap reach of the plug"""
-    m = 60_000
-    return [s(p, "plugged", True), s(p, "battery_wh", 20_000),
-            s(p + m, "charging_state", True), s(p + 3 * m, "charging_state", False),
-            s(p + 4 * m, "battery_wh", 25_000), s(p + 6 * m, "charging_state", True),
-            s(p + 60 * m, "charging_state", False), s(p + 61 * m, "battery_wh", 40_000)]
-
-
 def test_cloud_spans_near_one_plug_get_distinct_starts():
-    a, b = charges(paused(), cloud=True)
+    a, b = charges(paused(at("09:00:00")), cloud=True)
     assert a.start == at("09:00:00") and b.start > a.end  # the second does not snap back to the first's plug sample
+
+
+def test_cloud_start_does_not_snap_into_a_kept_car_charge():
+    a, b = charges(plugged_then_cloud(at("09:00:00")), cloud=True)
+    assert (a.start, a.end, a.times_source) == (at("09:00:00"), at("09:01:00"), "car")
+    assert b.start == at("09:02:00") and b.times_source == "cloud"  # not snapped back to the plug sample the car charge starts at
 
 
 STALE = [s(at("09:09:35"), "battery_wh", 22_500), s(at("09:09:40"), "gear", 4),
