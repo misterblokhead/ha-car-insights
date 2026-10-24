@@ -38,7 +38,9 @@
 
     const make = (s) => {
       const color = token(s.color ?? "--trip", "#0A84FF");
-      const base = { label: s.label, scale: s.scale ?? "y", stroke: color, width: 2, spanGaps: true, points: { show: false } };
+      // a lone value would draw no line at all, so it gets a dot
+      const lone = s.kind !== "bars" && s.values.filter((v) => v != null).length === 1;
+      const base = { label: s.label, scale: s.scale ?? "y", stroke: color, width: 2, spanGaps: true, points: { show: lone, size: 7, fill: color } };
       if (s.dash) base.dash = [6, 4];
       if (s.scale === "plug") base.paths = uPlot.paths.stepped({ align: 1 });
       if (s.kind === "area") base.fill = (u) => {

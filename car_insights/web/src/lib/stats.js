@@ -23,7 +23,8 @@ export function isCurrent(period, at, today) {
 // (now − before) / before; null without a baseline.
 export const change = (now, before) => (now == null || !before ? null : (now - before) / before);
 
-// The API's bounds are midnights in HA's time zone; +12 h in UTC lands on that calendar day whatever zone the browser is in.
+// The API's bounds are midnights in HA's time zone; +12 h in UTC lands on that calendar day whatever the browser's zone.
+// shortcut: right only for HA zones within ±12 h of UTC (UTC+13/+14 label a day early), upgrade by sending the day with the bounds.
 const dayOf = (ms) => parts(iso(ms + DAY / 2));
 const short = (m) => MONTHS[m - 1].slice(0, 3);
 

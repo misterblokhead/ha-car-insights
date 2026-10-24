@@ -61,7 +61,7 @@
 {#if error}
   <p class="msg">{error}</p>
 {:else if !me}
-  <p class="msg">Loading...</p>
+  <p class="msg">Loading…</p>
 {:else}
   <Shell page={route.page} isAdmin={me.is_admin} {options} bind:view>
     {#if route.page === "settings" && me.is_admin}
@@ -69,7 +69,7 @@
     {:else if !view}
       <p class="msg">No vehicles available to you.</p>
     {:else if route.page === "stats"}
-      <Stats {view} />
+      {#key view}<Stats {view} />{/key}
     {:else}
       {#key view}<Activity {view} detail={route.detail} />{/key}
     {/if}
