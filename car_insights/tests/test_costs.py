@@ -116,8 +116,9 @@ def charge(c, start, kwh, receipt):
 
 
 def trip(c, start, end, km, net_wh=0):
-    c.execute("INSERT INTO trips VALUES('car1',?,?,?,?)", (start, end, ALGO, json_dumps({"start": start, "end": end, "distance_m": km * 1000, "net_wh": net_wh})))
-    return {"start": start, "end": end, "distance_m": km * 1000, "net_wh": net_wh}
+    m = int(km * 1000)  # whole metres, as stored: SQLite divides integers as integers
+    c.execute("INSERT INTO trips VALUES('car1',?,?,?,?)", (start, end, ALGO, json_dumps({"start": start, "end": end, "distance_m": m, "net_wh": net_wh})))
+    return {"start": start, "end": end, "distance_m": m, "net_wh": net_wh}
 
 
 def test_trip_energy_weighted(c):
@@ -145,7 +146,7 @@ def ms(d, h=12):
     return int(datetime(2026, 10, d, h, tzinfo=TZ).timestamp() * 1000)
 
 
-@pytest.mark.parametrize("first_km, fixed_part", [(79, None), (180, 6.0)])
+@pytest.mark.parametrize("first_km, fixed_part", [(79, None), (180, 6.0), (180.5, 60 / 200.5 * 20)])
 def test_trip_fixed_gate(c, first_km, fixed_part):
     prices.set_tariff(c, "ac", 0, 0.40)
     fixed(c, 60.0, "once", date(2026, 10, 5))
