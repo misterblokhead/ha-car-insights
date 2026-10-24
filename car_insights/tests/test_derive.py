@@ -35,6 +35,16 @@ def test_closed_trip_stored_and_returned_once():
     assert d.current_trip("car1") is None
 
 
+def test_rebuild_drops_rows_and_renames_places():
+    conn, d = setup(trip_samples(0))
+    d.update("car1", None, 10 * DAY)
+    assert Deriver(conn, lambda la, lo: "Home").stored_trips("car1", 10) != []
+    d2 = Deriver(conn, lambda la, lo: "Work", rebuild=True)
+    assert d2.stored_trips("car1", 10) == []
+    d2.update("car1", None, 10 * DAY)
+    assert d2.stored_trips("car1", 10)[0]["from"] == "Work"
+
+
 def test_open_trip_is_current_not_stored():
     conn, d = setup([s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 61_000, 1000)]])
     assert d.update("car1", None, 61_000) == ([], [], set())

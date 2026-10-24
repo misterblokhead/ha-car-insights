@@ -176,7 +176,7 @@
   }
   h2 span { font-weight: 400; color: var(--muted); }
   li { scroll-margin-block: 56px; } /* clear of the sticky day header */
-  ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; container-type: inline-size; } /* the cards size to the list, not the screen */
   .msg { padding: 24px 0; text-align: center; color: var(--muted); }
   .msg p { margin: 0 0 8px; }
   button {

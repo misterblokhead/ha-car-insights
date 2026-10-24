@@ -40,12 +40,11 @@ def page(conn, vids: list[str], before: int | None, now_ms: int, tz, name: Calla
         d = days.setdefault(datetime.fromtimestamp(start / 1000, tz).date().isoformat(),
                             {"summary": {"distance_m": 0, "net_wh": 0, "charged_wh": 0}, "items": []})
         d["items"].append(item)
-        if row.get("end") is not None:
-            s = d["summary"]
-            if kind == "trip":
-                s["distance_m"] += row.get("distance_m") or 0
-                s["net_wh"] += row.get("net_wh") or 0
-            else:
-                s["charged_wh"] += row.get("added_wh") or 0
+        s = d["summary"]  # open rows count too, so the header adds up with the cards under it
+        if kind == "trip":
+            s["distance_m"] += row.get("distance_m") or 0
+            s["net_wh"] += row.get("net_wh") or 0
+        else:
+            s["charged_wh"] += row.get("added_wh") or 0
     out["days"] = [{"date": k, **d} for k, d in days.items()]
     return out
