@@ -121,3 +121,9 @@ def test_is_https_url():
 
 def test_deep_json_does_not_match():
     assert not r.body_vehicle_matches(b'{"vehicle_id":"megane","x":' + b'[' * 100000 + b']' * 100000 + b'}', "megane")
+
+
+def test_conf_with_url():
+    text = "webhook.url=https://a\nsecret=s\nvehicle.id=v\n"
+    assert r.conf_with_url(text, "https://b") == "webhook.url=https://b\nsecret=s\nvehicle.id=v\n"
+    assert r.conf_with_url(text, "https://a") is None

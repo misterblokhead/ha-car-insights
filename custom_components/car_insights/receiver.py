@@ -91,3 +91,9 @@ async def read_limited(content, limit: int) -> bytes | None:
 
 def config_file_text(webhook_url: str, secret: str, vehicle_id: str, vehicle_name: str) -> str:
     return f"webhook.url={webhook_url}\nsecret={secret}\nvehicle.id={vehicle_id}\nvehicle.name={vehicle_name}\n"
+
+
+def conf_with_url(text: str, url: str) -> str | None:
+    """The .conf text with its webhook.url line set to url (secret and the rest kept); None when it already holds url."""
+    new = "".join(f"webhook.url={url}\n" if line.startswith("webhook.url=") else line for line in text.splitlines(keepends=True))
+    return None if new == text else new

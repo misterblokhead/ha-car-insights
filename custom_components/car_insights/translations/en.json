@@ -7,6 +7,9 @@
           "vehicle_id": "Vehicle ID (letters, digits, - and _)",
           "vehicle_name": "Vehicle name",
           "addon_url": "Car Insights add-on URL"
+        },
+        "data_description": {
+          "addon_url": "`http://local-car-insights:8099` for a local install; a repository install uses `http://<repo-hash>-car-insights:8099` (shown on the add-on's Info page as its hostname)."
         }
       }
     },

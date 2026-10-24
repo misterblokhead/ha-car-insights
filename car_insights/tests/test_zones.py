@@ -68,7 +68,7 @@ def test_fetch_time_zone_falls_back_to_local(monkeypatch):
     def down(*a):
         raise OSError("down")
     monkeypatch.setattr(z, "supervisor_get", down)
-    assert z.fetch_time_zone("tok") is not None
+    assert z.fetch_time_zone("tok", tries=2, wait_s=0) is not None
 
 
 def test_fetch_history_asks_for_every_change_of_the_entities_in_the_window(monkeypatch):
@@ -108,3 +108,18 @@ def test_zones_changed_compares_with_the_last_start(tmp_path):
     def down():
         raise OSError("down")
     assert zones_changed(down, saved) is False and zones_changed(lambda: [HOME], saved) is True  # a failed read keeps the saved list
+
+
+def test_fetch_time_zone_retries(monkeypatch):
+    import car_insights.zones as z
+    from zoneinfo import ZoneInfo
+    calls = []
+
+    def flaky(*a):
+        calls.append(1)
+        if len(calls) < 3:
+            raise OSError("not ready")
+        return {"time_zone": "Europe/Amsterdam"}
+    monkeypatch.setattr(z, "supervisor_get", flaky)
+    assert z.fetch_time_zone("tok", wait_s=0) == ZoneInfo("Europe/Amsterdam")
+    assert len(calls) == 3
