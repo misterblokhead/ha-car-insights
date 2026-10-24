@@ -517,6 +517,18 @@ def test_plugged_seed_after_closed_cloud_charge_opens_nothing():
     assert charges == [] and d.stored_charges("car1", 10) == [c] and _count(conn, "charges") == 1
 
 
+def test_resent_plugged_true_after_a_closed_cloud_charge_opens_nothing():
+    conn, d, p = _cloud_charge_while_plugged()
+    (c,) = d.stored_charges("car1", 10)
+    h = 3_600_000
+    db.ingest(conn, "car1", SRC, [s(p + 3 * h, "plugged", True), s(p + 3 * h + 60_000, "battery_wh", 40_010.0)], 0)  # a restart re-sends the flag
+    d.update("car1", None, p + 4 * h)
+    assert _count(conn, "charges") == 1  # same window as the re-sent flag
+    db.ingest(conn, "car1", SRC, [s(p + 5 * h, "plugged", True), s(p + 5 * h + 60_000, "battery_wh", 40_020.0)], 0)
+    d.update("car1", None, p + 6 * h)  # the flag is the window's seed now, and sent again
+    assert d.stored_charges("car1", 10) == [c] and _count(conn, "charges") == 1
+
+
 def test_plugged_again_after_a_closed_cloud_charge_still_opens_a_charge():
     conn, d, p = _cloud_charge_while_plugged()
     q = p + 3 * 3_600_000

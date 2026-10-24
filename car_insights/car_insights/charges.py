@@ -73,18 +73,24 @@ def _spans(samples: list[Sample], seed: dict[str, Any], key: str, moving: set[in
     """(start t, end t or None) spans where the boolean `key` is true; a trip start closes an open one (a missed end)"""
     spans: list[tuple[int, int | None]] = []
     on = seed.get(key) is True
+    held = seed.get(key + "_held") is True  # still true in the raw data though the seed says false: a repeat is no new start
     start = samples[0].t if on and samples else 0
     for s in samples:
         if id(s) in moving:
+            held = False
             if on:
                 spans.append((start, s.t))  # a trip started, so the end was missed: a stale span must not stay open
                 on = False
         elif s.k == key and isinstance(s.v, bool) and s.v != on:
+            if s.v and held:
+                continue
             on = s.v
             if on:
                 start = s.t
             else:
                 spans.append((start, s.t))
+        if s.k == key and s.v is False:
+            held = False
     if on and samples:
         spans.append((start, None))
     return spans

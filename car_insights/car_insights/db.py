@@ -135,6 +135,14 @@ def latest_t(conn, vehicle_id: str, key: str, t: int) -> int | None:
     return r[0]
 
 
+def plug_start(conn, vehicle_id: str, t: int) -> int | None:
+    """t of the first plugged=True sample after the newest plugged=False at or before t (a re-sent True is no new plug), or None."""
+    r = conn.execute("SELECT MIN(t) FROM samples WHERE vehicle_id=? AND key='plugged' AND value_json='true' AND t<=? AND t>"
+                     "COALESCE((SELECT MAX(t) FROM samples WHERE vehicle_id=? AND key='plugged' AND value_json='false' AND t<=?), -1)",
+                     (vehicle_id, t, vehicle_id, t)).fetchone()
+    return r[0]
+
+
 def has_key(conn, vehicle_id: str, key: str) -> bool:
     return conn.execute("SELECT 1 FROM samples WHERE vehicle_id=? AND key=? LIMIT 1", (vehicle_id, key)).fetchone() is not None
 

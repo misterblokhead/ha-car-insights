@@ -109,13 +109,23 @@ class Deriver:
             seed = db.latest_at_or_before(conn, vid, w, KEYS)
             # a trip that started after a plugged/charging_state=True seed means that charge's end was missed (find_charges closed
             # it at the trip start); the stale flag must not open a new session after the trip. A plugged flag older than the last
-            # charge's end is stale too: a cloud charge ended while the car stayed plugged and never sent the plug again
+            # charge's end is stale too: a cloud charge ended while the car stayed plugged and never sent the plug again.
+            # A cloud car may re-send plugged=True (a restart), so its plug is dated by the first True after the last False; the
+            # reset seed is marked held so such a repeat opens no car span either.
             for k in ("plugged", "charging_state"):
                 if seed.get(k) is True:
+                    since = db.latest_t(conn, vid, k, w) or -1
+                    if k == "plugged" and vid in self._cloud:
+                        since = db.plug_start(conn, vid, w) or -1
                     last_trip_start = conn.execute("SELECT MAX(start) FROM trips WHERE vehicle_id=?", (vid,)).fetchone()[0] or -1
-                    last_charge_end = conn.execute("SELECT MAX(end) FROM charges WHERE vehicle_id=?", (vid,)).fetchone()[0] or -1 if k == "plugged" else -1
-                    if max(last_trip_start, last_charge_end) > (db.latest_t(conn, vid, k, w) or -1):
+                    last_charge_end = -1
+                    if k == "plugged":
+                        last_charge_end = conn.execute("SELECT MAX(end) FROM charges WHERE vehicle_id=?", (vid,)).fetchone()[0] or -1
+                    if last_trip_start > since:
                         seed[k] = False
+                    elif last_charge_end > since:
+                        seed[k] = False
+                        seed["plugged_held"] = vid in self._cloud
             # a cloud report is no proof the car slept: find_trips sees only its own keys
             raw_trips = find_trips([x for x in samples if x.k in TRIP_KEYS], seed, vid in self._ignition, quiet)
             for trip in raw_trips:
