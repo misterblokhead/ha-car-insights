@@ -146,6 +146,9 @@ class Deriver:
     def charge_series(self, vid: str, start: int) -> dict | None:
         return self._series("charge_series", vid, start)
 
+    def capacity_wh(self, vid: str) -> float:
+        return self._capacity(vid)
+
     def trip_route(self, vid: str, start: int) -> list[list[float]] | None:
         r = self._conn.execute("SELECT points FROM trip_routes WHERE vehicle_id=? AND start=?", (vid, start)).fetchone()
         return None if r is None else json.loads(r[0])

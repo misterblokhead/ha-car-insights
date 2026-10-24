@@ -5,7 +5,7 @@ import time
 from datetime import tzinfo
 from typing import Callable
 
-from . import db, summary
+from . import db, route, summary
 from .derive import Deriver
 from .totals_sensors import TotalsSensors
 from .trip_sensors import TripSensors
@@ -29,8 +29,13 @@ def refresh(deriver: Deriver, sensors: TripSensors, totals: TotalsSensors, vid: 
         if totals.in_group(vid):
             totals.publish_groups()
     since = summary.week_start_ms(received, tz)
-    return deriver.current_trip(vid), summary.build(
-        last_trips, last_charges, deriver.stored_trips(vid, since=since), deriver.stored_charges(vid, since=since), received, tz)
+    def routed(t: dict) -> dict:  # the card route rides on the wire row only, never in the stored one
+        p = deriver.trip_route(vid, t["start"])
+        return {**t, "route": None if p is None else route.card(p)}
+    cur = deriver.current_trip(vid)
+    return None if cur is None else routed(cur), summary.build(
+        [routed(t) for t in last_trips], last_charges, deriver.stored_trips(vid, since=since), deriver.stored_charges(vid, since=since),
+        received, tz, deriver.capacity_wh(vid))
 
 
 def rebuild(deriver: Deriver, sensors: TripSensors, conn: sqlite3.Connection, now_ms: int) -> None:
