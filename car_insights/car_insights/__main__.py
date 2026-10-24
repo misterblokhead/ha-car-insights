@@ -47,7 +47,7 @@ def main() -> None:
     poller = Poller(conn, [SourceConf(**c) for c in opts.get("sources", [])], lambda ids, a, b: fetch_history(sup_token, ids, a, b),
                     lambda vid, min_t, received: summarize(vid, min_t, received))  # the open trip and summary only matter to the webhook ack
     pipeline.rebuild(deriver, conn, int(time.time() * 1000))  # before the server and run_daily's first publish: an ALGO bump emptied the rows
-    uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity).on_ingested, summarize=summarize, background=[poller.run, totals.run_daily],
+    uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity).on_ingested, summarize=summarize, background=[poller.run, totals.run_daily, lambda: pipeline.run_close_quiet(conn, summarize)],
                            ui=ui_api.router(conn, deriver, zones, tz, capacity, AdminCache(lambda: ha_users.fetch_users(sup_token)).is_admin, on_settings=totals.publish_groups),
                            web_dir=Path("/app/web")),
                 host="0.0.0.0", port=8099)
