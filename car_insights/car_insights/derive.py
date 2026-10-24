@@ -57,6 +57,10 @@ class Deriver:
         args = (vid,) if below is None else (vid, below)
         return max(self._conn.execute(f"SELECT MAX(end) FROM {t} WHERE vehicle_id=?{cap}", args).fetchone()[0] or -1 for t in _TABLES)
 
+    def newest_end(self, vid: str) -> int:
+        """newest closed end over both tables, or -1"""
+        return self._newest_end(vid)
+
     def update(self, vid: str, min_t: int | None, received_ms: int) -> tuple[list[dict], list[dict], set[tuple[str, int]]]:
         """Re-derive everything after the last closed segment (or before min_t when late data arrived).
         Open segments are stored with a NULL end and replaced on every call. Returns the trips and

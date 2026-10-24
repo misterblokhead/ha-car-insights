@@ -48,6 +48,8 @@ def rebuild(deriver: Deriver, sensors: TripSensors, conn: sqlite3.Connection, no
             first = conn.execute("SELECT MIN(t) FROM samples WHERE vehicle_id=?", (vid,)).fetchone()[0]
             if first is None:
                 continue
+            # a vehicle that kept its rows starts at its newest closed end (a normal restart is one update); an emptied one starts at its first sample
+            first = max(first, deriver.newest_end(vid))
             # a window is one update at a past `received_ms`: it reads only that month, and the next one resumes from what is still open.
             # A cloud charge ending just before a window's cut-off may be closed there as a SoC estimate, its car reading being beyond
             # the cut-off; each later window re-opens what the one before could have closed that early, like late data would.
