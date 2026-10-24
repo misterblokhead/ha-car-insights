@@ -109,9 +109,33 @@ def test_detail_has_series_and_capacity(conn):
     conn.execute("INSERT INTO charge_series VALUES('car1',1000,?)", (json.dumps({"t": [1, 2]}),))
     c, _ = client(conn)
     t = c.get("/api/ui/trips/car1/1000", headers=VIEWER).json()
-    assert t == {"trip": {"start": 1000, "end": 2000}, "series": None}
+    assert t == {"trip": {"start": 1000, "end": 2000}, "series": None, "route": None, "similar": None, "capacity_wh": CAP["car1"]}
     ch = c.get("/api/ui/charges/car1/1000", headers=VIEWER).json()
-    assert ch == {"charge": {"start": 1000, "end": 2000}, "series": {"t": [1, 2]}, "capacity_wh": 57_000.0}
+    assert ch == {"charge": {"start": 1000, "end": 2000}, "series": {"t": [1, 2]}, "capacity_wh": CAP["car1"], "outside_temp_c": None}
+
+
+def test_trip_detail_route_and_similar(conn):
+    put(conn, "trips", "car1", 500, 900, {"from": "Home", "to": "Work", "duration_s": 60, "distance_m": 1000, "net_wh": 100})
+    put(conn, "trips", "car1", 1000, 2000, {"from": "Home", "to": "Work"})
+    pts = [[52.0 + i / 1000, 5.0] for i in range(300)]
+    conn.execute("INSERT INTO trip_routes VALUES('car1',1000,?,?)", (ALGO, json.dumps(pts)))
+    c, _ = client(conn)
+    t = c.get("/api/ui/trips/car1/1000", headers=VIEWER).json()
+    assert t["route"] == pts and len(t["route"]) == 300
+    assert t["similar"] == {"n": 1, "avg_duration_s": 60, "avg_wh_per_100km": 10_000}
+
+
+def test_charge_outside_temp_from_sample_before_start(conn):
+    put(conn, "charges", "car1", 1000, 2000)
+    put(conn, "charges", "car1", 5000, 6000)
+    conn.execute("INSERT INTO samples VALUES('car1','a',1,500,'outside_temp','7.5')")
+    conn.execute("INSERT INTO samples VALUES('car1','a',2,3000,'outside_temp','12')")
+    conn.execute("INSERT INTO samples VALUES('car1','a',3,1500,'outside_temp','99')")  # after the first start
+    c, _ = client(conn)
+    assert c.get("/api/ui/charges/car1/1000", headers=VIEWER).json()["outside_temp_c"] == 7.5
+    assert c.get("/api/ui/charges/car1/5000", headers=VIEWER).json()["outside_temp_c"] == 12
+    put(conn, "charges", "car1", 100, 200)
+    assert c.get("/api/ui/charges/car1/100", headers=VIEWER).json()["outside_temp_c"] is None
 
 
 def test_group_view_merges_lists_newest_first(conn):
