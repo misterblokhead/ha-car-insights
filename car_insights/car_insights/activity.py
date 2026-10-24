@@ -14,20 +14,31 @@ def page(conn, vids: list[str], before: int | None, now_ms: int, tz, name: Calla
     if not vids:
         return out
     marks = ",".join("?" * len(vids))
-    cond = "start<?" if before is not None else "1"
-    args = (before,) if before is not None else ()
-    if before is not None:
-        cond += " AND end IS NOT NULL"
+    tables = (("trip", "trips"), ("charge", "charges"))
+    if before is None:
+        # first page: find the cut from the newest starts and the open rows, then read only the rows at or after it
+        newest = sorted((r[0] for _, t in tables for r in conn.execute(
+            f"SELECT start FROM {t} WHERE vehicle_id IN ({marks}) ORDER BY start DESC LIMIT ?", (*vids, min_items))), reverse=True)
+        if not newest:
+            return out
+        # the cut also reaches back to the oldest open row: it belongs on the page whatever the other cars did since
+        # shortcut: a long-stuck open row makes the first page long, cap it if that ever happens
+        open_starts = [r[0] for _, t in tables for r in conn.execute(f"SELECT start FROM {t} WHERE vehicle_id IN ({marks}) AND end IS NULL", vids)]
+        cut = _midnight_ms(datetime.fromtimestamp(min([newest[:min_items][-1], *open_starts]) / 1000, tz).date(), tz)
+        cond, args = "start>=?", (cut,)
+    else:
+        cond, args = "start<? AND end IS NOT NULL", (before,)
     rows = sorted(
-        ((start, v, kind, json.loads(j)) for kind, table in (("trip", "trips"), ("charge", "charges")) for v, start, j in conn.execute(
+        ((start, v, kind, json.loads(j)) for kind, table in tables for v, start, j in conn.execute(
             f"SELECT vehicle_id, start, json FROM {table} WHERE vehicle_id IN ({marks}) AND {cond}", (*vids, *args))),
         key=lambda r: (-r[0], r[1]))
     if not rows:
         return out
-    # the cut also reaches back to the oldest open row (first page only): it belongs on the page whatever the other cars did since
-    # shortcut: a long-stuck open row makes the first page long, cap it if that ever happens
-    oldest = min([rows[:min_items][-1][0], *(r[0] for r in rows if r[3].get("end") is None)])
-    cut = _midnight_ms(datetime.fromtimestamp(oldest / 1000, tz).date(), tz)
+    if before is None:
+        if any(conn.execute(f"SELECT 1 FROM {t} WHERE vehicle_id IN ({marks}) AND start<? LIMIT 1", (*vids, cut)).fetchone() for _, t in tables):
+            out["next"] = cut
+    else:
+        cut = _midnight_ms(datetime.fromtimestamp(rows[:min_items][-1][0] / 1000, tz).date(), tz)
     days: dict[str, dict] = {}
     for start, v, kind, row in rows:
         if start < cut:

@@ -105,3 +105,25 @@ def test_trip_items_carry_card_route(conn):
     items = page(conn, routes={("car1", a): pts})["days"][0]["items"]
     assert "route" not in items[0]
     assert items[1]["route"] is None and len(items[2]["route"]) == 48
+
+
+def test_first_page_reads_only_recent_rows(conn):
+    for i in range(200):
+        put(conn, "trips", "car1", at(2026, 9, 1) + i * 3_600_000, at(2026, 9, 1) + i * 3_600_000 + 60_000, {"distance_m": i})
+    for i in range(60):  # charges interleaved with the trips, one sharing a start with a trip
+        put(conn, "charges", "car1", at(2026, 9, 1) + i * 7_200_000, at(2026, 9, 1) + i * 7_200_000 + 60_000, {"added_wh": i})
+    put(conn, "charges", "car2", at(2026, 9, 8, 10), None)
+    put(conn, "trips", "car2", at(2026, 9, 8, 9), None)
+    seen = []
+    real = conn
+
+    class Spy:
+        def execute(self, sql, args=()):
+            seen.append(sql)
+            return real.execute(sql, args)
+
+    got = activity.page(Spy(), ["car1", "car2"], None, NOW, TZ, lambda v: v, lambda v, s: None, lambda v: 50_000.0, min_items=20)
+    n = sum(len(d["items"]) for d in got["days"])
+    assert 20 <= n < 100 and got["next"] is not None
+    assert all("LIMIT" in q or "start>=?" in q or "end IS NULL" in q for q in seen)
+    assert sum(i["end"] is None for d in got["days"] for i in d["items"]) == 2  # both open rows are there

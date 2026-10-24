@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { split, durationParts, avgSpeedKmh, per100, compare, markerAt, deltaText, kwLabel, arrow, rangeLine } from "./detail.js";
+import { split, durationParts, per100, compare, markerAt, deltaText, kwLabel, arrow, rangeLine } from "./detail.js";
 
 test("split separates the value from its unit", () => {
   assert.deepEqual(split("12.3 km"), ["12.3", "km"]);
@@ -13,14 +13,6 @@ test("durationParts keeps hours and minutes together", () => {
   assert.deepEqual(durationParts(23 * 60), ["23", "min"]);
   assert.deepEqual(durationParts(65 * 60), ["1 h 05", "min"]);
   assert.deepEqual(durationParts(null), ["–", ""]);
-});
-
-test("avgSpeedKmh is distance over duration, null without both", () => {
-  assert.equal(avgSpeedKmh(36000, 3600), 36);
-  assert.equal(avgSpeedKmh(1000, 0), null);
-  assert.equal(avgSpeedKmh(null, 600), null);
-  assert.equal(avgSpeedKmh(1000, null), null);
-  assert.equal(avgSpeedKmh(0, 600), 0);
 });
 
 test("per100 needs 100 m of distance and a net energy", () => {

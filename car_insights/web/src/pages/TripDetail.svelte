@@ -2,7 +2,7 @@
   import { onMount, tick } from "svelte";
   import { get } from "../lib/api.js";
   import { NA, km, kwh, duration } from "../lib/format.js";
-  import { arrow, avgSpeedKmh, compare, deltaText, durationParts, markerAt, per100, rangeLine, split } from "../lib/detail.js";
+  import { arrow, compare, deltaText, durationParts, markerAt, per100, rangeLine, split } from "../lib/detail.js";
   import { chargePercents, consumptionBuckets, tripCharts } from "../lib/series.js";
   import Chart from "../lib/Chart.svelte";
   import Figure from "../lib/ui/Figure.svelte";
@@ -19,7 +19,7 @@
   const from = $derived(t?.from ?? "Unknown"), to = $derived(t?.to ?? "Unknown");
   const buckets = $derived(data ? consumptionBuckets(data.series, 0.5) : null);
   const speed = $derived(data ? tripCharts(data.series)?.speed : null);
-  const avg = $derived(t ? avgSpeedKmh(t.distance_m, t.duration_s) : null);
+  const avg = $derived(t && t.avg_speed_mps != null ? t.avg_speed_mps * 3.6 : null);
   const max = $derived(t?.max_speed_mps == null ? null : t.max_speed_mps * 3.6);
   const used = $derived(t ? per100(t) : null);
   const pc = $derived(t ? chargePercents(t, data.capacity_wh) : null);

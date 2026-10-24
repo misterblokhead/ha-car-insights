@@ -96,7 +96,27 @@ def test_second_poll_overlapping_history_adds_nothing():
     calls.clear()
     poll(p)
     assert conn.execute("SELECT COUNT(*) FROM samples").fetchone()[0] == 7 and calls == []
-    assert f.calls[1] == (IDS, min(db.cursors(conn, "car1", SID).values()) - REPORT_MAX_AGE_MS, NOW - 10_000)
+    assert f.calls[1] == (IDS, NOW - REPORT_MAX_AGE_MS, NOW - 10_000)
+
+
+def test_second_poll_starts_at_previous_poll():
+    f = Fetch(FULL)
+    p, conn, _ = make(f)
+    poll(p)
+    poll(p)
+    assert min(db.cursors(conn, "car1", SID).values()) < NOW - REPORT_MAX_AGE_MS  # the stale cursor would reach back further
+    assert f.calls[1][1] == NOW - REPORT_MAX_AGE_MS
+
+
+def test_failed_fetch_does_not_advance_the_window():
+    f = Fetch(FULL)
+    p, conn, _ = make(f)
+    poll(p)
+    f.error = RuntimeError("down")
+    poll(p)
+    f.error = None
+    poll(p)
+    assert f.calls[2][1] == f.calls[1][1]
 
 
 def test_restart_resumes_from_stored_cursor_without_duplicates():
