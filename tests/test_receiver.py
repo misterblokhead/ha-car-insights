@@ -120,4 +120,4 @@ def test_is_https_url():
 
 
 def test_deep_json_does_not_match():
-    assert not r.body_vehicle_matches(b'[' * 5000 + b']' * 5000, "megane")
+    assert not r.body_vehicle_matches(b'{"vehicle_id":"megane","x":' + b'[' * 100000 + b']' * 100000 + b'}', "megane")

@@ -67,9 +67,12 @@ def test_huge_numbers_rejected():
     for bad in ({"seq": 1, "t": 2**63}, {"seq": 2**62, "t": 5}):
         with pytest.raises(ProtocolError):
             parse_batch(VALID_WITH(samples=[{**bad, "k": "speed", "v": 1}]))
+    # gap to_seq < _MAX is implied by to_seq < seq < _MAX; this only pins the older to_seq < seq rule
     gap = {"seq": 2**62 - 1, "t": 5, "k": "gap", "v": {"from_seq": 1, "to_seq": 2**62}}
     with pytest.raises(ProtocolError):
         parse_batch(VALID_WITH(samples=[gap]))
+    top = parse_batch(VALID_WITH(samples=[{"seq": 2**62 - 1, "t": 2**62 - 1, "k": "speed", "v": 1}]))
+    assert top.samples[0].seq == 2**62 - 1
 
 
 def test_deep_json_rejected():
