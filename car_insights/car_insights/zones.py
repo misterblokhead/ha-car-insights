@@ -3,8 +3,9 @@ import logging
 import math
 import time
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import astuple, dataclass
 from datetime import datetime, timezone, tzinfo
+from pathlib import Path
 from typing import Callable
 from zoneinfo import ZoneInfo
 
@@ -62,6 +63,19 @@ def fetch_zones(token: str) -> list[Zone]:
     return [Zone(z["name"], z["latitude"], z["longitude"], z["radius"]) for z in rows
             if isinstance(z, dict) and not z.get("passive") and isinstance(z.get("name"), str)  # passive zones never trigger
             and _is_num(z.get("latitude")) and _is_num(z.get("longitude")) and _is_num(z.get("radius"))]
+
+
+def zones_changed(fetch: Callable[[], list[Zone]], saved: Path) -> bool:
+    """True when the zones differ from the list saved at the last start (stored trips name the zones of their day); saves the new list.
+    False on the first start (nothing to compare with) and when the zones cannot be read."""
+    try:
+        key = json.dumps(sorted(astuple(z) for z in fetch()))
+    except Exception:
+        log.warning("could not read the zones, stored place names stay as they are", exc_info=True)
+        return False
+    old = saved.read_text() if saved.exists() else None
+    saved.write_text(key)
+    return old is not None and old != key
 
 
 def fetch_time_zone(token: str) -> tzinfo:

@@ -18,7 +18,7 @@ from .publisher import Publisher
 from .token_file import load_or_create
 from .totals_sensors import TotalsSensors
 from .trip_sensors import TripSensors
-from .zones import ZoneCache, fetch_history, fetch_time_zone, fetch_zones, supervisor_get
+from .zones import ZoneCache, fetch_history, fetch_time_zone, fetch_zones, supervisor_get, zones_changed
 
 
 def main() -> None:
@@ -35,7 +35,8 @@ def main() -> None:
         return db.capacity_wh(conn, vid, default_wh)
 
     zones = ZoneCache(lambda: fetch_zones(sup_token))
-    deriver = Deriver(conn, zones, capacity)
+    # a zone added, moved or renamed reaches stored trips and charges through a rebuild at the next start
+    deriver = Deriver(conn, zones, capacity, rebuild=zones_changed(lambda: fetch_zones(sup_token), Path("/data/zones.json")))
     sensors = TripSensors(conn, mqtt, capacity, lambda kind, vid, start: getattr(deriver, f"{kind}_series")(vid, start))
     tz = fetch_time_zone(sup_token)
     totals = TotalsSensors(conn, mqtt, tz)

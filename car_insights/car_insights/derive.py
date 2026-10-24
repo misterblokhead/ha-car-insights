@@ -31,13 +31,13 @@ def _charge_wire(c: Charge, zones: Zones) -> dict:
 
 
 class Deriver:
-    def __init__(self, conn, zones: Zones, capacity: Callable[[str], float] = lambda vid: 60_000.0):
+    def __init__(self, conn, zones: Zones, capacity: Callable[[str], float] = lambda vid: 60_000.0, rebuild: bool = False):
         self._conn, self._zones, self._capacity = conn, zones, capacity
         self._idle: dict[str, int] = {}  # vehicle -> newest sample t read while nothing was open: the next window starts there
         self._ignition: set[str] = set()  # vehicles known to send an ignition signal (it never goes away)
         self._cloud: set[str] = set()  # vehicles with a cloud source (charging_state samples)
-        # a vehicle with any old-version row in either table is rebuilt whole
-        stale = {r[0] for t in _TABLES for r in conn.execute(f"SELECT vehicle_id FROM {t} WHERE algo!=?", (ALGO,))}
+        # a vehicle with any old-version row in either table is rebuilt whole; `rebuild` (the zones changed) rebuilds every vehicle
+        stale = {r[0] for t in _TABLES for r in conn.execute(f"SELECT vehicle_id FROM {t} WHERE algo!=? OR ?", (ALGO, rebuild))}
         with db.tx(conn):
             for t in _TABLES:
                 conn.executemany(f"DELETE FROM {t} WHERE vehicle_id=?", [(v,) for v in stale])

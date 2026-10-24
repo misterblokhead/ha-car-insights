@@ -1,7 +1,7 @@
 import io
 import json
 
-from car_insights.zones import Zone, ZoneCache, fetch_history, fetch_zones, name_at
+from car_insights.zones import Zone, ZoneCache, fetch_history, fetch_zones, name_at, zones_changed
 
 HOME = Zone("Home", 52.0, 5.0, 100)
 DLAT = 1 / 111_195  # degrees of latitude per metre
@@ -97,3 +97,14 @@ def test_fetch_history_waits_longer_than_the_default_call_timeout(monkeypatch):
     from car_insights.zones import supervisor_get
     supervisor_get("/core/api/config", "tok")
     assert seen == [("history", 60), ("config", 10)]
+
+
+def test_zones_changed_compares_with_the_last_start(tmp_path):
+    saved = tmp_path / "zones.json"
+    assert zones_changed(lambda: [HOME], saved) is False  # first start: nothing to compare with
+    assert zones_changed(lambda: [HOME], saved) is False
+    assert zones_changed(lambda: [HOME, Zone("Work", 52.1, 5.1, 150)], saved) is True
+    assert zones_changed(lambda: [Zone("Work", 52.1, 5.1, 150), HOME], saved) is False  # order does not matter
+    def down():
+        raise OSError("down")
+    assert zones_changed(down, saved) is False and zones_changed(lambda: [HOME], saved) is True  # a failed read keeps the saved list

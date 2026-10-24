@@ -68,14 +68,14 @@ def test_day_of_start_and_dst(conn):
     assert [(d["date"], len(d["items"])) for d in p["days"]] == [("2026-10-25", 2), ("2026-10-24", 1)]
 
 
-def test_open_rows_first_page_only_and_not_in_summary(conn):
+def test_open_rows_first_page_only_and_in_summary(conn):
     put(conn, "trips", "car1", at(2026, 10, 25, 7), at(2026, 10, 25, 8), {"distance_m": 1000})
     put(conn, "trips", "car1", at(2026, 10, 25, 9), None, {"distance_m": 5000})
     p = page(conn)
     day = p["days"][0]
-    assert [i["end"] for i in day["items"]] == [None, at(2026, 10, 25, 8)] and day["summary"]["distance_m"] == 1000
+    assert [i["end"] for i in day["items"]] == [None, at(2026, 10, 25, 8)] and day["summary"]["distance_m"] == 6000
     q = page(conn, before=at(2026, 10, 26))
-    assert [i["end"] for i in q["days"][0]["items"]] == [at(2026, 10, 25, 8)]
+    assert [i["end"] for i in q["days"][0]["items"]] == [at(2026, 10, 25, 8)] and q["days"][0]["summary"]["distance_m"] == 1000
 
 
 def test_open_row_older_than_the_page_cut_stays_on_the_first_page(conn):

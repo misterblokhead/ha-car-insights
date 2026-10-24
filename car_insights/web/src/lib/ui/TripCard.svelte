@@ -42,4 +42,11 @@
   small { font-size: 15px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
   .route { grid-column: 3; width: 120px; height: 84px; }
   .stats { grid-column: 3; text-align: right; }
+  /* a wide list puts the outline beside the figures instead of between them, halving the card's height */
+  @container (min-width: 520px) {
+    a { grid-template-columns: 36px minmax(0, 1fr) 120px auto; }
+    .route { grid-column: 3; grid-row: 1 / 3; }
+    .big { grid-column: 4; grid-row: 1; }
+    .stats { grid-column: 4; grid-row: 2; align-self: start; }
+  }
 </style>
