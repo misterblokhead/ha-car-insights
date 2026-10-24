@@ -66,8 +66,7 @@ class Deriver:
         # shortcut: while a trip or charge is open each batch re-reads the samples since its start (a 2 h drive is ~43k
         # samples, ~0.1 s), fine until one runs for many hours; checkpoint open segments if it gets slow. An idle vehicle
         # reads only new samples, except in its first update after a restart (from its newest closed end).
-        # shortcut: the first full rebuild (fresh install or ALGO bump) loads all history in one request and find_charges is
-        # O(n x sessions); chunk the rebuild by window if it gets slow.
+        # the start-up rebuild runs this in REBUILD_STEP_MS windows (pipeline.rebuild), so the first update of a vehicle never loads all history.
         # shortcut: late data landing after a closed end (inside its P-stop proof window, or after a silence that closed it)
         # does not reopen it; senders upload oldest-first, so that needs two car senders interleaving (cloud samples never
         # reach find_trips). A trip closed only by the quiet rule is the exception: see _quiet.

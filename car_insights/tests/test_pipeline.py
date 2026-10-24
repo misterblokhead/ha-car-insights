@@ -1,12 +1,13 @@
 import json
 import math
+import sqlite3
 from datetime import timezone
 
 import pytest
 
 from car_insights import access, db
 from car_insights.derive import Deriver
-from car_insights.pipeline import close_quiet, rebuild, refresh
+from car_insights.pipeline import REBUILD_STEP_MS, close_quiet, rebuild, refresh
 from car_insights.trips import QUIET_MS
 from car_insights.totals_sensors import TotalsSensors
 from car_insights.trip_sensors import TripSensors
@@ -285,3 +286,52 @@ def test_a_rejoined_quiet_trip_fires_no_second_event_until_it_closes_for_real(en
     db.ingest(conn, "car1", SRC, [s(last + 130_000, "ignition", 2.0)], back + 1000)
     assert refresh(d, sensors, totals, "car1", last + 130_000, back + 1000, TZ)[0] is None
     assert [e["event_type"] for e, _ in mqtt.on("car_insights/car1/trip_event")] == ["ended", "ended"]  # the real end is a second "ended"
+
+
+def history_95_days(conn):
+    """95 days: a short trip each morning, a charge every 5 days, two charges across a window edge (30 d + 6 h and one day on from it),
+    and a trip still open at the end. Returns `now`."""
+    base, h = 100 * DAY, 3_600_000
+    samples = []
+    for day in range(95):
+        if day not in (30, 31):  # those mornings hold the charges across the window edge
+            samples += trip_samples(base + day * DAY + 6 * h)
+        if day % 5 == 0:
+            p = base + day * DAY + 20 * h
+            samples += [s(p, "plugged", True), s(p, "battery_wh", 20_000.0), s(p + h, "battery_wh", 25_000.0), s(p + h + 100_000, "plugged", False)]
+    for p in (base + 30 * DAY + 5 * h + h // 2, base + 31 * DAY + 5 * h + h // 2):  # 30 min before the edge of the 1st window and of its 1-day look-ahead
+        samples += [s(p, "plugged", True), s(p, "battery_wh", 20_000.0), s(p + h, "battery_wh", 25_000.0), s(p + h + 100_000, "plugged", False)]
+    open_t = base + 95 * DAY + 6 * h
+    samples += open_trip_samples(open_t, 30)
+    conn.execute("INSERT INTO vehicles(vehicle_id) VALUES('car1')")
+    db.ingest(conn, "car1", SRC, samples, open_t + 31_000)
+    return open_t + 40_000
+
+
+def test_rebuild_in_windows_matches_one_pass(env):
+    conn, mqtt, d, sensors, totals = env
+    now = history_95_days(conn)
+    copy = sqlite3.connect(":memory:")
+    conn.backup(copy)
+    rebuild(Deriver(conn, lambda la, lo: "Home"), sensors, conn, now)
+    Deriver(copy, lambda la, lo: "Home").update("car1", None, now)
+    for table in ("trips", "charges"):
+        a, b = (c.execute(f"SELECT start, end, json FROM {table} ORDER BY start").fetchall() for c in (conn, copy))
+        assert a == b
+    assert conn.execute("SELECT COUNT(*) FROM trips").fetchone()[0] == 94 and conn.execute("SELECT COUNT(*) FROM charges").fetchone()[0] == 21
+    assert conn.execute("SELECT COUNT(*) FROM trips WHERE end IS NULL").fetchone()[0] == 1
+
+
+def test_rebuild_reads_bounded_windows(env, monkeypatch):
+    conn, mqtt, d, sensors, totals = env
+    now = history_95_days(conn)
+    spans, real = [], db.samples_after
+
+    def spy(*args):
+        out = real(*args)
+        spans.append(out[-1].t - out[0].t if out else 0)
+        return out
+
+    monkeypatch.setattr(db, "samples_after", spy)
+    rebuild(Deriver(conn, lambda la, lo: "Home"), sensors, conn, now)
+    assert len(spans) >= 4 and max(spans) <= REBUILD_STEP_MS + 2 * DAY  # the re-reads that start at an open segment are far shorter

@@ -14,6 +14,7 @@ from .trips import QUIET_MS
 log = logging.getLogger(__name__)
 
 EVENT_MAX_AGE_MS = 3_600_000  # a close older than this at arrival (a backlog) updates the sensors but fires no event
+REBUILD_STEP_MS = 30 * 86_400_000  # the start-up rebuild derives this much history per update
 
 
 def refresh(deriver: Deriver, sensors: TripSensors, totals: TotalsSensors, vid: str, min_t: int | None, received: int, tz: tzinfo) -> tuple[dict | None, dict]:
@@ -43,6 +44,12 @@ def rebuild(deriver: Deriver, sensors: TripSensors, conn: sqlite3.Connection, no
     its next ingest, then republish its last trip and charge states (a rebuild may have closed one). No events."""
     for (vid,) in conn.execute("SELECT vehicle_id FROM vehicles").fetchall():
         try:
+            first = conn.execute("SELECT MIN(t) FROM samples WHERE vehicle_id=?", (vid,)).fetchone()[0]
+            if first is None:
+                continue
+            # a window is one update at a past `received_ms`: it reads only that month, and the next one resumes from what is still open
+            for m in range(first + REBUILD_STEP_MS, now_ms, REBUILD_STEP_MS):
+                deriver.update(vid, None, m)
             deriver.update(vid, None, now_ms)
             trips, charges = deriver.stored_trips(vid, 1), deriver.stored_charges(vid, 1)
             sensors.publish(vid, trips[0] if trips else None, charges[0] if charges else None, [], [])
