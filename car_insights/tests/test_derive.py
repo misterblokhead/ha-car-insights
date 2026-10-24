@@ -111,7 +111,7 @@ def test_algo_change_clears_rows():
 
 def test_late_batch_inside_open_trip_keeps_trip_start():
     conn, d = setup([s(200_000, "battery_wh", 20_000.0), s(201_000, "plugged", True),
-                     s(3_600_000, "battery_wh", 25_000.0), s(3_700_000, "plugged", False)])
+                     s(500_000, "battery_wh", 25_000.0), s(600_000, "plugged", False)])  # under QUIET_MS apart: the open trip stays open
     d.update("car1", None, DAY)  # a later charge is stored, so the batches below take the late path
     db.ingest(conn, "car1", SRC, [s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 51_000, 1000)]], 0)
     d.update("car1", 0, DAY)

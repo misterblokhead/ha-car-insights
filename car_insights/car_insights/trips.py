@@ -54,6 +54,9 @@ def find_trips(samples: list[Sample], seed: dict[str, Any], has_ignition: bool, 
         # nothing, only silence (the car asleep: two samples that far apart, counting only the keys find_trips reads) does
         if cur and p is not None and s.t - (prev_t if has_ignition else samples[p].t) >= MERGE_GAP_MS:
             close(p + 1, True)
+        # the car records every second while a trip is open, so this much silence means it was off
+        if cur and s.t - prev_t >= QUIET_MS:
+            close(i, True)
         v = num(s.v)
         if v is not None:
             if s.k == "gear":
