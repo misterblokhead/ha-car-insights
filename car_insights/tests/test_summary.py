@@ -71,3 +71,9 @@ def test_week_start_is_local_midnight_six_days_back():
     assert week_start_ms(NOW, TZ) == ms(2026, 10, 16)
     assert week_start_ms(ms(2026, 10, 22, 0, 0), TZ) == ms(2026, 10, 16)
     assert week_start_ms(ms(2026, 10, 22, 23, 59), TZ) == ms(2026, 10, 16)
+
+
+def test_capacity_in_summary_and_in_the_rev():
+    a, b = build([], [], [], [], NOW, TZ, capacity_wh=57000.0), build([], [], [], [], NOW, TZ, capacity_wh=60000.0)
+    assert a["capacity_wh"] == 57000.0 and a["rev"] != b["rev"]
+    assert build([], [], [], [], NOW, TZ)["capacity_wh"] is None

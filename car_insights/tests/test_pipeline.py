@@ -1,3 +1,5 @@
+import json
+import math
 from datetime import timezone
 
 import pytest
@@ -24,7 +26,7 @@ def trip_samples(t0):
 def env():
     conn = db.connect(":memory:")
     mqtt = FakeMqtt()
-    d = Deriver(conn, lambda la, lo: "Home")
+    d = Deriver(conn, lambda la, lo: "Home", lambda vid: 57_000.0)
     return conn, mqtt, d, TripSensors(conn, mqtt, lambda vid: 57_000.0, lambda kind, vid, start: getattr(d, f"{kind}_series")(vid, start)), TotalsSensors(conn, mqtt, TZ, now_ms=lambda: 10_000_000)
 
 
@@ -102,7 +104,7 @@ def test_refined_charge_fires_no_second_event(env):
                s(now - 1_800_000, "soc_percent", 81.0), s(now - 1_800_000, "charging_state", False)], now)
     refresh(d, sensors, totals, "car1", None, now, TZ)
     [(ev, _)] = mqtt.on("car_insights/car1/charge_event")
-    assert ev["added_wh"] == 24_600 and ev["energy_source"] == "soc_estimate"
+    assert ev["added_wh"] == 23_370 and ev["energy_source"] == "soc_estimate"
     db.ingest(conn, "car1", SRC, [s(now - 600_000, "battery_wh", 46_550.0)], now)
     refresh(d, sensors, totals, "car1", now - 600_000, now, TZ)
     assert len(mqtt.on("car_insights/car1/charge_event")) == 1  # the refinement is no new event
@@ -214,3 +216,52 @@ def test_rebuild_publishes_the_trip_it_closed_but_no_event(env):
     rebuild(Deriver(conn, lambda la, lo: "Home"), sensors, conn, last + QUIET_MS)  # the restart finds the car quiet
     assert mqtt.on("car_insights/car1/last_trip")[-1][0]["end"] == last
     assert mqtt.on("car_insights/car1/trip_event") == []
+
+
+def winding_samples(t0, secs, open_=False):
+    """a trip drifting north on a wiggling track: one gps fix a second, so the stored route has far more than 48 points"""
+    gps = [s(t0 + 1000 * i, "gps", [52.0 + 0.0001 * i, 5.0 + 0.001 * math.sin(i / 4)]) for i in range(secs)]
+    body = open_trip_samples(t0, secs) + gps
+    return body if open_ else body + [s(t0 + secs * 1000 + 10_000, "ignition", 2.0)]
+
+
+def routed_env(env, n_closed=2):
+    conn, mqtt, d, sensors, totals = env
+    now = 10 * DAY
+    for i in range(n_closed):
+        db.ingest(conn, "car1", SRC, winding_samples(now - (i + 2) * 3_600_000, 80), now)
+    db.ingest(conn, "car1", SRC, winding_samples(now - 300_000, 80, open_=True), now)
+    return now
+
+
+def test_summary_trips_and_current_trip_carry_card_routes(env):
+    conn, mqtt, d, sensors, totals = env
+    now = routed_env(env)
+    cur, out = refresh(d, sensors, totals, "car1", None, now, TZ)
+    assert len(out["trips"]) == 2
+    for t in out["trips"]:
+        assert 2 <= len(t["route"]) <= 48 and all(len(p) == 2 for p in t["route"])
+    assert out["last_trip"]["route"] == out["trips"][0]["route"]
+    assert cur["end"] is None and 2 <= len(cur["route"]) <= 48
+
+
+def test_trip_without_stored_route_gets_null(env):
+    conn, mqtt, d, sensors, totals = env
+    now = 10 * DAY
+    db.ingest(conn, "car1", SRC, winding_samples(now - 3_600_000, 80), now)
+    refresh(d, sensors, totals, "car1", None, now, TZ)  # nothing is open afterwards, so the next refresh derives nothing again
+    conn.execute("DELETE FROM trip_routes")
+    _, out = refresh(d, sensors, totals, "car1", None, now, TZ)
+    assert len(out["trips"]) == 1 and out["last_trip"]["route"] is None and out["trips"][0]["route"] is None
+
+
+def test_summary_carries_capacity(env):
+    conn, mqtt, d, sensors, totals = env
+    assert refresh(d, sensors, totals, "car1", None, 1000, TZ)[1]["capacity_wh"] == 57_000.0
+
+
+def test_summary_size_with_20_routed_trips(env):
+    conn, mqtt, d, sensors, totals = env
+    now = routed_env(env, 20)
+    _, out = refresh(d, sensors, totals, "car1", None, now, TZ)
+    assert len(out["trips"]) == 20 and len(json.dumps(out)) < 40_000
