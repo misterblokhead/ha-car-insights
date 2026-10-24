@@ -3,6 +3,7 @@ import sqlite3
 from datetime import date, datetime, timedelta, tzinfo
 from typing import Callable
 
+from .costs import period_costs
 from .totals import _midnight_ms
 
 
@@ -41,7 +42,7 @@ def period_bounds(period: str, at: date, tz: tzinfo) -> tuple[int, int]:
     return _midnight_ms(lo, tz), _midnight_ms(hi, tz)
 
 
-def _totals(conn, vids: list[str], lo: int, hi: int) -> dict:
+def _totals(conn, vids: list[str], lo: int, hi: int, tz: tzinfo, now_ms: int) -> dict:
     q = ",".join("?" * len(vids))
     d, n, nt = conn.execute(
         f"SELECT COALESCE(SUM(json_extract(json,'$.distance_m')),0), COALESCE(SUM(json_extract(json,'$.net_wh')),0), COUNT(*)"
@@ -49,16 +50,18 @@ def _totals(conn, vids: list[str], lo: int, hi: int) -> dict:
     a, nc = conn.execute(
         f"SELECT COALESCE(SUM(json_extract(json,'$.added_wh')),0), COUNT(*)"
         f" FROM charges WHERE vehicle_id IN ({q}) AND end IS NOT NULL AND start >= ? AND start < ?", (*vids, lo, hi)).fetchone()
-    return {"distance_m": float(d), "net_wh": float(n), "charged_wh": float(a), "trips": nt, "charges": nc}
+    return {"distance_m": float(d), "net_wh": float(n), "charged_wh": float(a), "trips": nt, "charges": nc,
+            "cost": period_costs(conn, vids, lo, hi, tz, now_ms)}
 
 
 def stats(conn: sqlite3.Connection, vids: list[str], period: str, at: date, tz: tzinfo,
-          names: Callable[[str], str] | None = None) -> dict:
+          names: Callable[[str], str] | None = None, now_ms: int | None = None) -> dict:
     """Totals of the closed trips and charges of `vids` in the period containing `at`, against the period before it."""
     first, after = _span(period, at)
     lo, hi = period_bounds(period, at, tz)
     plo, phi = period_bounds(period, first - timedelta(days=1), tz)
     q = ",".join("?" * len(vids))
+    now_ms = hi if now_ms is None else now_ms  # None: the period has ended
     # buckets are days, or months for a year; a trip belongs to the one it started in (local time)
     key = (lambda d: d.replace(day=1)) if period == "year" else (lambda d: d)
     days = [first + timedelta(days=i) for i in range((after - first).days)]
@@ -84,10 +87,10 @@ def stats(conn: sqlite3.Connection, vids: list[str], period: str, at: date, tz: 
     places.sort(key=lambda p: (-p["wh"], p["place"] is None, p["place"] or ""))
     return {
         "period": {"start": lo, "end": hi},
-        "totals": _totals(conn, vids, lo, hi),
-        "previous": _totals(conn, vids, plo, phi),
+        "totals": _totals(conn, vids, lo, hi, tz, now_ms),
+        "previous": _totals(conn, vids, plo, phi, tz, now_ms),
         "buckets": [{"start": _midnight_ms(d, tz), "distance_m": m, "net_wh": wh} for d, (m, wh) in sums.items()],
         "by_place": places,
         "highlights": {"longest": longest, "most_efficient": best[1] if best else None, "recup_wh": recup, "gross_wh": gross},
-        "per_vehicle": [{"id": v, "name": names(v), "totals": _totals(conn, [v], lo, hi)} for v in vids] if names else None,
+        "per_vehicle": [{"id": v, "name": names(v), "totals": _totals(conn, [v], lo, hi, tz, now_ms)} for v in vids] if names else None,
     }

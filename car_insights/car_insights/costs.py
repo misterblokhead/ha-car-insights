@@ -98,3 +98,16 @@ def trip_cost(conn, vid: str, trip: dict, tz) -> dict:
     energy, fixed = _energy(conn, vid, trip), _fixed(conn, vid, trip, tz)
     total = None if energy is None else energy + (fixed or 0)
     return {"energy": energy, "fixed": fixed, "total": total}
+
+
+def period_costs(conn, vids: list[str], lo: int, hi: int, tz, now_ms: int) -> dict:
+    """Costs of the closed charges starting in [lo, hi) plus the fixed costs of the days up to the period's last day, or today if still running."""
+    q = ",".join("?" * len(vids))
+    energy, uncosted = 0.0, 0
+    for vid, start, end, js in conn.execute(
+            f"SELECT vehicle_id, start, end, json FROM charges WHERE vehicle_id IN ({q}) AND end IS NOT NULL AND start >= ? AND start < ?", (*vids, lo, hi)):
+        a = charge_cost(conn, vid, json.loads(js) | {"start": start, "end": end})["amount"]
+        energy, uncosted = (energy + a, uncosted) if a is not None else (energy, uncosted + 1)
+    day = lambda ms: datetime.fromtimestamp(ms / 1000, tz).date()
+    fixed = fixed_between(conn, vids, day(lo), min(day(hi - 1), day(now_ms)) + timedelta(days=1))
+    return {"energy": energy, "fixed": fixed, "total": energy + fixed, "uncosted": uncosted}

@@ -143,7 +143,7 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
         vids, today = vids_of(await who(request), view), datetime.fromtimestamp(now_ms() / 1000, tz).date()
         if at is not None and at > today:
             raise HTTPException(422, "at is in the future")
-        return stats.stats(conn, vids, period, at or today, tz, (lambda v: db.device_info(conn, v)[0]) if view.startswith("g:") else None)
+        return stats.stats(conn, vids, period, at or today, tz, (lambda v: db.device_info(conn, v)[0]) if view.startswith("g:") else None, now_ms())
 
     @r.get("/trips/{vid}/{start}")
     async def trip(request: Request, vid: str, start: StartMs):

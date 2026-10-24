@@ -2,7 +2,9 @@ import json
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
-from car_insights import stats
+from pytest import approx
+
+from car_insights import prices, stats
 from car_insights.db import connect
 from car_insights.derive import ALGO
 
@@ -57,6 +59,10 @@ def ms(*a):
     return int(datetime(*a, tzinfo=TZ).timestamp() * 1000)
 
 
+def plain(m):
+    return {k: v for k, v in m.items() if k != "cost"}
+
+
 def row(c, table, start, extra, vid="car1", end=True):
     end = start + 1000 if end else None
     c.execute(f"INSERT INTO {table} VALUES(?,?,?,?,?)", (vid, start, end, ALGO, json.dumps({"start": start, "end": end, **extra})))
@@ -94,8 +100,8 @@ def test_previous_period_totals():
     row(c, "charges", ms(2026, 10, 15), {"added_wh": 5000})
     row(c, "trips", ms(2026, 10, 20), {"distance_m": 3000, "net_wh": 300})
     s = stats.stats(c, ["car1"], "week", OCT24, TZ)
-    assert s["previous"] == {"distance_m": 1000, "net_wh": 100, "charged_wh": 5000, "trips": 1, "charges": 1}
-    assert s["totals"] == {"distance_m": 3000, "net_wh": 300, "charged_wh": 0, "trips": 1, "charges": 0}
+    assert plain(s["previous"]) == {"distance_m": 1000, "net_wh": 100, "charged_wh": 5000, "trips": 1, "charges": 1}
+    assert plain(s["totals"]) == {"distance_m": 3000, "net_wh": 300, "charged_wh": 0, "trips": 1, "charges": 0}
     assert s["period"] == {"start": ms(2026, 10, 19), "end": ms(2026, 10, 26)}
     # the month before January is December of the year before; the boundary instant belongs to the later period
     row(c, "trips", ms(2025, 12, 31, 23, 59), {"distance_m": 7})
@@ -110,7 +116,7 @@ def test_open_rows_excluded():
     row(c, "trips", ms(2026, 10, 20), {"distance_m": 50_000, "net_wh": 9000, "recup_wh": 5, "gross_wh": 9}, end=False)
     row(c, "charges", ms(2026, 10, 20), {"added_wh": 9000, "place": "Home"}, end=False)
     s = stats.stats(c, ["car1"], "week", OCT24, TZ)
-    assert s["totals"] == {"distance_m": 0, "net_wh": 0, "charged_wh": 0, "trips": 0, "charges": 0}
+    assert plain(s["totals"]) == {"distance_m": 0, "net_wh": 0, "charged_wh": 0, "trips": 0, "charges": 0}
     assert s["by_place"] == [] and s["highlights"] == {"longest": None, "most_efficient": None, "recup_wh": 0, "gross_wh": 0}
     assert all(b["distance_m"] == 0 for b in s["buckets"])
 
@@ -159,9 +165,9 @@ def test_per_vehicle_split():
     names = {"car1": "Car One", "car2": "Car Two"}.get
     s = stats.stats(c, ["car1", "car2"], "week", OCT24, TZ, names)
     assert s["totals"]["distance_m"] == 6000
-    assert s["per_vehicle"] == [
-        {"id": "car1", "name": "Car One", "totals": {"distance_m": 1000, "net_wh": 100, "charged_wh": 0, "trips": 1, "charges": 0}},
-        {"id": "car2", "name": "Car Two", "totals": {"distance_m": 5000, "net_wh": 500, "charged_wh": 700, "trips": 1, "charges": 1}}]
+    assert [(v["id"], v["name"], plain(v["totals"])) for v in s["per_vehicle"]] == [
+        ("car1", "Car One", {"distance_m": 1000, "net_wh": 100, "charged_wh": 0, "trips": 1, "charges": 0}),
+        ("car2", "Car Two", {"distance_m": 5000, "net_wh": 500, "charged_wh": 700, "trips": 1, "charges": 1})]
     assert stats.stats(c, ["car1", "car2"], "week", OCT24, TZ)["per_vehicle"] is None
 
 
@@ -171,6 +177,24 @@ def test_hidden_vehicle_rows_never_leak():
     row(c, "trips", ms(2026, 10, 21), {"distance_m": 90_000, "net_wh": 1, "recup_wh": 7, "gross_wh": 8, "from": "Home", "to": "Work"}, vid="car3")
     row(c, "charges", ms(2026, 10, 21), {"added_wh": 9999, "place": "Shop"}, vid="car3")
     s = stats.stats(c, ["car1", "car2"], "week", OCT24, TZ, {"car1": "A", "car2": "B"}.get)
-    assert s["totals"] == {"distance_m": 1000, "net_wh": 100, "charged_wh": 0, "trips": 1, "charges": 0}
+    assert plain(s["totals"]) == {"distance_m": 1000, "net_wh": 100, "charged_wh": 0, "trips": 1, "charges": 0}
     assert s["by_place"] == [] and s["highlights"]["longest"]["vehicle_id"] == "car1" and s["highlights"]["recup_wh"] == 0
     assert [p["id"] for p in s["per_vehicle"]] == ["car1", "car2"]
+
+
+def test_period_cost():
+    c = connect(":memory:")
+    now = ms(2026, 10, 10, 12)
+    prices.set_tariff(c, "ac", 0, 0.40)
+    for vid in ("car1", "car2"):
+        c.execute("INSERT INTO vehicles(vehicle_id) VALUES(?)", (vid,))
+        row(c, "charges", ms(2026, 10, 5, 8), {"added_wh": 20_000}, vid=vid)
+        prices.add_fixed_cost(c, vid, "Insurance", 31.0, "month", date(2026, 9, 1), None)
+    names = {"car1": "A", "car2": "B"}.get
+    s = stats.stats(c, ["car1", "car2"], "month", date(2026, 10, 10), TZ, names, now)
+    assert s["totals"]["cost"]["fixed"] == approx(20.0)  # 10 days of 2 vehicles
+    assert s["previous"]["cost"]["fixed"] == approx(62.0)  # the ended September counts whole
+    assert s["totals"]["cost"]["energy"] == approx(2 * 20 * 1.10 * 0.40)
+    assert sum(v["totals"]["cost"]["total"] for v in s["per_vehicle"]) == approx(s["totals"]["cost"]["total"])
+    one = stats.stats(c, ["car1"], "month", date(2026, 10, 10), TZ, None, now)
+    assert one["totals"]["cost"]["fixed"] == approx(10.0) and one["previous"]["cost"]["fixed"] == approx(31.0)
