@@ -33,12 +33,14 @@ def refresh(deriver: Deriver, sensors: TripSensors, totals: TotalsSensors, vid: 
         last_trips, last_charges, deriver.stored_trips(vid, since=since), deriver.stored_charges(vid, since=since), received, tz)
 
 
-def rebuild(deriver: Deriver, conn: sqlite3.Connection, now_ms: int) -> None:
+def rebuild(deriver: Deriver, sensors: TripSensors, conn: sqlite3.Connection, now_ms: int) -> None:
     """At start-up, before the first totals publish: derive every vehicle again, so rows dropped by an ALGO bump are back before
-    its next ingest. No sensors, no events: the retained states catch up at the next close."""
+    its next ingest, then republish its last trip and charge states (a rebuild may have closed one). No events."""
     for (vid,) in conn.execute("SELECT vehicle_id FROM vehicles").fetchall():
         try:
             deriver.update(vid, None, now_ms)
+            trips, charges = deriver.stored_trips(vid, 1), deriver.stored_charges(vid, 1)
+            sensors.publish(vid, trips[0] if trips else None, charges[0] if charges else None, [], [])
         except Exception:
             log.exception("rebuild of %s failed", vid)
 

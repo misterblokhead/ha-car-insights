@@ -144,7 +144,7 @@ def test_rebuild_restores_rows_and_totals_after_an_algo_bump_before_any_ingest(e
     d2 = Deriver(conn, lambda la, lo: "Home")  # the restart: stale rows are dropped
     totals.publish_vehicle("car1")
     assert conn.execute("SELECT COUNT(*) FROM trips").fetchone()[0] == 0 and mqtt.on("car_insights/car1/totals")[-1][0]["month_distance"] == 0.0
-    rebuild(d2, conn, now)
+    rebuild(d2, sensors, conn, now)
     assert conn.execute("SELECT COUNT(*) FROM trips WHERE vehicle_id='car1'").fetchone()[0] == 1
     totals.publish_vehicle("car1")
     assert mqtt.on("car_insights/car1/totals")[-1][0]["month_distance"] == 1.0
@@ -162,7 +162,7 @@ def test_rebuild_survives_one_vehicle_failing(env):
             if vid == "car1":
                 raise RuntimeError("boom")
             return super().update(vid, min_t, received_ms)
-    rebuild(Boom(conn, lambda la, lo: "Home"), conn, now)
+    rebuild(Boom(conn, lambda la, lo: "Home"), sensors, conn, now)
     assert [r[0] for r in conn.execute("SELECT DISTINCT vehicle_id FROM trips")] == ["car2"]
 
 
@@ -202,3 +202,15 @@ def test_close_quiet_survives_one_vehicle_failing(env):
 
     close_quiet(conn, summarize, QUIET_MS)
     assert sorted(seen) == ["car1", "car2"]
+
+
+def test_rebuild_publishes_the_trip_it_closed_but_no_event(env):
+    conn, mqtt, d, sensors, totals = env
+    t0 = 10 * DAY
+    last = t0 + 31_000
+    conn.execute("INSERT INTO vehicles(vehicle_id) VALUES('car1')")
+    db.ingest(conn, "car1", SRC, [*open_trip_samples(t0, 30), s(last, "gear", 4.0)], last)
+    refresh(d, sensors, totals, "car1", None, last, TZ)
+    rebuild(Deriver(conn, lambda la, lo: "Home"), sensors, conn, last + QUIET_MS)  # the restart finds the car quiet
+    assert mqtt.on("car_insights/car1/last_trip")[-1][0]["end"] == last
+    assert mqtt.on("car_insights/car1/trip_event") == []
