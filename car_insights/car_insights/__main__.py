@@ -11,7 +11,7 @@ from . import db
 from .db import connect
 from .mqtt_out import MqttOut
 from .poller import Poller, SourceConf
-from . import ha_users, pipeline, ui_api
+from . import ha_users, pipeline, prices, ui_api
 from .derive import Deriver
 from .ha_users import AdminCache
 from .publisher import Publisher
@@ -36,7 +36,8 @@ def main() -> None:
 
     zones = ZoneCache(lambda: fetch_zones(sup_token))
     # a zone added, moved or renamed reaches stored trips and charges through a rebuild at the next start
-    deriver = Deriver(conn, zones, capacity, rebuild=zones_changed(lambda: fetch_zones(sup_token), Path("/data/zones.json")))
+    deriver = Deriver(conn, zones, capacity, rebuild=zones_changed(lambda: fetch_zones(sup_token), Path("/data/zones.json")),
+                      spots=lambda lat, lon: prices.spot_name_at(conn, lat, lon))
     sensors = TripSensors(conn, mqtt, capacity, lambda kind, vid, start: getattr(deriver, f"{kind}_series")(vid, start))
     tz = fetch_time_zone(sup_token)
     totals = TotalsSensors(conn, mqtt, tz)

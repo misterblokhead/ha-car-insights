@@ -218,6 +218,21 @@ def test_charge_stored_with_place():
     assert d.update("car1", None, 10 * DAY) == ([], [], set())
 
 
+def test_charge_row_keeps_point_zone_and_spot():
+    samples = [s(0, "battery_wh", 20_000.0), s(0, "gps", [52.0, 5.0]), s(1000, "plugged", True),
+               s(3_600_000, "battery_wh", 25_000.0), s(3_700_000, "plugged", False)]
+
+    def charge(zones, spots, samples=samples):
+        conn = db.connect(":memory:")
+        db.ingest(conn, "car1", SRC, samples, 0)
+        c = Deriver(conn, zones, spots=spots).update("car1", None, 10 * DAY)[1][0]
+        return c["lat"], c["lon"], c["zone"], c["place"]
+
+    assert charge(lambda la, lo: None, lambda la, lo: "Plaza") == (52.0, 5.0, None, "Plaza")
+    assert charge(lambda la, lo: "Work", lambda la, lo: "Plaza") == (52.0, 5.0, "Work", "Work")
+    assert charge(lambda la, lo: "Work", lambda la, lo: "Plaza", [s(0, "battery_wh", 20_000.0), *samples[2:]]) == (None,) * 4
+
+
 def test_open_charge_not_stored():
     conn, d = setup([s(0, "battery_wh", 20_000.0), s(1000, "plugged", True), s(60_000, "battery_wh", 21_000.0)])
     assert d.update("car1", None, 10 * DAY) == ([], [], set())
@@ -556,7 +571,7 @@ def test_algo_bump_rebuilds():
     d.update("car1", None, at("11:30:00"))
     conn.execute("UPDATE charges SET algo=1")
     d2 = Deriver(conn, lambda la, lo: "Home")
-    assert d2.stored_charges("car1") == [] and ALGO == 5
+    assert d2.stored_charges("car1") == [] and ALGO == 6
     _, charges, _ = d2.update("car1", None, at("11:30:00"))
     assert len(charges) == 1
 

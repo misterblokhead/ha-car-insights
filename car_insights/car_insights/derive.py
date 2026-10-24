@@ -11,7 +11,7 @@ from .odometer import chain
 from .trips import KEYS as TRIP_KEYS, QUIET_MS, Trip, find_trips
 
 log = logging.getLogger(__name__)
-ALGO = 5  # bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
+ALGO = 6  # charges gained lat, lon and zone; bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
 ESTIMATE_HOLD_MS = 7 * 86_400_000  # a SoC-estimated charge this recent is re-derived on every update: the car's value may still arrive
 _TABLES = ("trips", "charges")
 _SATELLITES = {"trips": ("trip_series", "trip_routes"), "charges": ("charge_series",)}  # deleted and inserted exactly with their rows
@@ -27,15 +27,18 @@ def _trip_wire(t: Trip, zones: Zones, odo: tuple[float | None, float | None]) ->
             "odometer_start_km": odo[0], "odometer_end_km": odo[1]}
 
 
-def _charge_wire(c: Charge, zones: Zones) -> dict:
+def _charge_wire(c: Charge, zones: Zones, spots: Zones) -> dict:
     d = asdict(c)
     fix = d.pop("fix")
-    return {**d, "place": zones(*fix) if fix else None, "duration_s": round(c.duration_s)}
+    zone = zones(*fix) if fix else None
+    return {**d, "lat": fix and fix[0], "lon": fix and fix[1], "zone": zone, "place": zone or (spots(*fix) if fix else None),
+            "duration_s": round(c.duration_s)}
 
 
 class Deriver:
-    def __init__(self, conn, zones: Zones, capacity: Callable[[str], float] = lambda vid: 60_000.0, rebuild: bool = False):
-        self._conn, self._zones, self._capacity = conn, zones, capacity
+    def __init__(self, conn, zones: Zones, capacity: Callable[[str], float] = lambda vid: 60_000.0, rebuild: bool = False,
+                 spots: Zones = lambda lat, lon: None):
+        self._conn, self._zones, self._capacity, self._spots = conn, zones, capacity, spots
         self._idle: dict[str, int] = {}  # vehicle -> newest sample t read while nothing was open: the next window starts there
         self._ignition: set[str] = set()  # vehicles known to send an ignition signal (it never goes away)
         self._cloud: set[str] = set()  # vehicles with a cloud source (charging_state samples)
@@ -135,7 +138,7 @@ class Deriver:
             for trip in raw_trips:
                 if trip.quiet_closed:
                     self._quiet[vid] = trip.start
-            charges = [_charge_wire(c, self._zones) for c in find_charges(samples, seed, vid in self._cloud, self._capacity(vid))]
+            charges = [_charge_wire(c, self._zones, self._spots) for c in find_charges(samples, seed, vid in self._cloud, self._capacity(vid))]
             new: dict[str, list[dict]] = {"trips": [], "charges": []}
             refined: set[tuple[str, int]] = set()
             trips: list[dict] = []

@@ -154,6 +154,15 @@ def test_rebuild_restores_rows_and_totals_after_an_algo_bump_before_any_ingest(e
     assert len(mqtt.on("car_insights/car1/trip_event")) == 1  # only the original one: a rebuild fires no events
 
 
+def test_rebuild_logs_duration(env, caplog):
+    conn, mqtt, d, sensors, totals = env
+    conn.execute("INSERT INTO vehicles(vehicle_id) VALUES('car1')")
+    with caplog.at_level("INFO", logger="car_insights.pipeline"):
+        rebuild(d, sensors, conn, 10_000_000)
+    msgs = [r.getMessage() for r in caplog.records if r.levelname == "INFO"]
+    assert len(msgs) == 1 and msgs[0].startswith("rebuild of 1 vehicles took")
+
+
 def test_rebuild_survives_one_vehicle_failing(env):
     conn, mqtt, d, sensors, totals = env
     now = 10_000_000
