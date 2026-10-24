@@ -83,7 +83,7 @@ def _fixed(conn, vid: str, trip: dict, tz) -> float | None:
     end_day = datetime.fromtimestamp(trip["end"] / 1000, tz).date()
     first = conn.execute("SELECT COALESCE(MIN(start), ?) FROM trips WHERE vehicle_id=?", (trip["start"], vid)).fetchone()[0]
     lo = max(end_day - timedelta(days=FIXED_DAYS - 1), datetime.fromtimestamp(first / 1000, tz).date())
-    km = conn.execute("SELECT COALESCE(SUM(json_extract(json,'$.distance_m')),0) / 1000 FROM trips "
+    km = conn.execute("SELECT COALESCE(SUM(json_extract(json,'$.distance_m')),0) / 1000.0 FROM trips "
                       "WHERE vehicle_id=? AND end IS NOT NULL AND start>=? AND end<=?",
                       (vid, _midnight_ms(lo, tz), trip["end"])).fetchone()[0]
     if km < MIN_FIXED_KM:
