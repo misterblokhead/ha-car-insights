@@ -114,16 +114,17 @@ class Deriver:
             # reset seed is marked held so such a repeat opens no car span either.
             for k in ("plugged", "charging_state"):
                 if seed.get(k) is True:
-                    since = db.latest_t(conn, vid, k, w) or -1
-                    if k == "plugged" and vid in self._cloud:
-                        since = db.plug_start(conn, vid, w) or -1
+                    last_t = db.latest_t(conn, vid, k, w) or -1
                     last_trip_start = conn.execute("SELECT MAX(start) FROM trips WHERE vehicle_id=?", (vid,)).fetchone()[0] or -1
                     last_charge_end = -1
+                    plug_t = last_t
                     if k == "plugged":
                         last_charge_end = conn.execute("SELECT MAX(end) FROM charges WHERE vehicle_id=?", (vid,)).fetchone()[0] or -1
-                    if last_trip_start > since:
+                        if vid in self._cloud:
+                            plug_t = db.plug_start(conn, vid, w) or -1
+                    if last_trip_start > last_t:  # a True after the trip is a real plug, however often it was re-sent
                         seed[k] = False
-                    elif last_charge_end > since:
+                    elif last_charge_end > plug_t:
                         seed[k] = False
                         seed["plugged_held"] = vid in self._cloud
             # a cloud report is no proof the car slept: find_trips sees only its own keys

@@ -529,6 +529,19 @@ def test_resent_plugged_true_after_a_closed_cloud_charge_opens_nothing():
     assert d.stored_charges("car1", 10) == [c] and _count(conn, "charges") == 1
 
 
+def test_resent_plugged_after_a_missed_unplug_and_trip_opens_nothing_after_the_cloud_charge():
+    h, m = 3_600_000, 60_000
+    conn, d = setup([s(0, "gear", 4.0), s(0, "ignition", 2.0), s(0, "plugged", True), s(0, "battery_wh", 20_000.0)])  # the unplug is never stored
+    db.ingest(conn, "car1", SRC, trip_samples(2 * h), 0)
+    db.ingest(conn, "car1", SRC, [s(3 * h, "plugged", True), s(3 * h, "battery_wh", 40_000.0), s(4 * h + m, "battery_wh", 50_000.0)], 0)
+    db.ingest(conn, "car1", CLOUD, [s(3 * h + m, "charging_state", True), s(4 * h, "charging_state", False)], 0)
+    d.update("car1", None, 5 * h)
+    assert _count(conn, "charges") == 1  # the cloud charge (the plug before the trip gained nothing)
+    db.ingest(conn, "car1", SRC, [s(6 * h, "plugged", True), s(6 * h + m, "battery_wh", 50_010.0)], 0)  # re-sent while still plugged
+    d.update("car1", None, 7 * h)
+    assert _count(conn, "charges") == 1  # open rows count: no phantom at 6 h
+
+
 def test_plugged_again_after_a_closed_cloud_charge_still_opens_a_charge():
     conn, d, p = _cloud_charge_while_plugged()
     q = p + 3 * 3_600_000
