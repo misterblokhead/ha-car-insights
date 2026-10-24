@@ -6,7 +6,8 @@ from datetime import tzinfo
 from typing import Callable
 
 from . import db, route, summary
-from .derive import Deriver
+from .derive import ESTIMATE_HOLD_MS, Deriver
+from .live import FUTURE_SLACK_MS
 from .totals_sensors import TotalsSensors
 from .trip_sensors import TripSensors
 from .trips import QUIET_MS
@@ -47,10 +48,15 @@ def rebuild(deriver: Deriver, sensors: TripSensors, conn: sqlite3.Connection, no
             first = conn.execute("SELECT MIN(t) FROM samples WHERE vehicle_id=?", (vid,)).fetchone()[0]
             if first is None:
                 continue
-            # a window is one update at a past `received_ms`: it reads only that month, and the next one resumes from what is still open
-            for m in range(first + REBUILD_STEP_MS, now_ms, REBUILD_STEP_MS):
-                deriver.update(vid, None, m)
-            deriver.update(vid, None, now_ms)
+            # a window is one update at a past `received_ms`: it reads only that month, and the next one resumes from what is still open.
+            # A cloud charge ending just before a window's cut-off may be closed there as a SoC estimate, its car reading being beyond
+            # the cut-off; each later window re-opens what the one before could have closed that early, like late data would.
+            # shortcut: a segment open across windows (a car plugged for weeks, a stuck charging_state) pulls every window back to its
+            # start, so those reads grow with it; fine for real sessions, checkpoint if one runs for months.
+            cut = None
+            for m in [*range(first + REBUILD_STEP_MS, now_ms, REBUILD_STEP_MS), now_ms]:
+                deriver.update(vid, None if cut is None else cut - ESTIMATE_HOLD_MS, m)
+                cut = m + FUTURE_SLACK_MS
             trips, charges = deriver.stored_trips(vid, 1), deriver.stored_charges(vid, 1)
             sensors.publish(vid, trips[0] if trips else None, charges[0] if charges else None, [], [])
         except Exception:

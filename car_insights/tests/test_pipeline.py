@@ -6,7 +6,7 @@ from datetime import timezone
 import pytest
 
 from car_insights import access, db
-from car_insights.derive import Deriver
+from car_insights.derive import ESTIMATE_HOLD_MS, Deriver
 from car_insights.pipeline import REBUILD_STEP_MS, close_quiet, rebuild, refresh
 from car_insights.trips import QUIET_MS
 from car_insights.totals_sensors import TotalsSensors
@@ -308,18 +308,35 @@ def history_95_days(conn):
     return open_t + 40_000
 
 
-def test_rebuild_in_windows_matches_one_pass(env):
-    conn, mqtt, d, sensors, totals = env
-    now = history_95_days(conn)
+def assert_rebuilt_like_one_pass(conn, now):
+    """rebuild `conn` in windows and a copy in one update: every derived table must be equal"""
     copy = sqlite3.connect(":memory:")
     conn.backup(copy)
-    rebuild(Deriver(conn, lambda la, lo: "Home"), sensors, conn, now)
+    rebuild(Deriver(conn, lambda la, lo: "Home"), TripSensors(conn, FakeMqtt(), lambda vid: 57_000.0, lambda kind, vid, start: None), conn, now)
     Deriver(copy, lambda la, lo: "Home").update("car1", None, now)
-    for table in ("trips", "charges"):
-        a, b = (c.execute(f"SELECT start, end, json FROM {table} ORDER BY start").fetchall() for c in (conn, copy))
-        assert a == b
+    for table in ("trips", "charges", "trip_series", "charge_series", "trip_routes"):
+        a, b = (c.execute(f"SELECT * FROM {table} ORDER BY start").fetchall() for c in (conn, copy))
+        assert a == b, table
+
+
+def test_rebuild_in_windows_matches_one_pass(env):
+    conn, *_ = env
+    assert_rebuilt_like_one_pass(conn, history_95_days(conn))
     assert conn.execute("SELECT COUNT(*) FROM trips").fetchone()[0] == 94 and conn.execute("SELECT COUNT(*) FROM charges").fetchone()[0] == 21
     assert conn.execute("SELECT COUNT(*) FROM trips WHERE end IS NULL").fetchone()[0] == 1
+
+
+def test_rebuild_reopens_a_cloud_charge_a_window_closed_before_the_car_reading(env):
+    conn, *_ = env
+    conn.execute("INSERT INTO vehicles(vehicle_id) VALUES('car1')")
+    edge = 100 * DAY + REBUILD_STEP_MS + DAY  # the first window's look-ahead cut-off
+    h = 3_600_000
+    car = [s(100 * DAY, "battery_wh", 10_000.0), s(edge - 4 * h, "battery_wh", 22_500.0), s(edge + 3 * h, "battery_wh", 46_550.0)]
+    cloud = [s(edge - 3 * h, "charging_state", True), s(edge - 3 * h, "soc_percent", 40.0), s(edge - h, "soc_percent", 81.0), s(edge - h, "charging_state", False)]
+    db.ingest(conn, "car1", SRC, car, 0)
+    db.ingest(conn, "car1", "ha_entities-0000abcd", cloud, 0)
+    assert_rebuilt_like_one_pass(conn, 100 * DAY + 40 * DAY)
+    assert conn.execute("SELECT json_extract(json, '$.energy_source') FROM charges").fetchall() == [("car",)]  # not the SoC estimate the first window made
 
 
 def test_rebuild_reads_bounded_windows(env, monkeypatch):
@@ -334,4 +351,4 @@ def test_rebuild_reads_bounded_windows(env, monkeypatch):
 
     monkeypatch.setattr(db, "samples_after", spy)
     rebuild(Deriver(conn, lambda la, lo: "Home"), sensors, conn, now)
-    assert len(spans) >= 4 and max(spans) <= REBUILD_STEP_MS + 2 * DAY  # the re-reads that start at an open segment are far shorter
+    assert len(spans) >= 4 and max(spans) <= REBUILD_STEP_MS + ESTIMATE_HOLD_MS + 2 * DAY  # a window re-opens the 7 days before the last one's cut-off
