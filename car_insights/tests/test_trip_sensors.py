@@ -34,6 +34,24 @@ def test_discovery_once_then_state(env):
     assert retained and state["distance_km"] == 1.2 and state["net_kwh"] == 0.5 and state["consumption"] == 41.67
 
 
+def test_cost_sensor_and_event(env):
+    conn, mqtt, _ = env
+    ts = TripSensors(conn, mqtt, lambda vid: 57_000.0, lambda kind, vid, start: SERIES, cost=lambda kind, vid, row: 1.234)
+    c = {"start": 1000, "end": 4600, "added_wh": 12000.0}
+    ts.publish("car1", trip(1000), c, [trip(1000)], [c])
+    for leaf in ("last_trip_cost", "last_charge_cost"):
+        cfg = json.loads(next(p for t, p, _ in mqtt.msgs if t == f"homeassistant/sensor/car1_{leaf}/config"))
+        assert cfg["device_class"] == "monetary" and cfg["unit_of_measurement"] == "EUR" and "state_class" not in cfg
+    assert mqtt.on("car_insights/car1/last_trip")[0][0]["cost"] == 1.23 and mqtt.on("car_insights/car1/last_charge")[0][0]["cost"] == 1.23
+    assert mqtt.on("car_insights/car1/trip_event")[0][0]["cost"] == 1.23 and mqtt.on("car_insights/car1/charge_event")[0][0]["cost"] == 1.23
+
+
+def test_cost_defaults_to_null(env):
+    _, mqtt, ts = env
+    ts.publish("car1", trip(1000), None, [trip(1000)], [])
+    assert mqtt.on("car_insights/car1/last_trip")[0][0]["cost"] is None and mqtt.on("car_insights/car1/trip_event")[0][0]["cost"] is None
+
+
 def test_event_not_retained_per_trip(env):
     _, mqtt, ts = env
     ended = [trip(1000), trip(3000)]

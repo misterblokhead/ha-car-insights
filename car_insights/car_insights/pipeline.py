@@ -68,6 +68,18 @@ def rebuild(deriver: Deriver, sensors: TripSensors, conn: sqlite3.Connection, no
     log.info("rebuild of %d vehicles took %.1f s", len(vehicles), time.monotonic() - started)
 
 
+def republish(deriver: Deriver, sensors: TripSensors, totals: TotalsSensors, conn: sqlite3.Connection, vids: list[str] | None) -> None:
+    """After a price changed: the last trip and charge states and the totals of the vehicles (all when None), and every group's. No events."""
+    try:
+        for vid in vids if vids is not None else [r[0] for r in conn.execute("SELECT vehicle_id FROM vehicles")]:
+            trips, charges = deriver.stored_trips(vid, 1), deriver.stored_charges(vid, 1)
+            sensors.publish(vid, trips[0] if trips else None, charges[0] if charges else None, [], [])
+            totals.publish_vehicle(vid)
+        totals.publish_groups()
+    except Exception:
+        log.exception("republish failed")
+
+
 def close_quiet(conn: sqlite3.Connection, summarize: Callable[[str, int | None, int], object], now_ms: int) -> None:
     """Re-derive each vehicle with an open trip whose car went quiet: no batch will arrive to close it (its last one was lost)."""
     # shortcut: a quiet car whose trip tail is not in P stays open and is re-derived every tick until its car returns
