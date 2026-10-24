@@ -18,7 +18,7 @@
   // (from 1080 px) a column beside the list; those two only cross-fade. Reduced motion: opacity only.
   let { id, onclose, prev = null, next = null, children } = $props();
 
-  const FADE = 150, EDGE = 24;
+  const FADE = 150, EDGE = 24, SLOP = 8;
   const overlay = $derived(!screen.split);
   const slide = $derived(!screen.wide && !screen.reducedMotion);
   const spring = createSpring({ response: 0.35, damping: 1 });
@@ -37,8 +37,12 @@
     busy = true;
     let last = 0;
     const tick = (now) => {
-      const settled = spring.step(Math.min((now - (last || now - 16)) / 1000, 0.05));
+      let settled = spring.step(Math.min((now - (last || now - 16)) / 1000, 0.05));
       last = now;
+      if (!settled && Math.abs(spring.value - spring.target) < 1 && Math.abs(spring.velocity) < 30) { // the last pixel is not worth a second of busy layer
+        Object.assign(spring, { value: spring.target, velocity: 0 });
+        settled = true;
+      }
       x = spring.value;
       if (!settled) return void (raf = requestAnimationFrame(tick));
       busy = false;
@@ -87,15 +91,26 @@
   const trim = (e) => {
     while (drag.samples.length > 1 && drag.samples[0].t < e.timeStamp - 100) drag.samples.shift();
   };
-  function down(e) {
-    if (!slide || (e.pointerType === "mouse" && e.button) || (!busy && e.clientX - x > EDGE)) return;
+  // A press only becomes a swipe after SLOP px of horizontal travel, so a tap on the back button stays a tap; a moving layer is taken at once.
+  function hold(e) {
     cancelAnimationFrame(raf);
     el.setPointerCapture(e.pointerId);
-    drag = { id: e.pointerId, grab: e.clientX, from: spring.value, samples: [{ t: e.timeStamp, x: e.clientX }] };
+    drag.live = true;
     busy = held = true;
+  }
+  function down(e) {
+    if (!slide || (e.pointerType === "mouse" && e.button) || (!busy && (e.clientX - x > EDGE || e.target.closest("button, a")))) return;
+    drag = { id: e.pointerId, grab: e.clientX, top: e.clientY, from: spring.value, samples: [{ t: e.timeStamp, x: e.clientX }], live: false };
+    if (busy) hold(e);
   }
   function move(e) {
     if (!drag || e.pointerId !== drag.id) return;
+    if (!drag.live) {
+      const dx = Math.abs(e.clientX - drag.grab), dy = Math.abs(e.clientY - drag.top);
+      if (dy > SLOP && dy > dx) return void (drag = null); // a vertical scroll
+      if (dx < SLOP) return;
+      hold(e);
+    }
     x = Math.max(0, drag.from + e.clientX - drag.grab); // 1:1 with the finger
     Object.assign(spring, { value: x, target: x, velocity: 0 });
     drag.samples.push({ t: e.timeStamp, x: e.clientX });
@@ -103,6 +118,7 @@
   }
   function up(e) {
     if (!drag || e.pointerId !== drag.id) return;
+    if (!drag.live) return void (drag = null); // a tap
     drag.samples.push({ t: e.timeStamp, x: e.clientX });
     trim(e); // a finger that rested before lifting leaves no velocity
     const v = velocity(drag.samples);

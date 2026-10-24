@@ -34,15 +34,21 @@
   const isOpen = (item) => detail?.kind === item.kind && detail.vid === item.vehicle_id && detail.start === item.start;
 
   const followed = (e) => e.button === 0 && !e.defaultPrevented && !(e.metaKey || e.ctrlKey || e.shiftKey);
+  // a card clicked while a detail is open replaces it, so closing is still one step back to the list
   const picked = (e) => {
-    if (followed(e) && listEl?.contains(e.target) && e.target.closest("a[href^='#/']")) fromList = true;
+    const a = followed(e) && listEl?.contains(e.target) && e.target.closest("a[href^='#/']");
+    if (!a) return;
+    if (detail) {
+      e.preventDefault();
+      location.replace(a.getAttribute("href"));
+    } else fromList = true;
   };
   // back to the list: one step back when it is the entry before, else replace the detail (a link opened cold)
   const close = () => (fromList ? history.back() : location.replace("#/activity"));
 
-  // stepping with the arrows keeps the open card in view
+  // stepping with the arrows keeps the open card in view (beside the list only; elsewhere the list under the pane keeps its scroll)
   $effect(() => {
-    if (open) listEl?.querySelector("[aria-current=page]")?.closest("li").scrollIntoView({ block: "nearest" });
+    if (open && screen.split) listEl?.querySelector("[aria-current=page]")?.closest("li").scrollIntoView({ block: "nearest" });
   });
 
   let last = "";
@@ -96,7 +102,7 @@
 
 <svelte:window onclick={picked} />
 
-<div class="split" class:two={screen.split}>
+<div class="split" class:two={screen.split && detail}>
 <div class="page" class:wide={screen.wide}>
   <h1>Activity</h1>
   <LiveStrip {vehicles} />
@@ -149,7 +155,7 @@
 </div>
 
 <style>
-  .split.two { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 24px; align-items: start; } /* the list keeps its width with or without a detail */
+  .split.two { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 24px; align-items: start; } /* only while a detail is open; the list is a single column otherwise */
   .page { --bleed: 16px; max-width: 760px; }
   .page.wide { --bleed: 24px; }
   h1 { margin: 0 0 12px; font-size: var(--fs-title); font-weight: 700; letter-spacing: -0.01em; }

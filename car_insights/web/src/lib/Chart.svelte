@@ -31,7 +31,7 @@
     if (series.some((s) => (s.scale ?? "y") === "y" && s.kind && s.kind !== "line")) scales.y = { range: [0, null] };
     if (series.some((s) => s.scale === "y2")) scales.y2 = {};
     if (series.some((s) => s.scale === "plug")) scales.plug = { range: [0, 1] };
-    const side = (scale) => axis(scale, 1, scale === "plug" ? { splits: () => [0, 1], values: (u, v) => v.map((n) => (n ? "plugged" : "unplugged")) } : {});
+    const side = (scale) => axis(scale, 1, scale === "plug" ? { size: 76, splits: () => [0, 1], values: (u, v) => v.map((n) => (n ? "plugged" : "unplugged")) } : {});
 
     const make = (s) => {
       const color = token(s.color ?? "--trip", "#0A84FF");
@@ -52,7 +52,7 @@
       {
         width: el.clientWidth || 300,
         height,
-        legend: { show: series.length > 1 },
+        legend: { show: series.length > 1, live: false }, // names and swatches only: the live "--" would read as missing data
         cursor: { drag: { x: false, y: false } },
         scales,
         axes: [
@@ -77,5 +77,4 @@
 <style>
   .chart { width: 100%; min-width: 0; color: var(--fg); }
   .chart :global(.u-legend) { color: var(--fg); font-size: 12px; text-align: left; }
-  .chart :global(.u-legend .u-series:first-child) { display: none; } /* the x value */
 </style>
