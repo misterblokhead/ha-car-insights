@@ -499,6 +499,33 @@ def test_stale_charging_state_seed_after_trip_ignored():
     assert charges == [] and d.stored_charges("car1", 10) == [c]
 
 
+def _cloud_charge_while_plugged():
+    """car plugged at p, a cloud charge p+1 min to p+60 min, car readings around it; the car never reports the unplug"""
+    p, m = at("09:00:00"), 60_000
+    conn, d = setup([s(p, "plugged", True), s(p, "battery_wh", 20_000.0), s(p + 61 * m, "battery_wh", 40_000.0)])
+    db.ingest(conn, "car1", CLOUD, [s(p + m, "charging_state", True), s(p + 60 * m, "charging_state", False)], 0)
+    _, charges, _ = d.update("car1", None, p + 2 * 3_600_000)
+    assert len(charges) == 1
+    return conn, d, p
+
+
+def test_plugged_seed_after_closed_cloud_charge_opens_nothing():
+    conn, d, p = _cloud_charge_while_plugged()
+    (c,) = d.stored_charges("car1", 10)
+    db.ingest(conn, "car1", SRC, [s(p + 3 * 3_600_000, "battery_wh", 40_000.0), s(p + 3 * 3_600_000 + 60_000, "battery_wh", 40_010.0)], 0)
+    _, charges, _ = d.update("car1", None, p + 4 * 3_600_000)  # still plugged, no new plug sample: the old flag opens nothing
+    assert charges == [] and d.stored_charges("car1", 10) == [c] and _count(conn, "charges") == 1
+
+
+def test_plugged_again_after_a_closed_cloud_charge_still_opens_a_charge():
+    conn, d, p = _cloud_charge_while_plugged()
+    q = p + 3 * 3_600_000
+    db.ingest(conn, "car1", SRC, [s(q - 60_000, "plugged", False), s(q, "plugged", True), s(q, "battery_wh", 40_000.0),
+                                  s(q + 30 * 60_000, "battery_wh", 45_000.0), s(q + 31 * 60_000, "plugged", False)], 0)  # a new plug: newer than the closed charge's end
+    _, charges, _ = d.update("car1", None, p + 4 * 3_600_000)
+    assert [c["start"] for c in charges] == [q] and [c["start"] for c in d.stored_charges("car1", 10)] == [q, p]
+
+
 def test_algo_bump_rebuilds():
     conn, d = _cloud_setup()
     d.update("car1", None, at("11:30:00"))

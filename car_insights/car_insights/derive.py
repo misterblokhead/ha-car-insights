@@ -39,7 +39,8 @@ class Deriver:
         self._idle: dict[str, int] = {}  # vehicle -> newest sample t read while nothing was open: the next window starts there
         self._ignition: set[str] = set()  # vehicles known to send an ignition signal (it never goes away)
         self._cloud: set[str] = set()  # vehicles with a cloud source (charging_state samples)
-        # vehicle -> start of its trip closed by the quiet rule alone: once the car is back its backlog may extend that trip
+        # vehicle -> start of its trip closed by the quiet rule alone: once the car is back its backlog may extend that trip;
+        # a rejoined trip fires a second ended event (same start) at its real close
         # shortcut: in memory only, a restart between the quiet close and the backlog keeps the split; persist it if that shows up
         self._quiet: dict[str, int] = {}
         # a vehicle with any old-version row in either table is rebuilt whole; `rebuild` (the zones changed) rebuilds every vehicle
@@ -107,17 +108,19 @@ class Deriver:
             samples = db.samples_after(conn, vid, w, received_ms + FUTURE_SLACK_MS, KEYS)
             seed = db.latest_at_or_before(conn, vid, w, KEYS)
             # a trip that started after a plugged/charging_state=True seed means that charge's end was missed (find_charges closed
-            # it at the trip start); the stale flag must not open a new session after the trip
+            # it at the trip start); the stale flag must not open a new session after the trip. A plugged flag older than the last
+            # charge's end is stale too: a cloud charge ended while the car stayed plugged and never sent the plug again
             for k in ("plugged", "charging_state"):
                 if seed.get(k) is True:
                     last_trip_start = conn.execute("SELECT MAX(start) FROM trips WHERE vehicle_id=?", (vid,)).fetchone()[0] or -1
-                    if last_trip_start > (db.latest_t(conn, vid, k, w) or -1):
+                    last_charge_end = conn.execute("SELECT MAX(end) FROM charges WHERE vehicle_id=?", (vid,)).fetchone()[0] or -1 if k == "plugged" else -1
+                    if max(last_trip_start, last_charge_end) > (db.latest_t(conn, vid, k, w) or -1):
                         seed[k] = False
             # a cloud report is no proof the car slept: find_trips sees only its own keys
             raw_trips = find_trips([x for x in samples if x.k in TRIP_KEYS], seed, vid in self._ignition, quiet)
-            for t in raw_trips:
-                if t.quiet_closed:
-                    self._quiet[vid] = t.start
+            for trip in raw_trips:
+                if trip.quiet_closed:
+                    self._quiet[vid] = trip.start
             charges = [_charge_wire(c, self._zones) for c in find_charges(samples, seed, vid in self._cloud, self._capacity(vid))]
             new: dict[str, list[dict]] = {"trips": [], "charges": []}
             refined: set[tuple[str, int]] = set()
