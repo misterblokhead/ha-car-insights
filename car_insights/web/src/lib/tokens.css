@@ -1,0 +1,68 @@
+:root {
+  color-scheme: light dark;
+  --bg: #F2F2F7;
+  --card: #FFFFFF;
+  --fill: rgba(120, 120, 128, 0.12);
+  --fg: #000000;
+  --muted: rgba(60, 60, 67, 0.6);
+  --line: rgba(60, 60, 67, 0.29);
+  --chrome: rgba(249, 249, 249, 0.78);
+  --chrome-filter: saturate(180%) blur(20px);
+  --trip: #0A84FF;
+  --charge: #30D158;
+  --energy: #FF9500;
+  --good: #34C759;
+  --warn: #FF3B30;
+  --radius-card: 14px;
+  --radius-ctl: 10px;
+  --press-scale: 0.97;
+  --fade: 150ms;
+  --fs-title: 28px;
+  --fs-num: 17px;
+  --fs-body: 15px;
+  --fs-small: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --card: #1C1C1E;
+    --fill: rgba(120, 120, 128, 0.24);
+    --fg: #FFFFFF;
+    --muted: rgba(235, 235, 245, 0.6);
+    --line: rgba(84, 84, 88, 0.65);
+    --chrome: rgba(30, 30, 30, 0.72);
+    --energy: #FF9F0A;
+    --good: #30D158;
+    --warn: #FF453A;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --chrome: var(--card);
+    --chrome-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --muted: var(--fg);
+    --line: var(--fg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --press-scale: 1;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: var(--fs-body);
+  font-variant-numeric: tabular-nums;
+}

@@ -50,3 +50,59 @@ export function chargePercents(c, capacity_wh) {
   const p = (wh) => (wh == null || !capacity_wh ? null : (wh / capacity_wh) * 100);
   return { added: p(c.added_wh), from: p(c.start_wh), to: p(c.end_wh) };
 }
+
+// Energy per `step` km of distance: [x = bucket end km, net/gross/recup kWh used in that bucket]. Null without distance rows.
+export function consumptionBuckets(s, step = 0.5) {
+  if (!s || !s.rows) return null;
+  const idx = (c) => s.cols.indexOf(c);
+  const rows = s.rows.filter((r) => r[idx("km")] != null);
+  if (!rows.length) return null;
+  const out = { x: [], net: [], gross: [], recup: [] };
+  const keys = ["net", "gross", "recup"], cols = ["net_kwh", "gross_kwh", "recup_kwh"].map(idx);
+  let prev = [0, 0, 0], last = null, bucket = null;
+  const flush = () => {
+    if (bucket == null || bucket === 0) return; // bucket 0 is only the starting point
+    out.x.push(+(bucket * step).toFixed(6));
+    keys.forEach((k, i) => { out[k].push(last[i] - prev[i]); });
+  };
+  for (const r of rows) {
+    const b = Math.ceil(r[idx("km")] / step - 1e-9);
+    if (b !== bucket) {
+      flush();
+      if (last) prev = last;
+      bucket = b;
+      last = prev;
+    }
+    last = cols.map((c, i) => r[c] ?? last[i]);
+  }
+  flush();
+  return out.x.length ? out : null;
+}
+
+// Charging power (kW) against charge level (%): from the car's energy, else the cloud's level smoothed.
+export function chargeSpeed(series, capacity_wh) {
+  if (!capacity_wh) return null;
+  const power = (pts, wh) => { // [t_ms, v] → [{ x: midpoint %, kw }]
+    const out = [];
+    for (let i = 1; i < pts.length; i++) {
+      const dt = (pts[i][0] - pts[i - 1][0]) / 3600000;
+      if (dt <= 0) continue;
+      const a = wh(pts[i - 1][1]), b = wh(pts[i][1]);
+      out.push({ x: ((a + b) / 2 / capacity_wh) * 100, kw: (b - a) / 1000 / dt });
+    }
+    return out;
+  };
+  const result = (p, source) => {
+    const kw = p.map((q) => q.kw);
+    return { x: p.map((q) => q.x), kw, source, min: Math.min(...kw), max: Math.max(...kw) };
+  };
+  const car = power(series?.car_kwh ?? [], (v) => v * 1000);
+  if (car.length >= 3) return result(car, "car");
+  const cloud = power(series?.cloud_soc ?? [], (v) => (v / 100) * capacity_wh);
+  if (cloud.length < 3) return null;
+  const smooth = cloud.map((q, i) => {
+    const w = cloud.slice(Math.max(0, i - 1), i + 2);
+    return { x: q.x, kw: w.reduce((a, p) => a + p.kw, 0) / w.length };
+  });
+  return result(smooth, "cloud");
+}
