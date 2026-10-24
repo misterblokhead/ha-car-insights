@@ -5,7 +5,8 @@
 
 Two cars and a cost group: 10 days of Home / Work / Shop trips with GPS routes (the same drives repeat, so similar trips exist),
 one trip to a place outside every zone, an open trip, charges timed by the car and by the cloud, and one cloud charge whose
-energy is a state-of-charge estimate. Everything is samples fed through the real Deriver. All coordinates are invented."""
+energy is a state-of-charge estimate. Prices: AC 0.45 and DC 0.69 per kWh, a "Shop" spot at 0.35, a monthly 3.99 "Charge card" per car.
+Everything is samples fed through the real Deriver. All coordinates are invented."""
 import math
 import os
 import random
@@ -19,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import uvicorn  # noqa: E402
 
-from car_insights import access, db, ui_api  # noqa: E402
+from car_insights import access, db, prices, ui_api  # noqa: E402
 from car_insights.api import create_app  # noqa: E402
 from car_insights.derive import Deriver  # noqa: E402
 from car_insights.protocol import Sample  # noqa: E402
@@ -48,7 +49,7 @@ def plan(vid: str, day) -> list[tuple[int, int, str, str]]:
         return [(10, 30, "Home", "Shop"), (11, 25, "Shop", "Home")] if wd == 5 else [(14, 0, "Home", "Elsewhere"), (16, 40, "Elsewhere", "Home")]
     if wd in (0, 4):
         return [(8, 10, "Home", "Work"), (16, 45, "Work", "Home")]
-    return [(9, 15, "Home", "Shop"), (10, 0, "Shop", "Home")] if wd in (1, 3, 5) else []
+    return [(9, 15, "Home", "Shop"), (11 if wd == 5 else 10, 0, "Shop", "Home")] if wd in (1, 3, 5) else []  # Saturday: long enough to charge at the Shop
 
 
 def route(a: str, b: str, rng: random.Random):
@@ -150,8 +151,10 @@ def build(conn, now: int) -> Deriver:
                 t0 = local(day, h, m + rng.randint(-10, 10))
                 if t0 > now - 45 * MIN:  # still to come (or too close to now to have finished)
                     continue
-                _, wh = drive(log, t0, a, b, wh, 9 + 3 * math.sin(d) + rng.uniform(-1, 1), rng, wake=not estimate_next)
+                end, wh = drive(log, t0, a, b, wh, 9 + 3 * math.sin(d) + rng.uniform(-1, 1), rng, wake=not estimate_next)
                 estimate_next = False
+                if vid == "demo-breeze" and day.weekday() == 5 and b == "Shop" and end + 70 * MIN < now:  # the one charge away from home, for the Shop price
+                    _, wh = charge(log, end + 3 * MIN, wh, cap, min(wh + 5400, 0.98 * cap), car_reports=True)
             # evening at home: plug in when below 70 %; the Aurora's cloud charge four days ago is left as a state-of-charge estimate
             start = local(day, 19, 30) + rng.randint(0, 120) * MIN
             if (wh < 0.7 * cap or (cloud and d == 4)) and start < now - 6 * 3600_000:
@@ -170,6 +173,14 @@ def build(conn, now: int) -> Deriver:
     deriver = Deriver(conn, zones, lambda vid: db.capacity_wh(conn, vid, 60_000.0))
     for vid in CARS:
         deriver.update(vid, None, now)
+    first = today - timedelta(days=10)
+    for target, per_kwh in (("ac", 0.45), ("dc", 0.69)):
+        prices.set_tariff(conn, target, local(first, 0, 0), per_kwh)
+    shop = conn.execute("SELECT vehicle_id, start FROM charges WHERE json_extract(json, '$.place') = 'Shop' ORDER BY start").fetchone()
+    if shop:  # none when the Saturday visit falls outside the 10 days
+        prices.create_spot(conn, *shop, "Shop", 0.35)
+    for vid in CARS:
+        prices.add_fixed_cost(conn, vid, "Charge card", 3.99, "month", first, None)
     return deriver
 
 

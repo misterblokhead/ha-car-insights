@@ -1,6 +1,7 @@
 <script>
   import { hashOf } from "../activity.js";
   import { kwh, kw, time } from "../format.js";
+  import { costLabel } from "../costs.js";
   import ChargeBar from "./ChargeBar.svelte";
 
   // capacity: the vehicle's battery in Wh, for the charge percentages
@@ -18,6 +19,7 @@
   <span class="title">{item.place ? `Charged at ${item.place}` : "Charged"}</span>
   <span class="big">{added}{#if unit}{" "}<small>{unit}</small>{/if}</span>
   <span class="sub when">{when}</span>
+  {#if item.cost?.amount != null}<span class="sub when">{costLabel(item.cost)}</span>{/if}
   {#if from != null && to != null}
     <span class="level">
       <ChargeBar {from} {to} />

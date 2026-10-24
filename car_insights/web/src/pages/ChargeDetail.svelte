@@ -3,6 +3,7 @@
   import { get } from "../lib/api.js";
   import { NA, km, kwh, kw } from "../lib/format.js";
   import { durationParts, kwLabel, rangeLine, split } from "../lib/detail.js";
+  import { chargeBasis, costLabel } from "../lib/costs.js";
   import { chargeCharts, chargePercents, chargeSpeed } from "../lib/series.js";
   import Chart from "../lib/Chart.svelte";
   import Figure from "../lib/ui/Figure.svelte";
@@ -96,6 +97,11 @@
     </div>
 
     <section class="d-card">
+      <div class="d-head"><h2>Cost</h2><b class="amount">{costLabel(data.cost)}</b></div>
+      <p class="d-note">{chargeBasis(data.cost)}</p>
+    </section>
+
+    <section class="d-card">
       <div class="d-head"><h2>Charging speed</h2><span class="d-note">kW against charge level</span></div>
       {#if curve}
         <div class="stats">
@@ -161,6 +167,7 @@
   .stats > span:nth-child(2) { align-items: center; }
   .stats > span:last-child { align-items: flex-end; }
   b { font-weight: 600; }
+  .amount { font-size: 22px; letter-spacing: -0.01em; }
   .foot { margin: 0; }
   .foot div:first-child { border-top: 0; }
   .source { margin-top: 8px; }
