@@ -24,7 +24,10 @@ def page(conn, vids: list[str], before: int | None, now_ms: int, tz, name: Calla
         key=lambda r: (-r[0], r[1]))
     if not rows:
         return out
-    cut = _midnight_ms(datetime.fromtimestamp(rows[:min_items][-1][0] / 1000, tz).date(), tz)
+    # the cut also reaches back to the oldest open row (first page only): it belongs on the page whatever the other cars did since
+    # shortcut: a long-stuck open row makes the first page long, cap it if that ever happens
+    oldest = min([rows[:min_items][-1][0], *(r[0] for r in rows if r[3].get("end") is None)])
+    cut = _midnight_ms(datetime.fromtimestamp(oldest / 1000, tz).date(), tz)
     days: dict[str, dict] = {}
     for start, v, kind, row in rows:
         if start < cut:

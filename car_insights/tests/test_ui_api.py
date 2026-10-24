@@ -138,6 +138,13 @@ def test_charge_outside_temp_from_sample_before_start(conn):
     assert c.get("/api/ui/charges/car1/100", headers=VIEWER).json()["outside_temp_c"] is None
 
 
+def test_charge_outside_temp_non_number_is_null(conn):
+    put(conn, "charges", "car1", 1000, 2000)
+    conn.execute("""INSERT INTO samples VALUES('car1','a',1,500,'outside_temp','"warm"')""")
+    c, _ = client(conn)
+    assert c.get("/api/ui/charges/car1/1000", headers=VIEWER).json()["outside_temp_c"] is None
+
+
 def test_group_view_merges_lists_newest_first(conn):
     gid = access.create_group(conn, "Fleet")
     access.set_vehicle(conn, "car1", gid, ["u-viewer"])

@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from . import access, activity, db, stats
 from .access import Viewer
 from .derive import Deriver, Zones
-from .protocol import fix
+from .protocol import fix, num
 from .totals import totals
 
 MAX_LIMIT = 200
@@ -155,7 +155,7 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
     async def charge(request: Request, vid: str, start: StartMs):
         row, series = detail("charges", deriver.charge_series, await who(request), vid, start)
         return {"charge": row, "series": series, "capacity_wh": capacity(vid),
-                "outside_temp_c": db.latest_at_or_before(conn, vid, start, ("outside_temp",)).get("outside_temp")}
+                "outside_temp_c": num(db.latest_at_or_before(conn, vid, start, ("outside_temp",)).get("outside_temp"))}
 
     @r.get("/settings")
     async def get_settings(request: Request):

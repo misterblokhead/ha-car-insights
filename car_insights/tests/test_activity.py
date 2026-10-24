@@ -78,6 +78,16 @@ def test_open_rows_first_page_only_and_not_in_summary(conn):
     assert [i["end"] for i in q["days"][0]["items"]] == [at(2026, 10, 25, 8)]
 
 
+def test_open_row_older_than_the_page_cut_stays_on_the_first_page(conn):
+    put(conn, "charges", "car1", at(2026, 10, 22, 9), None)  # long open charge on car A
+    for i in range(25):
+        put(conn, "trips", "car2", at(2026, 10, 25, 0, 10) + i * 60_000, at(2026, 10, 25, 1))
+    put(conn, "trips", "car2", at(2026, 10, 23, 8), at(2026, 10, 23, 9))
+    p = page(conn, ("car1", "car2"), min_items=20)
+    assert [(d["date"], len(d["items"])) for d in p["days"]] == [("2026-10-25", 25), ("2026-10-23", 1), ("2026-10-22", 1)]
+    assert p["days"][-1]["items"][0]["end"] is None and p["next"] is None
+
+
 def test_summary_nulls_count_zero(conn):
     put(conn, "trips", "car1", at(2026, 10, 25, 7), at(2026, 10, 25, 8), {"distance_m": 1000, "net_wh": None})
     put(conn, "trips", "car1", at(2026, 10, 25, 9), at(2026, 10, 25, 10), {"distance_m": 2000, "net_wh": 300})
