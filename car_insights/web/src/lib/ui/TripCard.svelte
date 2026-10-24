@@ -14,33 +14,31 @@
   <span class="glyph" aria-hidden="true">
     <svg viewBox="0 0 24 24"><path d="M5 16v-5l2-5h10l2 5v5M5 16h14M5 16v3h3v-3M16 16v3h3v-3M7 11h10" /></svg>
   </span>
-  <span class="text">
-    <span class="title">{from} → {to}</span>
-    <span class="sub">{when}</span>
-    <span class="big">{dist}{#if unit}{" "}<small>{unit}</small>{/if}</span>
+  <span class="title">{from} → {to}</span>
+  <span class="big">{dist}{#if unit}{" "}<small>{unit}</small>{/if}</span>
+  <span class="sub when">{when}</span>
+  <!-- the box stays when there is no outline, so cards keep one height -->
+  <span class="route">
+    <RouteOutline points={item.route} width={120} height={84}
+      label="Route from {from} to {to}, {km(item.distance_m)}, {item.end == null ? "still driving" : duration(item.duration_s)}" />
   </span>
-  <span class="side">
-    {#if item.route}
-      <RouteOutline points={item.route} width={120} height={84}
-        label="Route from {from} to {to}, {km(item.distance_m)}, {item.end == null ? "still driving" : duration(item.duration_s)}" />
-    {/if}
-    <span class="sub">{per100 == null ? NA : `${per100.toFixed(1)} kWh/100 km`}<br />{kwh(item.net_wh)}</span>
-  </span>
+  <span class="sub stats">{per100 == null ? NA : `${per100.toFixed(1)} kWh/100 km`}<br />{kwh(item.net_wh)}</span>
 </a>
 
 <style>
   a {
-    display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; column-gap: 12px; padding: 14px;
+    display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px; align-items: center; padding: 14px;
     background: var(--card); border-radius: var(--radius-card); color: inherit; text-decoration: none; transition: transform 100ms;
   }
   a:active { transform: scale(var(--press-scale)); }
   a:focus-visible { outline: 2px solid var(--trip); outline-offset: 2px; }
-  .glyph { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--trip); }
+  .glyph { grid-row: 1 / 3; align-self: start; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--trip); }
   svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  .text { display: flex; flex-direction: column; min-width: 0; }
-  .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .title { grid-column: 2; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sub { color: var(--muted); font-size: 13px; }
-  .big { margin-top: auto; padding-top: 6px; font-size: 28px; font-weight: 600; line-height: 1.1; letter-spacing: -0.01em; }
+  .when { grid-column: 2; grid-row: 2; align-self: start; }
+  .big { grid-column: 3; font-size: 28px; font-weight: 600; line-height: 1.1; letter-spacing: -0.01em; white-space: nowrap; text-align: right; }
   small { font-size: 15px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
-  .side { display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end; gap: 2px; text-align: right; }
+  .route { grid-column: 3; width: 120px; height: 84px; }
+  .stats { grid-column: 3; text-align: right; }
 </style>

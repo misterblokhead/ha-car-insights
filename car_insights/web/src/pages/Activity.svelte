@@ -1,4 +1,5 @@
 <script>
+  import { untrack } from "svelte";
   import { get } from "../lib/api.js";
   import { feed, load, more, refresh, visible } from "../lib/activity.svelte.js";
   import { dayLabel, daySummary } from "../lib/format.js";
@@ -15,7 +16,11 @@
 
   let vehicles = $state([]);
   let sentinel = $state();
-  const days = $derived(visible(feed.days, feed.filter));
+  // the list shows `shown`, which follows the filter after the old list has faded out; both halves together are --fade
+  let shown = $state(feed.filter);
+  let out = $state(false);
+  let listEl;
+  const days = $derived(visible(feed.days, shown));
 
   async function live() {
     try {
@@ -26,6 +31,15 @@
   $effect(() => {
     load(view);
     live();
+  });
+
+  $effect(() => {
+    const f = feed.filter;
+    if (f === untrack(() => shown)) return void (out = false); // back to the shown filter before the swap
+    out = true;
+    const half = parseFloat(getComputedStyle(listEl).transitionDuration) * 1000 || 75; // computed, so always in seconds
+    const t = setTimeout(() => ((shown = f), (out = false)), half);
+    return () => clearTimeout(t);
   });
 
   $effect(() => {
@@ -52,30 +66,28 @@
   <LiveStrip {vehicles} />
   <div class="filter"><Segmented options={FILTERS} bind:value={feed.filter} label="Show" /></div>
 
-  {#key feed.filter}
-    <div class="list">
-      {#each days as day (day.date)}
-        {@const summary = daySummary(day.summary)}
-        <section>
-          <h2>{dayLabel(day.date, feed.today)}{#if summary}<span>{" · "}{summary}</span>{/if}</h2>
-          <ul>
-            {#each day.items as item (`${item.kind}/${item.vehicle_id}/${item.start}`)}
-              <li>
-                {#if item.kind === "trip"}
-                  <TripCard {item} />
-                {:else}
-                  <ChargeCard {item} capacity={feed.capacity_wh[item.vehicle_id]} />
-                {/if}
-              </li>
-            {/each}
-          </ul>
-        </section>
-      {/each}
-      {#if !days.length && !feed.loading && !feed.error && feed.next == null}
-        <p class="msg">{EMPTY[feed.filter]}</p>
-      {/if}
-    </div>
-  {/key}
+  <div class="list" class:out bind:this={listEl}>
+    {#each days as day (day.date)}
+      {@const summary = daySummary(day.summary)}
+      <section>
+        <h2>{dayLabel(day.date, feed.today)}{#if summary}<span>{" · "}{summary}</span>{/if}</h2>
+        <ul>
+          {#each day.items as item (`${item.kind}/${item.vehicle_id}/${item.start}`)}
+            <li>
+              {#if item.kind === "trip"}
+                <TripCard {item} />
+              {:else}
+                <ChargeCard {item} capacity={feed.capacity_wh[item.vehicle_id]} />
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      </section>
+    {/each}
+    {#if !days.length && !feed.loading && !feed.error && feed.next == null}
+      <p class="msg">{EMPTY[shown]}</p>
+    {/if}
+  </div>
 
   {#if feed.error}
     <div class="msg" role="alert">
@@ -94,8 +106,8 @@
   .page.wide { --bleed: 24px; }
   h1 { margin: 0 0 12px; font-size: var(--fs-title); font-weight: 700; letter-spacing: -0.01em; }
   .filter { margin: 12px 0 4px; }
-  .list { animation: fade var(--fade) ease-out; }
-  @keyframes fade { from { opacity: 0; } }
+  .list { transition: opacity calc(var(--fade) / 2); }
+  .list.out { opacity: 0; }
   h2 {
     position: sticky; top: 0; z-index: 2; margin: 0 calc(-1 * var(--bleed)); padding: 14px var(--bleed) 6px;
     font-size: var(--fs-body); font-weight: 600;

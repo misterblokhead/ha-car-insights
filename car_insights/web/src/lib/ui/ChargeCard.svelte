@@ -7,7 +7,7 @@
   let { item, capacity } = $props();
   const level = (wh) => (wh == null || !capacity ? null : (wh / capacity) * 100);
   const from = $derived(level(item.start_wh)), to = $derived(level(item.end_wh));
-  const [added, unit] = $derived(`${item.energy_source === "soc_estimate" ? "~" : ""}${kwh(item.added_wh)}`.split(" "));
+  const [added, unit] = $derived(`${item.energy_source === "soc_estimate" && item.added_wh != null ? "~" : ""}${kwh(item.added_wh)}`.split(" "));
   const when = $derived(`${time(item.start)} – ${item.end == null ? "now" : time(item.end)} · ${kw(item.avg_w)}`);
 </script>
 
