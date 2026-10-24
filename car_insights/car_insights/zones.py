@@ -80,13 +80,15 @@ def zones_changed(fetch: Callable[[], list[Zone]], saved: Path) -> bool:
 
 def fetch_time_zone(token: str, tries: int = 30, wait_s: float = 10) -> tzinfo:
     """HA's configured time zone, retried while Core starts; the host's local zone only once the retries run out."""
+    last: Exception | None = None
     for attempt in range(tries):
         try:
             return ZoneInfo(supervisor_get("/core/api/config", token)["time_zone"])
-        except Exception:
+        except Exception as err:
+            last = err
             if attempt < tries - 1:
                 time.sleep(wait_s)
-    log.error("could not read the Home Assistant time zone after %d tries, using the local one", tries, exc_info=True)
+    log.error("could not read the Home Assistant time zone after %d tries, using the local one", tries, exc_info=last)
     return datetime.now().astimezone().tzinfo
 
 

@@ -1,7 +1,6 @@
 """Car Insights receiver: verifies HMAC-signed car batches and forwards them to the add-on."""
 import logging
 import time
-from pathlib import Path
 
 from aiohttp import web
 from homeassistant.components import cloud, persistent_notification, webhook
@@ -12,7 +11,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.network import NoURLAvailableError
 
 from .const import CONF_DIR, DOMAIN, MAX_BODY, TOKEN_PATH
-from .receiver import TokenCache, body_vehicle_matches, config_file_text, conf_with_url, forward, is_https_url, map_addon_status, read_limited, verify_signature
+from .receiver import TokenCache, body_vehicle_matches, config_file_text, forward, is_https_url, map_addon_status, read_limited, verify_signature, write_conf
 
 _LOGGER = logging.getLogger(__name__)
 _last_warn = 0.0
@@ -24,22 +23,6 @@ def _warn_bad_signature(vehicle_id: str) -> None:
     if now - _last_warn >= 60:
         _last_warn = now
         _LOGGER.warning("Rejected request with bad signature for vehicle %s", vehicle_id)
-
-
-def _write_conf(path: Path, text: str, url: str) -> str | None:
-    """Create the file if absent ("created"); else point its webhook.url at url ("updated"); None when unchanged."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with path.open("x") as f:
-            f.write(text)
-        return "created"
-    except FileExistsError:
-        pass
-    new = conf_with_url(path.read_text(), url)
-    if new is None:
-        return None
-    path.write_text(new)
-    return "updated"
 
 
 def _uses_cloud(hass: HomeAssistant) -> bool:
@@ -115,7 +98,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     conf_path = CONF_DIR / f"{vehicle_id}.conf"
     text = config_file_text(url, secret, vehicle_id, entry.data["vehicle_name"])
-    written = await hass.async_add_executor_job(_write_conf, conf_path, text, url)
+    written = await hass.async_add_executor_job(write_conf, conf_path, text, url)
 
     webhook.async_register(
         hass, DOMAIN, f"Car Insights {vehicle_id}", webhook_id, handler,

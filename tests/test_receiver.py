@@ -127,3 +127,16 @@ def test_conf_with_url():
     text = "webhook.url=https://a\nsecret=s\nvehicle.id=v\n"
     assert r.conf_with_url(text, "https://b") == "webhook.url=https://b\nsecret=s\nvehicle.id=v\n"
     assert r.conf_with_url(text, "https://a") is None
+
+
+def test_write_conf(tmp_path):
+    p = tmp_path / "d" / "v.conf"
+    text = r.config_file_text("https://a", "s", "v", "V")
+    assert r.write_conf(p, text, "https://a") == "created"
+    assert r.write_conf(p, text, "https://a") is None
+    assert r.write_conf(p, text, "https://b") == "updated"
+    assert p.read_text() == r.config_file_text("https://b", "s", "v", "V")
+    p.write_text("junk")
+    assert r.write_conf(p, text, "https://a") == "updated"
+    assert p.read_text() == text
+    assert [f.name for f in p.parent.iterdir()] == ["v.conf"]
