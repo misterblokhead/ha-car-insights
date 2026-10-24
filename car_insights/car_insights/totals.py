@@ -1,4 +1,7 @@
+import logging
 from datetime import date, datetime, time, tzinfo
+
+log = logging.getLogger(__name__)
 
 
 def _midnight_ms(d: date, tz: tzinfo) -> int:
@@ -21,8 +24,12 @@ def _one(conn, vids: list[str], since: int, now_ms: int, tz: tzinfo) -> dict:
     a, nc = conn.execute(
         f"SELECT COALESCE(SUM(json_extract(json,'$.added_wh')),0), COUNT(*)"
         f" FROM charges WHERE vehicle_id IN ({q}) AND end IS NOT NULL AND start >= ?", (*vids, since)).fetchone()
-    return {"distance_m": float(d), "net_wh": float(n), "charged_wh": float(a), "trips": nt, "charges": nc,
-            "cost": period_costs(conn, vids, since, now_ms + 1, tz, now_ms)}
+    try:
+        cost = period_costs(conn, vids, since, now_ms + 1, tz, now_ms)
+    except Exception:  # a cost problem is a null, never lost distance and energy
+        log.exception("totals cost failed")
+        cost = {"energy": None, "fixed": None, "total": None, "uncosted": None}
+    return {"distance_m": float(d), "net_wh": float(n), "charged_wh": float(a), "trips": nt, "charges": nc, "cost": cost}
 
 
 def totals(conn, vids: list[str], now_ms: int, tz: tzinfo) -> dict:

@@ -70,14 +70,17 @@ def rebuild(deriver: Deriver, sensors: TripSensors, conn: sqlite3.Connection, no
 
 def republish(deriver: Deriver, sensors: TripSensors, totals: TotalsSensors, conn: sqlite3.Connection, vids: list[str] | None) -> None:
     """After a price changed: the last trip and charge states and the totals of the vehicles (all when None), and every group's. No events."""
-    try:
-        for vid in vids if vids is not None else [r[0] for r in conn.execute("SELECT vehicle_id FROM vehicles")]:
+    for vid in vids if vids is not None else [r[0] for r in conn.execute("SELECT vehicle_id FROM vehicles")]:
+        try:
             trips, charges = deriver.stored_trips(vid, 1), deriver.stored_charges(vid, 1)
             sensors.publish(vid, trips[0] if trips else None, charges[0] if charges else None, [], [])
             totals.publish_vehicle(vid)
+        except Exception:
+            log.exception("republish of %s failed", vid)
+    try:
         totals.publish_groups()
     except Exception:
-        log.exception("republish failed")
+        log.exception("republish of the groups failed")
 
 
 def close_quiet(conn: sqlite3.Connection, summarize: Callable[[str, int | None, int], object], now_ms: int) -> None:

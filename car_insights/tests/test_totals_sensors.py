@@ -23,7 +23,7 @@ def add(conn, vid, group=None, trips=(), charges=()):
     for start, dist, net in trips:
         conn.execute("INSERT INTO trips VALUES(?,?,?,?,?)", (vid, start, start + 1, 1, json.dumps({"distance_m": dist, "net_wh": net})))
     for start, added in charges:
-        conn.execute("INSERT INTO charges VALUES(?,?,?,?,?)", (vid, start, start + 1, 1, json.dumps({"added_wh": added})))
+        conn.execute("INSERT INTO charges VALUES(?,?,?,?,?)", (vid, start, start + 1, 1, json.dumps({"start": start, "end": start + 1, "added_wh": added})))
 
 
 @pytest.fixture
@@ -68,6 +68,17 @@ def test_cost_fields(env):
     assert cost["device_class"] == "monetary" and cost["unit_of_measurement"] == "EUR" and "state_class" not in cost
     per_km = cfgs["homeassistant/sensor/car1_year_cost_per_km/config"]
     assert per_km["unit_of_measurement"] == "EUR/km" and "device_class" not in per_km and per_km["name"] == "Year cost per km"
+
+
+def test_failing_cost_still_publishes_distance_and_energy(env, monkeypatch, caplog):
+    conn, mqtt, ts = env
+    add(conn, "car1", trips=[(THIS_MONTH, 10_000.0, 2_000.0)], charges=[(THIS_MONTH, 30_000.0)])
+    monkeypatch.setattr("car_insights.costs.period_costs", lambda *a: 1 / 0)
+    ts.publish_vehicle("car1")
+    st = mqtt.on("car_insights/car1/totals")[-1][0]
+    assert st["month_distance"] == 10.0 and st["year_charged"] == 30.0
+    assert all(st[f] is None for f in ("month_energy_cost", "month_fixed_cost", "year_total_cost", "month_cost_per_km", "year_cost_per_km"))
+    assert "totals cost failed" in caplog.text
 
 
 def test_vehicle_totals_zero_when_nothing_in_period(env):

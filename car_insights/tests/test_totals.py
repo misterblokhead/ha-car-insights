@@ -22,7 +22,7 @@ def conn_with(trips=(), charges=()):
     for vid, start, end, dist, net in trips:
         c.execute("INSERT INTO trips VALUES(?,?,?,?,?)", (vid, start, end, 1, json.dumps({"distance_m": dist, "net_wh": net})))
     for vid, start, end, added in charges:
-        c.execute("INSERT INTO charges VALUES(?,?,?,?,?)", (vid, start, end, 1, json.dumps({"added_wh": added})))
+        c.execute("INSERT INTO charges VALUES(?,?,?,?,?)", (vid, start, end, 1, json.dumps({"start": start, "end": end, "added_wh": added})))
     return c
 
 

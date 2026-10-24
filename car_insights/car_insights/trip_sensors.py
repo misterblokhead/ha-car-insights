@@ -24,6 +24,7 @@ _SENSORS = {
     "last_charge_cost": ("last_charge", "cost", "Last charge cost", "EUR", "monetary"),
 }
 _EVENTS = {"trip": "Trip", "charge": "Charge"}
+_PRIVATE = ("lat", "lon", "zone")  # the exact GPS point stays out of events
 
 
 def _div(v: float | None, d: float) -> float | None:
@@ -101,7 +102,7 @@ class TripSensors:
         state += [m for kind, w in (("trip", last_trip), ("charge", last_charge)) if w for m in self._curve(kind, vid, w)]
         if state:
             self._mqtt.publish(state)
-        evs = [(live.topic(vid, f"{e}_event"), json.dumps({"event_type": "ended", **w, "cost": self._euros(e, vid, w)}))
+        evs = [(live.topic(vid, f"{e}_event"), json.dumps({"event_type": "ended", **{k: v for k, v in w.items() if k not in _PRIVATE}, "cost": self._euros(e, vid, w)}))
                for e, items in (("trip", ended_trips), ("charge", ended_charges)) for w in items]
         if evs:
             self._mqtt.publish(evs, retain=False)

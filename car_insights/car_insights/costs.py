@@ -15,6 +15,7 @@ LOSS = {"ac": 1.10, "dc": 1.05}  # grid-to-battery losses; the car reports energ
 def charge_cost(conn, vid: str, charge: dict) -> dict:
     start, end, wh = charge["start"], charge.get("end"), charge.get("added_wh")
     kind = "dc" if (charge.get("avg_w") or 0) > DC_ABOVE_W else "ac"
+    # the nearest spot prices the charge even inside an HA zone (the zone only names the place): on purpose
     spot = prices.spot_at(conn, charge["lat"], charge["lon"]) if charge.get("lat") is not None else None
     markup, card_fee = prices.card(conn, vid)
     out = {"amount": None, "basis": None, "kind": kind, "spot_id": spot and spot[0], "spot": spot and spot[1],
@@ -22,7 +23,7 @@ def charge_cost(conn, vid: str, charge: dict) -> dict:
     receipt = prices.receipt_for(conn, vid, start, end)
     if receipt is not None:
         return out | {"amount": receipt, "basis": "receipt"}
-    if end is None or wh is None:
+    if end is None or wh is None or wh < 0:  # a negative wh is a SoC estimate that went down
         return out
     tariff, basis = (spot and prices.tariff_at(conn, spot[0], start)), "spot"
     if tariff is None:
@@ -104,9 +105,9 @@ def period_costs(conn, vids: list[str], lo: int, hi: int, tz, now_ms: int) -> di
     """Costs of the closed charges starting in [lo, hi) plus the fixed costs of the days up to the period's last day, or today if still running."""
     q = ",".join("?" * len(vids))
     energy, uncosted = 0.0, 0
-    for vid, start, end, js in conn.execute(
-            f"SELECT vehicle_id, start, end, json FROM charges WHERE vehicle_id IN ({q}) AND end IS NOT NULL AND start >= ? AND start < ?", (*vids, lo, hi)):
-        a = charge_cost(conn, vid, json.loads(js) | {"start": start, "end": end})["amount"]
+    for vid, js in conn.execute(
+            f"SELECT vehicle_id, json FROM charges WHERE vehicle_id IN ({q}) AND end IS NOT NULL AND start >= ? AND start < ?", (*vids, lo, hi)):
+        a = charge_cost(conn, vid, json.loads(js))["amount"]
         energy, uncosted = (energy + a, uncosted) if a is not None else (energy, uncosted + 1)
     day = lambda ms: datetime.fromtimestamp(ms / 1000, tz).date()
     fixed = fixed_between(conn, vids, day(lo), min(day(hi - 1), day(now_ms)) + timedelta(days=1))

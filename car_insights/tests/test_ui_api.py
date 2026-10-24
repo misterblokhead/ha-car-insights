@@ -227,7 +227,7 @@ def test_settings_admin_only(conn):
     assert conn.execute("SELECT COUNT(*) FROM cost_groups").fetchone()[0] == 0
 
 
-def test_create_group_and_assign_vehicle_rson_settings(conn):
+def test_create_group_and_assign_vehicle_calls_on_settings(conn):
     c, calls = client(conn)
     gid = c.post("/api/ui/groups", json={"name": "Fleet"}, headers=ADMIN).json()["id"]
     assert len(calls) == 1
@@ -439,6 +439,8 @@ def test_cost_validation(conn):
     c, calls = client(conn)
     assert c.put(f"{URL}/prices/ac", json={"valid_from": 0, "per_kwh": 5.01}, headers=ADMIN).status_code == 400
     assert c.post(f"{URL}/vehicles/car1/fixed_costs", json={"name": "Z", "amount": 1, "period": "week", "start": "2026-01-01", "end": None},
+                  headers=ADMIN).status_code == 400
+    assert c.post(f"{URL}/vehicles/car1/fixed_costs", json={"name": "Z", "amount": 1, "period": "once", "start": "2026-01-01", "end": "9999-12-31"},
                   headers=ADMIN).status_code == 400
     assert c.put(f"{URL}/charges/car1/1000/receipt", json={"amount": -1}, headers=ADMIN).status_code == 400
     nan = c.put(f"{URL}/charges/car1/1000/receipt", content='{"amount": NaN}', headers={**ADMIN, "Content-Type": "application/json"})

@@ -26,10 +26,10 @@ _COST_SENSORS = {f: (f"{p.capitalize()} {k} cost", "EUR", "monetary") for f, (p,
 
 def _state(t: dict) -> dict:
     out = {f: round(t[p][key] / 1000, 2) for f, (p, key, *_) in _SENSORS.items()}
-    out |= {f: round(t[p]["cost"][k], 2) for f, (p, k) in _COSTS.items()}
+    out |= {f: None if t[p]["cost"][k] is None else round(t[p]["cost"][k], 2) for f, (p, k) in _COSTS.items()}
     for p in ("month", "year"):
-        km = t[p]["distance_m"] / 1000
-        out[f"{p}_cost_per_km"] = round(t[p]["cost"]["total"] / km, 3) if km else None
+        km, total = t[p]["distance_m"] / 1000, t[p]["cost"]["total"]
+        out[f"{p}_cost_per_km"] = round(total / km, 3) if km and total is not None else None
     return out
 
 

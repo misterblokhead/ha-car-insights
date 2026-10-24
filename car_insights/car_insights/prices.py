@@ -8,6 +8,7 @@ from .zones import Zone, name_at
 
 SPOT_RADIUS_M = 100
 _PERIODS = ("month", "quarter", "year", "once")
+_YEARS = (2000, 2100)  # beyond it the day-by-day cost sums would overflow or run for ages
 
 
 def _num(v: float, hi: float, what: str) -> float:
@@ -21,6 +22,11 @@ def _name(name: str) -> str:
     if not 1 <= len(name) <= 40:
         raise ValueError("name must be 1-40 characters")
     return name
+
+
+def _year(d: date | None, what: str) -> None:
+    if d is not None and not _YEARS[0] <= d.year <= _YEARS[1]:
+        raise ValueError(f"{what} must be in the years {_YEARS[0]}-{_YEARS[1]}")
 
 
 def _tariff_row(r) -> dict:
@@ -99,13 +105,13 @@ def delete_spot(conn, spot_id: str) -> None:
 def set_receipt(conn, vid: str, start: int, amount: float | None) -> None:
     if amount is not None:
         _num(amount, 1000, "amount")
-    if conn.execute("SELECT 1 FROM charges WHERE vehicle_id=? AND start=?", (vid, start)).fetchone() is None:
+    r = conn.execute("SELECT end FROM charges WHERE vehicle_id=? AND start=?", (vid, start)).fetchone()
+    if r is None:
         raise KeyError(start)
-    if amount is None:
-        conn.execute("DELETE FROM charge_receipts WHERE vehicle_id=? AND start=?", (vid, start))
-    else:
-        conn.execute("INSERT INTO charge_receipts VALUES(?,?,?) ON CONFLICT(vehicle_id, start) DO UPDATE SET amount=excluded.amount",
-                     (vid, start, amount))
+    with db.tx(conn):  # every receipt in the span goes: receipt_for reads the newest one, a charge re-derived earlier may hold an old one
+        conn.execute("DELETE FROM charge_receipts WHERE vehicle_id=? AND start>=? AND (? IS NULL OR start<=?)", (vid, start, r[0], r[0]))
+        if amount is not None:
+            conn.execute("INSERT INTO charge_receipts VALUES(?,?,?)", (vid, start, amount))
 
 
 def receipt_for(conn, vid: str, start: int, end: int | None) -> float | None:
@@ -120,6 +126,7 @@ def add_fixed_cost(conn, vid: str, name: str, amount: float, period: str, start:
     _num(amount, 100_000, "amount")
     if period not in _PERIODS:
         raise ValueError(f"period must be one of {', '.join(_PERIODS)}")
+    _year(start, "start"), _year(end, "end")
     if end is not None and end < start:
         raise ValueError("end must not be before start")
     if conn.execute("SELECT 1 FROM vehicles WHERE vehicle_id=?", (vid,)).fetchone() is None:
@@ -134,6 +141,7 @@ def end_fixed_cost(conn, cost_id: str, end: date | None) -> str:
     r = conn.execute("SELECT vehicle_id, start FROM fixed_costs WHERE cost_id=?", (cost_id,)).fetchone()
     if r is None:
         raise KeyError(cost_id)
+    _year(end, "end")
     if end is not None and end.isoformat() < r[1]:
         raise ValueError("end must not be before start")
     conn.execute("UPDATE fixed_costs SET end=? WHERE cost_id=?", (end and end.isoformat(), cost_id))

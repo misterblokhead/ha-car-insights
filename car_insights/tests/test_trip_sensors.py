@@ -89,11 +89,13 @@ def test_short_trip_has_no_consumption(env):
 
 def test_charge_state_and_event(env):
     _, mqtt, ts = env
-    c = {"start": 1000, "end": 4600, "place": "Home", "added_wh": 12000.0, "avg_w": 7000.0}
+    c = {"start": 1000, "end": 4600, "place": "Home", "added_wh": 12000.0, "avg_w": 7000.0, "lat": 52.1, "lon": 5.2, "zone": "Work"}
     ts.publish("car1", None, c, [], [c])
     state = mqtt.on("car_insights/car1/last_charge")[0][0]
     assert state["added_kwh"] == 12.0 and state["avg_power_kw"] == 7.0 and state["place"] == "Home"
-    assert mqtt.on("car_insights/car1/charge_event")[0][0]["event_type"] == "ended"
+    ev = mqtt.on("car_insights/car1/charge_event")[0][0]
+    assert ev["event_type"] == "ended" and ev["place"] == "Home"
+    assert not {"lat", "lon", "zone"} & ev.keys()  # the exact GPS point stays out of the event
     assert mqtt.on("car_insights/car1/last_trip") == []
 
 

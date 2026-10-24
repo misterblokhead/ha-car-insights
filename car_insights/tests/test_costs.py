@@ -71,9 +71,15 @@ def test_receipt_wins(c):
     assert (r["amount"], r["basis"]) == (9.99, "receipt")
 
 
-@pytest.mark.parametrize("kw", [{"added_wh": None}, {"end": None}, {}])
+@pytest.mark.parametrize("kw", [{"added_wh": None}, {"added_wh": -300}, {"end": None}])
 def test_not_available(c, kw):
+    prices.set_tariff(c, "ac", 0, 0.40)  # a price exists, so only the charge itself can make the amount unavailable
     r = costs.charge_cost(c, "car1", ch(**kw))
+    assert r["amount"] is None and r["basis"] is None
+
+
+def test_not_available_without_a_price(c):
+    r = costs.charge_cost(c, "car1", ch())
     assert r["amount"] is None and r["basis"] is None
 
 

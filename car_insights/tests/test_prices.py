@@ -73,6 +73,8 @@ NAN, INF = float("nan"), float("inf")
     lambda c: prices.add_fixed_cost(c, "car1", "Tax", 1, "week", date(2026, 1, 1), None),
     lambda c: prices.add_fixed_cost(c, "car1", "Tax", 1, "year", date(2026, 1, 2), date(2026, 1, 1)),
     lambda c: prices.set_receipt(c, "car1", 5, 1000.01),
+    lambda c: prices.add_fixed_cost(c, "car1", "Tax", 1, "year", date(1999, 12, 31), None),
+    lambda c: prices.add_fixed_cost(c, "car1", "Tax", 1, "year", date(2026, 1, 1), date(2101, 1, 1)),
 ])
 def test_limits(c, call):
     charge(c, 5)
@@ -163,6 +165,10 @@ def test_receipt_survives_earlier_start(c):
     assert prices.receipt_for(c, "car1", 6000, 9000) is None
     assert prices.receipt_for(c, "car1", 6000, None) is None
     assert prices.receipt_for(c, "car1", 4000, None) == 12.5
+    prices.set_receipt(c, "car1", 4000, 20)  # the old row at 5000 must not shadow the edit
+    assert prices.receipt_for(c, "car1", 4000, 9000) == 20
+    prices.set_receipt(c, "car1", 4000, None)
+    assert prices.receipt_for(c, "car1", 4000, 9000) is None
 
 
 def test_receipt_newest_start_wins(c):
@@ -187,6 +193,8 @@ def test_fixed_cost_lifecycle(c):
     assert prices.end_fixed_cost(c, cid, date(2026, 12, 31)) == "car1"
     with pytest.raises(ValueError):
         prices.end_fixed_cost(c, cid, date(2025, 12, 31))
+    with pytest.raises(ValueError):
+        prices.end_fixed_cost(c, cid, date(2101, 1, 1))
     assert prices.delete_fixed_cost(c, cid) == "car1"
     with pytest.raises(KeyError):
         prices.delete_fixed_cost(c, cid)

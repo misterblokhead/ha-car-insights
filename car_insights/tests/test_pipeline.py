@@ -243,9 +243,15 @@ def test_republish(env, caplog):
     mqtt.msgs.clear()
     republish(d, sensors, totals, conn, None)
     assert {"car_insights/car1/last_trip", "car_insights/car2/last_trip", "car_insights/car1/totals", "car_insights/car2/totals"} <= {t for t, _, _ in mqtt.msgs}
-    totals.publish_vehicle = lambda vid: 1 / 0
-    republish(d, sensors, totals, conn, None)  # logged, not raised
-    assert "republish failed" in caplog.text
+    mqtt.msgs.clear()
+    real = totals.publish_vehicle
+    totals.publish_vehicle = lambda vid: 1 / 0 if vid == "car1" else real(vid)
+    republish(d, sensors, totals, conn, None)  # logged, not raised, and car2 still goes out
+    assert "republish of car1 failed" in caplog.text
+    assert "car_insights/car2/totals" in {t for t, _, _ in mqtt.msgs}
+    totals.publish_groups = lambda: 1 / 0
+    republish(d, sensors, totals, conn, None)
+    assert "republish of the groups failed" in caplog.text
 
 
 def winding_samples(t0, secs, open_=False):
