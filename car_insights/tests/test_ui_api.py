@@ -290,3 +290,21 @@ def test_admin_cache_wired_into_the_router(conn):
     c = TestClient(app, client=("172.30.32.2", 50000))
     assert c.get("/api/ui/settings", headers=ADMIN).status_code == 200
     assert c.get("/api/ui/settings", headers=VIEWER).status_code == 403
+
+
+def test_activity_visibility(conn):
+    put(conn, "trips", "car1", 1000, 1500)
+    put(conn, "trips", "car3", 2000, 2500)
+    gid = access.create_group(conn, "Fleet")
+    access.set_vehicle(conn, "car1", gid, ["u-viewer"])
+    access.set_vehicle(conn, "car2", gid, ["u-viewer"])  # a group is only listed with 2+ visible cars
+    access.set_vehicle(conn, "car3", gid, [])  # in the cost group, hidden from the viewer
+    c, _ = client(conn)
+    assert c.get("/api/ui/activity?view=v:car3", headers=VIEWER).status_code == 404
+    r = c.get(f"/api/ui/activity?view=g:{gid}", headers=VIEWER).json()
+    assert [i["vehicle_id"] for d in r["days"] for i in d["items"]] == ["car1"] and sorted(r["capacity_wh"]) == ["car1", "car2"]
+
+
+def test_activity_before_validated(conn):
+    c, _ = client(conn)
+    assert c.get("/api/ui/activity?view=v:car1&before=-1", headers=VIEWER).status_code == 422

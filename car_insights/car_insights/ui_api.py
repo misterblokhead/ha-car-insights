@@ -7,7 +7,7 @@ from typing import Annotated, Awaitable, Callable
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel
 
-from . import access, db
+from . import access, activity, db
 from .access import Viewer
 from .derive import Deriver, Zones
 from .protocol import fix
@@ -131,6 +131,11 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
     @r.get("/charges")
     async def charges(request: Request, view: str = "", before: EpochMs | None = None, limit: int = 50):
         return page("charges", vids_of(await who(request), view), before, limit)
+
+    @r.get("/activity")
+    async def get_activity(request: Request, view: str = "", before: EpochMs | None = None):
+        return activity.page(conn, vids_of(await who(request), view), before, now_ms(), tz, lambda v: db.device_info(conn, v)[0],
+                             deriver.trip_route, capacity)
 
     @r.get("/trips/{vid}/{start}")
     async def trip(request: Request, vid: str, start: StartMs):
