@@ -2,7 +2,8 @@
 import dataclasses
 import json
 import time
-from typing import Annotated, Awaitable, Callable
+from datetime import date, datetime
+from typing import Annotated, Awaitable, Callable, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel
@@ -136,6 +137,13 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
     async def get_activity(request: Request, view: str = "", before: EpochMs | None = None):
         return activity.page(conn, vids_of(await who(request), view), before, now_ms(), tz, lambda v: db.device_info(conn, v)[0],
                              deriver.trip_route, capacity)
+
+    @r.get("/stats")
+    async def get_stats(request: Request, view: str = "", period: Literal["week", "month", "year"] = "week", at: date | None = None):
+        vids, today = vids_of(await who(request), view), datetime.fromtimestamp(now_ms() / 1000, tz).date()
+        if at is not None and at > today:
+            raise HTTPException(422, "at is in the future")
+        return stats.stats(conn, vids, period, at or today, tz, (lambda v: db.device_info(conn, v)[0]) if view.startswith("g:") else None)
 
     @r.get("/trips/{vid}/{start}")
     async def trip(request: Request, vid: str, start: StartMs):

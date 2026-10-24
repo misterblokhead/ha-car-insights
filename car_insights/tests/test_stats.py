@@ -1,4 +1,6 @@
 import json
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from car_insights import stats
 from car_insights.db import connect
@@ -45,3 +47,130 @@ def test_similar_zero_distance_no_division():
     put(c, 1000, {"from": "Home", "to": "Work", "duration_s": 60, "distance_m": 0, "net_wh": 0})
     put(c, 2000, {"from": "Home", "to": "Work", "duration_s": 120, "distance_m": 0, "net_wh": None})
     assert stats.similar_trips(c, "car1", trip()) == {"n": 2, "avg_duration_s": 90, "avg_wh_per_100km": None}
+
+
+TZ = ZoneInfo("Europe/Amsterdam")
+OCT24 = date(2026, 10, 24)
+
+
+def ms(*a):
+    return int(datetime(*a, tzinfo=TZ).timestamp() * 1000)
+
+
+def row(c, table, start, extra, vid="car1", end=True):
+    end = start + 1000 if end else None
+    c.execute(f"INSERT INTO {table} VALUES(?,?,?,?,?)", (vid, start, end, ALGO, json.dumps({"start": start, "end": end, **extra})))
+
+
+def test_period_bounds_week_month_year():
+    assert stats.period_bounds("week", OCT24, TZ) == (ms(2026, 10, 19), ms(2026, 10, 26))
+    lo, hi = stats.period_bounds("week", OCT24, TZ)
+    assert hi - lo == (7 * 24 + 1) * 3600_000  # the clocks go back on 25 October
+    assert stats.period_bounds("month", OCT24, TZ) == (ms(2026, 10, 1), ms(2026, 11, 1))
+    assert stats.period_bounds("year", OCT24, TZ) == (ms(2026, 1, 1), ms(2027, 1, 1))
+    assert stats.period_bounds("week", date(2026, 10, 19), TZ)[0] == ms(2026, 10, 19)  # Monday is its own week
+    assert stats.period_bounds("week", date(2026, 10, 25), TZ)[0] == ms(2026, 10, 19)  # Sunday belongs to the week before
+
+
+def test_buckets_cover_period_with_zeros():
+    c = connect(":memory:")
+    row(c, "trips", ms(2026, 10, 24, 23, 50), {"distance_m": 1000, "net_wh": 100})  # own day, not the 25th
+    row(c, "trips", ms(2026, 10, 25, 0, 10), {"distance_m": 2000, "net_wh": 200})  # the 25-hour day
+    row(c, "trips", ms(2026, 10, 25, 23, 50), {"distance_m": 4000, "net_wh": 400})  # after the clocks went back
+    row(c, "trips", ms(2026, 10, 26, 0, 5), {"distance_m": 8000, "net_wh": 800})
+    b = stats.stats(c, ["car1"], "month", OCT24, TZ)["buckets"]
+    assert len(b) == 31 and b[0]["start"] == ms(2026, 10, 1) and b[30]["start"] == ms(2026, 10, 31)
+    assert [(i, x["distance_m"], x["net_wh"]) for i, x in enumerate(b) if x["distance_m"]] == [
+        (23, 1000, 100), (24, 6000, 600), (25, 8000, 800)]
+    assert b[3] == {"start": ms(2026, 10, 4), "distance_m": 0, "net_wh": 0}
+    assert len(stats.stats(c, ["car1"], "week", OCT24, TZ)["buckets"]) == 7
+    y = stats.stats(c, ["car1"], "year", OCT24, TZ)["buckets"]
+    assert len(y) == 12 and y[9] == {"start": ms(2026, 10, 1), "distance_m": 15000, "net_wh": 1500}
+
+
+def test_previous_period_totals():
+    c = connect(":memory:")
+    row(c, "trips", ms(2026, 10, 14), {"distance_m": 1000, "net_wh": 100})
+    row(c, "charges", ms(2026, 10, 15), {"added_wh": 5000})
+    row(c, "trips", ms(2026, 10, 20), {"distance_m": 3000, "net_wh": 300})
+    s = stats.stats(c, ["car1"], "week", OCT24, TZ)
+    assert s["previous"] == {"distance_m": 1000, "net_wh": 100, "charged_wh": 5000, "trips": 1, "charges": 1}
+    assert s["totals"] == {"distance_m": 3000, "net_wh": 300, "charged_wh": 0, "trips": 1, "charges": 0}
+    assert s["period"] == {"start": ms(2026, 10, 19), "end": ms(2026, 10, 26)}
+    # the month before January is December of the year before; the boundary instant belongs to the later period
+    row(c, "trips", ms(2025, 12, 31, 23, 59), {"distance_m": 7})
+    row(c, "trips", ms(2026, 1, 1), {"distance_m": 9})
+    j = stats.stats(c, ["car1"], "month", date(2026, 1, 15), TZ)
+    assert j["previous"]["distance_m"] == 7 and j["totals"]["distance_m"] == 9
+    assert stats.stats(c, ["car1"], "year", date(2026, 3, 1), TZ)["previous"]["distance_m"] == 7
+
+
+def test_open_rows_excluded():
+    c = connect(":memory:")
+    row(c, "trips", ms(2026, 10, 20), {"distance_m": 50_000, "net_wh": 9000, "recup_wh": 5, "gross_wh": 9}, end=False)
+    row(c, "charges", ms(2026, 10, 20), {"added_wh": 9000, "place": "Home"}, end=False)
+    s = stats.stats(c, ["car1"], "week", OCT24, TZ)
+    assert s["totals"] == {"distance_m": 0, "net_wh": 0, "charged_wh": 0, "trips": 0, "charges": 0}
+    assert s["by_place"] == [] and s["highlights"] == {"longest": None, "most_efficient": None, "recup_wh": 0, "gross_wh": 0}
+    assert all(b["distance_m"] == 0 for b in s["buckets"])
+
+
+def test_by_place_sorted_with_unknown():
+    c = connect(":memory:")
+    row(c, "charges", ms(2026, 10, 19), {"added_wh": 1000, "place": "Shop"})
+    row(c, "charges", ms(2026, 10, 20), {"added_wh": 3000, "place": "Home"})
+    row(c, "charges", ms(2026, 10, 21), {"added_wh": 4000, "place": "Home"})
+    row(c, "charges", ms(2026, 10, 22), {"added_wh": 2000, "place": None})
+    row(c, "charges", ms(2026, 10, 23), {"added_wh": None, "place": "Work"})  # null counts 0, the place stays listed
+    s = stats.stats(c, ["car1"], "week", OCT24, TZ)
+    assert s["by_place"] == [{"place": "Home", "wh": 7000}, {"place": None, "wh": 2000}, {"place": "Shop", "wh": 1000}, {"place": "Work", "wh": 0}]
+    assert s["totals"]["charged_wh"] == 10000 and s["totals"]["charges"] == 5
+
+
+def test_highlights():
+    c = connect(":memory:")
+    row(c, "trips", ms(2026, 10, 19), {"distance_m": 3000, "net_wh": 30, "from": "Home", "to": "Shop", "recup_wh": 10, "gross_wh": 40})  # 1 Wh/km but too short
+    row(c, "trips", ms(2026, 10, 20), {"distance_m": 20_000, "net_wh": 4000, "from": "Home", "to": "Work", "recup_wh": 500, "gross_wh": 4500})  # 20 kWh/100km
+    row(c, "trips", ms(2026, 10, 21), {"distance_m": 10_000, "net_wh": 1500, "from": None, "to": "Shop", "recup_wh": None, "gross_wh": 1500})  # 15 kWh/100km
+    row(c, "trips", ms(2026, 10, 22), {"distance_m": 10_000, "net_wh": 1500, "recup_wh": 0, "gross_wh": 1500})  # ties do not crash
+    row(c, "trips", ms(2026, 10, 23), {"distance_m": 0, "net_wh": None, "recup_wh": None, "gross_wh": None})
+    row(c, "trips", ms(2026, 10, 23, 1), {"distance_m": None, "net_wh": 50})
+    h = stats.stats(c, ["car1"], "week", OCT24, TZ)["highlights"]
+    assert h["longest"] == {"vehicle_id": "car1", "start": ms(2026, 10, 20), "distance_m": 20_000, "from": "Home", "to": "Work"}
+    assert h["most_efficient"] == {"vehicle_id": "car1", "start": ms(2026, 10, 21), "wh_per_100km": 15_000}
+    assert h["recup_wh"] == 510 and h["gross_wh"] == 7540
+    empty = stats.stats(c, ["car1"], "week", date(2026, 9, 1), TZ)["highlights"]
+    assert empty == {"longest": None, "most_efficient": None, "recup_wh": 0, "gross_wh": 0}
+
+
+def test_highlights_nothing_efficient_when_all_short_or_unmeasured():
+    c = connect(":memory:")
+    row(c, "trips", ms(2026, 10, 20), {"distance_m": 4999, "net_wh": 1})
+    row(c, "trips", ms(2026, 10, 21), {"distance_m": 9000, "net_wh": None})
+    h = stats.stats(c, ["car1"], "week", OCT24, TZ)["highlights"]
+    assert h["most_efficient"] is None and h["longest"]["distance_m"] == 9000
+
+
+def test_per_vehicle_split():
+    c = connect(":memory:")
+    row(c, "trips", ms(2026, 10, 20), {"distance_m": 1000, "net_wh": 100}, vid="car1")
+    row(c, "trips", ms(2026, 10, 21), {"distance_m": 5000, "net_wh": 500}, vid="car2")
+    row(c, "charges", ms(2026, 10, 21), {"added_wh": 700}, vid="car2")
+    names = {"car1": "Car One", "car2": "Car Two"}.get
+    s = stats.stats(c, ["car1", "car2"], "week", OCT24, TZ, names)
+    assert s["totals"]["distance_m"] == 6000
+    assert s["per_vehicle"] == [
+        {"id": "car1", "name": "Car One", "totals": {"distance_m": 1000, "net_wh": 100, "charged_wh": 0, "trips": 1, "charges": 0}},
+        {"id": "car2", "name": "Car Two", "totals": {"distance_m": 5000, "net_wh": 500, "charged_wh": 700, "trips": 1, "charges": 1}}]
+    assert stats.stats(c, ["car1", "car2"], "week", OCT24, TZ)["per_vehicle"] is None
+
+
+def test_hidden_vehicle_rows_never_leak():
+    c = connect(":memory:")
+    row(c, "trips", ms(2026, 10, 20), {"distance_m": 1000, "net_wh": 100}, vid="car1")
+    row(c, "trips", ms(2026, 10, 21), {"distance_m": 90_000, "net_wh": 1, "recup_wh": 7, "gross_wh": 8, "from": "Home", "to": "Work"}, vid="car3")
+    row(c, "charges", ms(2026, 10, 21), {"added_wh": 9999, "place": "Shop"}, vid="car3")
+    s = stats.stats(c, ["car1", "car2"], "week", OCT24, TZ, {"car1": "A", "car2": "B"}.get)
+    assert s["totals"] == {"distance_m": 1000, "net_wh": 100, "charged_wh": 0, "trips": 1, "charges": 0}
+    assert s["by_place"] == [] and s["highlights"]["longest"]["vehicle_id"] == "car1" and s["highlights"]["recup_wh"] == 0
+    assert [p["id"] for p in s["per_vehicle"]] == ["car1", "car2"]
