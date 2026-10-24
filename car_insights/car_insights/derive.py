@@ -3,16 +3,16 @@ from bisect import bisect_left, bisect_right
 from dataclasses import asdict
 from typing import Callable
 
-from . import db, series
+from . import db, route, series
 from .charges import KEYS as CHARGE_KEYS, Charge, find_charges
 from .live import FUTURE_SLACK_MS
 from .odometer import chain
 from .trips import KEYS as TRIP_KEYS, Trip, find_trips
 
-ALGO = 4  # bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
+ALGO = 5  # bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
 ESTIMATE_HOLD_MS = 7 * 86_400_000  # a SoC-estimated charge this recent is re-derived on every update: the car's value may still arrive
 _TABLES = ("trips", "charges")
-_SERIES = {"trips": "trip_series", "charges": "charge_series"}  # deleted and inserted exactly with their rows
+_SATELLITES = {"trips": ("trip_series", "trip_routes"), "charges": ("charge_series",)}  # deleted and inserted exactly with their rows
 KEYS = tuple(sorted({*TRIP_KEYS, *CHARGE_KEYS, *series.KEYS}))  # the only sample keys derivation loads
 Zones = Callable[[float, float], str | None]
 
@@ -41,7 +41,8 @@ class Deriver:
         with db.tx(conn):
             for t in _TABLES:
                 conn.executemany(f"DELETE FROM {t} WHERE vehicle_id=?", [(v,) for v in stale])
-                conn.executemany(f"DELETE FROM {_SERIES[t]} WHERE vehicle_id=?", [(v,) for v in stale])
+                for sat in _SATELLITES[t]:
+                    conn.executemany(f"DELETE FROM {sat} WHERE vehicle_id=?", [(v,) for v in stale])
 
     def _newest_end(self, vid: str, below: int | None = None) -> int:
         """newest closed end over both tables (strictly below `below` when given), or -1"""
@@ -82,9 +83,10 @@ class Deriver:
                 w = min(starts) - 1
             old = {t: dict(conn.execute(f"SELECT start, json FROM {t} WHERE vehicle_id=? AND (end IS NULL OR end>?)", (vid, w)))
                    for t in _TABLES}
-            for t in _TABLES:  # the series first: it is found through the rows it belongs to
-                conn.execute(f"DELETE FROM {_SERIES[t]} WHERE vehicle_id=? AND start IN "
-                             f"(SELECT start FROM {t} WHERE vehicle_id=? AND (end IS NULL OR end>?))", (vid, vid, w))
+            for t in _TABLES:  # the series and routes first: they are found through the rows they belong to
+                for sat in _SATELLITES[t]:
+                    conn.execute(f"DELETE FROM {sat} WHERE vehicle_id=? AND start IN "
+                                 f"(SELECT start FROM {t} WHERE vehicle_id=? AND (end IS NULL OR end>?))", (vid, vid, w))
                 conn.execute(f"DELETE FROM {t} WHERE vehicle_id=? AND (end IS NULL OR end>?)", (vid, w))
             if vid not in self._ignition and db.has_key(conn, vid, "ignition"):
                 self._ignition.add(vid)
@@ -116,7 +118,9 @@ class Deriver:
                     conn.execute(f"INSERT INTO {table} VALUES(?,?,?,?,?)", (vid, r["start"], r["end"], ALGO, js))
                     span = samples[bisect_left(times, r["start"]):None if r["end"] is None else bisect_right(times, r["end"])]
                     ser = series.trip(span, r["start_wh"], r["start"]) if table == "trips" else series.charge(span, r["start"], r["end"])
-                    conn.execute(f"INSERT INTO {_SERIES[table]} VALUES(?,?,?)", (vid, r["start"], db.json_dumps(ser)))
+                    conn.execute(f"INSERT INTO {_SATELLITES[table][0]} VALUES(?,?,?)", (vid, r["start"], db.json_dumps(ser)))
+                    if table == "trips":
+                        conn.execute("INSERT INTO trip_routes VALUES(?,?,?,?)", (vid, r["start"], ALGO, db.json_dumps(route.from_samples(span))))
                     if r["end"] is not None and old[table].get(r["start"]) != js:
                         new[table].append(r)
                         if r["start"] in old[table] and json.loads(old[table][r["start"]])["end"] is not None:
@@ -139,6 +143,10 @@ class Deriver:
 
     def charge_series(self, vid: str, start: int) -> dict | None:
         return self._series("charge_series", vid, start)
+
+    def trip_route(self, vid: str, start: int) -> list[list[float]] | None:
+        r = self._conn.execute("SELECT points FROM trip_routes WHERE vehicle_id=? AND start=?", (vid, start)).fetchone()
+        return None if r is None else json.loads(r[0])
 
     def _series(self, table: str, vid: str, start: int) -> dict | None:
         r = self._conn.execute(f"SELECT json FROM {table} WHERE vehicle_id=? AND start=?", (vid, start)).fetchone()

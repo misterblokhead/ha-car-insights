@@ -32,6 +32,8 @@ CREATE TABLE vehicle_viewers(vehicle_id TEXT, user_id TEXT, PRIMARY KEY(vehicle_
 CREATE TABLE seen_users(user_id TEXT PRIMARY KEY, name TEXT, last_seen_ms INTEGER);
 CREATE TABLE trip_series(vehicle_id TEXT, start INTEGER, json TEXT, PRIMARY KEY(vehicle_id, start));
 CREATE TABLE charge_series(vehicle_id TEXT, start INTEGER, json TEXT, PRIMARY KEY(vehicle_id, start));
+""", """
+CREATE TABLE trip_routes(vehicle_id TEXT, start INTEGER, algo INTEGER, points TEXT, PRIMARY KEY(vehicle_id, start));
 """]
 
 
