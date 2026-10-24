@@ -116,10 +116,11 @@ def _sessions(samples: list[Sample], seed: dict[str, Any], cloud: bool) -> list[
     car = _spans(samples, seed, "plugged", moving)
     if not cloud:
         return [_Span(a, b) for a, b in car]
-    sessions = []
+    sessions: list[_Span] = []
     cloud_spans = _merge_unmeasured(_spans(samples, seed, "charging_state", moving), samples, seed)
     for a, b in cloud_spans:
-        start = _plug_t(samples, True, a - CAR_SNAP_MS, a)
+        lo = a - CAR_SNAP_MS if not sessions else max(a - CAR_SNAP_MS, sessions[-1].end + 1)  # never into the previous charge (starts are the key); only the last span has no end
+        start = _plug_t(samples, True, lo, a)
         end = None if b is None else _plug_t(samples, False, max(b - CAR_SNAP_MS, a), b)  # never before the cloud start
         sessions.append(_Span(a if start is None else start, b if end is None else end,
                               start_car=start is not None, end_car=b is None or end is not None))

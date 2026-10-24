@@ -192,6 +192,20 @@ def test_two_cloud_spans_with_car_sample_between_stay_two():
     assert (b.start, b.added_wh) == (at("10:30:00"), 16_550)
 
 
+def paused(p=at("09:00:00")):
+    """one plug, a cloud charge paused for 3 min, the car reading in between: two spans, both within snap reach of the plug"""
+    m = 60_000
+    return [s(p, "plugged", True), s(p, "battery_wh", 20_000),
+            s(p + m, "charging_state", True), s(p + 3 * m, "charging_state", False),
+            s(p + 4 * m, "battery_wh", 25_000), s(p + 6 * m, "charging_state", True),
+            s(p + 60 * m, "charging_state", False), s(p + 61 * m, "battery_wh", 40_000)]
+
+
+def test_cloud_spans_near_one_plug_get_distinct_starts():
+    a, b = charges(paused(), cloud=True)
+    assert a.start == at("09:00:00") and b.start > a.end  # the second does not snap back to the first's plug sample
+
+
 STALE = [s(at("09:09:35"), "battery_wh", 22_500), s(at("09:09:40"), "gear", 4),
          s(at("09:13:32"), "charging_state", True), s(at("09:13:32"), "soc_percent", 40),
          s(at("10:00:00"), "soc_percent", 55), s(at("16:15:00"), "gear", 1), s(at("16:15:00"), "speed", 5.0)]

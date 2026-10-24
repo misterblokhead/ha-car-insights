@@ -512,6 +512,13 @@ def test_estimate_with_no_prior_car_reading_cannot_refine_so_is_not_held(monkeyp
     assert seen == [-1, at("11:21:29")]  # the second update reads on from the idle watermark, not from the estimate's start
 
 
+def test_paused_cloud_charge_derives_and_stores_both():
+    from test_charges import paused  # two cloud spans near one plug sample used to share a start: IntegrityError, every update after
+    conn, d = setup(paused())
+    _, charges, _ = d.update("car1", None, at("12:00:00"))
+    assert len(charges) == 2 and _count(conn, "charges") == 2
+
+
 # --- series rows live and die with their trip/charge rows ---
 def _count(conn, table, vid="car1"):
     return conn.execute(f"SELECT COUNT(*) FROM {table} WHERE vehicle_id=?", (vid,)).fetchone()[0]
