@@ -29,7 +29,7 @@
 <style>
   a {
     display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px; align-items: center; padding: 14px;
-    background: var(--card); border-radius: var(--radius-card); color: inherit; text-decoration: none; transition: transform 100ms;
+    background: var(--card); border: var(--edge); border-radius: var(--radius-card); color: inherit; text-decoration: none; transition: transform 100ms;
   }
   a.current { box-shadow: 0 0 0 2px var(--charge-text); }
   a:active { transform: scale(var(--press-scale)); }

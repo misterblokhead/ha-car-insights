@@ -123,7 +123,7 @@
   h2, h3, legend { margin: 20px 0 6px 14px; padding: 0; font-size: 13px; font-weight: 400; color: var(--muted); }
   h2 + .note { margin-top: -2px; }
   fieldset { min-width: 0; margin: 14px 0 0; padding: 0; border: 0; }
-  .list { background: var(--card); border-radius: var(--radius-card); overflow: hidden; }
+  .list { background: var(--card); border: var(--edge); border-radius: var(--radius-card); overflow: hidden; }
   .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; box-sizing: border-box; min-height: 44px; margin: 0; padding: 0 14px; }
   .row + .row { border-top: 1px solid var(--line); }
   .split { justify-content: space-between; cursor: pointer; }

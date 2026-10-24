@@ -8,6 +8,8 @@
   --line: rgba(60, 60, 67, 0.29);
   --chrome: rgba(249, 249, 249, 0.78);
   --chrome-filter: saturate(180%) blur(20px);
+  --marker: var(--card); /* the selected segment */
+  --edge: 0; /* the border of cards and bars: none, a visible one under more contrast */
   --trip: #0A84FF;
   --charge: #30D158;
   --energy: #FF9500;
@@ -40,6 +42,7 @@
     --muted: rgba(235, 235, 245, 0.6);
     --line: rgba(84, 84, 88, 0.65);
     --chrome: rgba(30, 30, 30, 0.72);
+    --marker: rgba(255, 255, 255, 0.18);
     --energy: #FF9F0A;
     --good: #30D158;
     --warn: #FF453A;
@@ -62,6 +65,9 @@
   :root {
     --muted: var(--fg);
     --line: var(--fg);
+    --chrome: var(--card);
+    --chrome-filter: none;
+    --edge: 1px solid var(--line);
   }
 }
 

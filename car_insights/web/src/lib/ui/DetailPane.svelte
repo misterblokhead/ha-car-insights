@@ -199,6 +199,7 @@
     position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; align-items: center;
     padding: calc(env(safe-area-inset-top) + 4px) 8px 4px;
     background: var(--chrome); -webkit-backdrop-filter: var(--chrome-filter); backdrop-filter: var(--chrome-filter);
+    border-bottom: var(--edge);
   }
   .steps { display: flex; }
   button {

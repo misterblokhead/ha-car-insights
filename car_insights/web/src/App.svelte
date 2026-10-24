@@ -41,6 +41,13 @@
     if (me && !me.is_admin && route.page === "settings") location.replace("#/activity");
   });
 
+  // a detail belongs to the vehicle list it was opened from: a switch of the view closes it (the first view is not a switch)
+  let seen = "";
+  $effect(() => {
+    if (seen && view && view !== seen && route.detail) location.replace("#/activity");
+    if (view) seen = view;
+  });
+
   $effect(() => {
     if (view) try { localStorage.setItem(KEY, view); } catch {}
   });

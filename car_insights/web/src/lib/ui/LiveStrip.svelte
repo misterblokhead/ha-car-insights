@@ -25,7 +25,7 @@
 {/if}
 
 <style>
-  ul { list-style: none; margin: 0; padding: 4px 14px; background: var(--card); border-radius: var(--radius-card); }
+  ul { list-style: none; margin: 0; padding: 4px 14px; background: var(--card); border: var(--edge); border-radius: var(--radius-card); }
   li { display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; min-height: 40px; } /* wraps at large text sizes */
   i { flex: none; width: 10px; height: 10px; border-radius: 50%; }
   .where { flex: 1 1 8em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }

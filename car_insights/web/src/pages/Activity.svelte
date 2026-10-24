@@ -81,14 +81,20 @@
     return () => clearTimeout(t);
   });
 
+  // also when the page comes back to the front: the Companion app keeps the WebView alive while parked
   $effect(() => {
-    const id = setInterval(() => {
+    const tick = () => {
       if (document.visibilityState === "visible") {
         refresh();
         live();
       }
-    }, 60_000);
-    return () => clearInterval(id);
+    };
+    const id = setInterval(tick, 60_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+    };
   });
 
   // observing anew after every page (loading flips) reports a sentinel that is still in view
@@ -166,6 +172,7 @@
     position: sticky; top: 0; z-index: 2; margin: 0 calc(-1 * var(--bleed)); padding: 14px var(--bleed) 6px;
     font-size: var(--fs-body); font-weight: 600;
     background: var(--chrome); -webkit-backdrop-filter: var(--chrome-filter); backdrop-filter: var(--chrome-filter);
+    border-bottom: var(--edge);
   }
   h2 span { font-weight: 400; color: var(--muted); }
   li { scroll-margin-block: 56px; } /* clear of the sticky day header */
