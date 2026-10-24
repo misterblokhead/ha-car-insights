@@ -8,7 +8,7 @@ export const costLabel = (cost) => (cost?.amount == null ? NA : cost.basis === "
 
 // "Plaza · €0.35/kWh · 10 % charging loss · start fee €0.50 · €0.02/min · card +10 % · card fee €0.35"; the optional parts only when nonzero
 export function chargeBasis(cost) {
-  if (cost?.amount == null) return "Not available: set a default price in Settings";
+  if (cost?.amount == null) return "Not available: no price for this date, or no energy reading";
   if (cost.basis === "receipt") return "Receipt";
   const t = cost.tariff;
   const parts = [
@@ -34,6 +34,18 @@ export const localMidnight = (date) => {
   const [y, m, d] = date.split("-").map(Number);
   return new Date(y, m - 1, d).getTime();
 };
+
+// the valid_from to save for a price changed on `day`: that of a tariff already saved inside the day (a spot's own is at its charge's
+// start), so the save corrects it; else the day's midnight
+export const validFromFor = (tariffs, day) => {
+  const lo = localMidnight(day);
+  const [y, m, d] = day.split("-").map(Number);
+  const hi = new Date(y, m - 1, d + 1).getTime();
+  return tariffs.find((t) => t.valid_from >= lo && t.valid_from < hi)?.valid_from ?? lo;
+};
+
+// "2 charges without a price"; empty when none are left out of the cost
+export const uncostedText = (n) => (n > 0 ? `${n} ${n === 1 ? "charge" : "charges"} without a price` : "");
 
 // the tariff in force at `now` of a list kept newest first
 export const currentTariff = (list, now) => list.find((t) => t.valid_from <= now) ?? null;

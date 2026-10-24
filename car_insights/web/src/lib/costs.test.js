@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { eur, costLabel, chargeBasis, tripCostLine, per100, localMidnight, currentTariff } from "./costs.js";
+import { eur, costLabel, chargeBasis, tripCostLine, per100, localMidnight, currentTariff, validFromFor, uncostedText } from "./costs.js";
 
 test("eur shows two decimals, zero included, and null is not available", () => {
   assert.equal(eur(7.4), "€7.40");
@@ -33,9 +33,17 @@ test("chargeBasis adds the optional parts only when nonzero, in order", () => {
   assert.equal(chargeBasis({ ...all, tariff: { ...tariff, per_min: 0.02 }, card_markup_pct: 0 }), "Plaza · €0.35/kWh · 10 % charging loss · €0.02/min · card fee €0.35");
 });
 
-test("chargeBasis without an amount points to the settings", () => {
-  assert.equal(chargeBasis({ ...base, amount: null, basis: null, tariff: null }), "Not available: set a default price in Settings");
-  assert.equal(chargeBasis(undefined), "Not available: set a default price in Settings");
+test("chargeBasis without an amount names the two possible causes", () => {
+  assert.equal(chargeBasis({ ...base, amount: null, basis: null, tariff: null }), "Not available: no price for this date, or no energy reading");
+  assert.equal(chargeBasis(undefined), "Not available: no price for this date, or no energy reading");
+});
+
+test("uncostedText counts the charges left out of the cost", () => {
+  assert.equal(uncostedText(0), "");
+  assert.equal(uncostedText(null), "");
+  assert.equal(uncostedText(undefined), "");
+  assert.equal(uncostedText(1), "1 charge without a price");
+  assert.equal(uncostedText(3), "3 charges without a price");
 });
 
 test("tripCostLine splits energy and fixed", () => {
@@ -54,6 +62,17 @@ test("per100 needs a total and a distance", () => {
 
 test("localMidnight is the browser's midnight of that day", () => {
   assert.equal(localMidnight("2026-10-25"), new Date(2026, 9, 25).getTime());
+});
+
+test("validFromFor reuses a tariff saved inside the chosen day, else that day's midnight", () => {
+  const mid = localMidnight("2026-10-25");
+  const list = [{ valid_from: mid + 14 * 3600_000 }, { valid_from: mid - 1 }];
+  assert.equal(validFromFor(list, "2026-10-25"), mid + 14 * 3600_000); // the spot's 14:00 row is corrected, not shadowed
+  assert.equal(validFromFor(list, "2026-10-24"), mid - 1); // the day before holds the other row (its last millisecond)
+  assert.equal(validFromFor(list, "2026-10-23"), localMidnight("2026-10-23"));
+  assert.equal(validFromFor(list, "2026-10-26"), localMidnight("2026-10-26"));
+  assert.equal(validFromFor([{ valid_from: mid }], "2026-10-25"), mid);
+  assert.equal(validFromFor([], "2026-10-25"), mid);
 });
 
 test("currentTariff is the newest entry already valid", () => {

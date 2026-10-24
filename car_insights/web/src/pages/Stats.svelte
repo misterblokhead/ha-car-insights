@@ -3,7 +3,7 @@
   import { hashOf } from "../lib/activity.js";
   import { NA, km, kwh, kwh100, delta, dayKey, dayLabel } from "../lib/format.js";
   import { split } from "../lib/detail.js";
-  import { eur, per100 as costPer100 } from "../lib/costs.js";
+  import { eur, per100 as costPer100, uncostedText } from "../lib/costs.js";
   import { bucketLabel, change, isCurrent, periodLabel, places, shift } from "../lib/stats.js";
   import Chart from "../lib/Chart.svelte";
   import Figure from "../lib/ui/Figure.svelte";
@@ -187,7 +187,7 @@
               <div>
                 <span class="k">Cost</span><span class="v">{eur(t.cost.total)}</span>
                 <span class="d-note cost">
-                  {eur(t.cost.energy)} charging · {eur(t.cost.fixed)} fixed{#if t.distance_m} · {costPer100(t.cost.total, t.distance_m)}{/if}
+                  {eur(t.cost.energy)} charging · {eur(t.cost.fixed)} fixed{#if t.distance_m} · {costPer100(t.cost.total, t.distance_m)}{/if}{#if t.cost.uncosted > 0} · {uncostedText(t.cost.uncosted)}{/if}
                   {#if costTrend}{@render changeTag(costTrend)}{/if}
                 </span>
               </div>

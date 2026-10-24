@@ -130,7 +130,7 @@
 
     <section class="d-card">
       <div class="d-head"><h2>Cost</h2><b class="amount">{costLabel(data.cost)}</b></div>
-      <p class="d-note">{chargeBasis(data.cost)}</p>
+      {#if c.end != null || data.cost.amount != null}<p class="d-note">{chargeBasis(data.cost)}</p>{/if}
       {#if isAdmin}
         <form class="edit" onsubmit={(e) => { e.preventDefault(); setReceipt(Number(receipt)); }}>
           <label>Actual amount (€)<input type="number" min="0" step="0.01" inputmode="decimal" required bind:value={receipt} /></label>
