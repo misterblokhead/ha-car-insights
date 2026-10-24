@@ -49,15 +49,18 @@ def _int(x) -> bool:
     return isinstance(x, int) and not isinstance(x, bool)
 
 
+_MAX = 2**62  # SQLite INTEGER is 64-bit signed; real seq/t are far below this
+
+
 def _sample(s) -> Sample:
-    if not isinstance(s, dict) or not (_int(s.get("seq")) and s["seq"] >= 1 and _int(s.get("t"))):
+    if not isinstance(s, dict) or not (_int(s.get("seq")) and 1 <= s["seq"] < _MAX and _int(s.get("t")) and 0 <= s["t"] < _MAX):
         raise ProtocolError("bad sample")
     k = s.get("k")
     if not isinstance(k, str) or not 1 <= len(k) <= 32 or "v" not in s:
         raise ProtocolError("bad sample")
     if k == "gap":
         v = s["v"]
-        if not isinstance(v, dict) or not (_int(v.get("from_seq")) and _int(v.get("to_seq")) and 1 <= v["from_seq"] <= v["to_seq"] < s["seq"]):
+        if not isinstance(v, dict) or not (_int(v.get("from_seq")) and _int(v.get("to_seq")) and 1 <= v["from_seq"] <= v["to_seq"] < s["seq"] and v["to_seq"] < _MAX):
             raise ProtocolError("bad gap")  # a gap may only cover seqs before its own
     elif k == "meta":
         v = s["v"]
@@ -69,7 +72,7 @@ def _sample(s) -> Sample:
 def parse_batch(raw: bytes) -> Batch:
     try:
         d = json.loads(raw)
-    except ValueError as e:
+    except (ValueError, RecursionError) as e:  # RecursionError: deeply nested JSON
         raise ProtocolError("bad json") from e
     if not isinstance(d, dict) or d.get("v") != 1 or not _int(d["v"]):
         raise ProtocolError("bad version")

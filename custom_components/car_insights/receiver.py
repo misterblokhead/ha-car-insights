@@ -22,7 +22,7 @@ def body_vehicle_matches(body: bytes, vehicle_id: str) -> bool:
     """The X-CI-Vehicle header is not signed; the signed body's vehicle_id must match the entry."""
     try:
         return json.loads(body).get("vehicle_id") == vehicle_id
-    except (ValueError, AttributeError):  # bad JSON/UTF-8, or a non-object body
+    except (ValueError, AttributeError, RecursionError):  # bad JSON/UTF-8, deep nesting, or a non-object body
         return False
 
 

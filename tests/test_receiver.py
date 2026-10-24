@@ -117,3 +117,7 @@ def test_is_https_url():
     assert r.is_https_url("https://x.ui.nabu.casa/api/webhook/abc")
     assert not r.is_https_url("http://example.com:8123/api/webhook/abc")
     assert not r.is_https_url("")
+
+
+def test_deep_json_does_not_match():
+    assert not r.body_vehicle_matches(b'[' * 5000 + b']' * 5000, "megane")
