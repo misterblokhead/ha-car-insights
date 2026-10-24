@@ -23,7 +23,7 @@ The add-on adds a **Car Insights** sidebar page (ingress) with Activity (one tim
 1. Add-on: Settings > Add-ons > Add-on store > menu > Repositories, add `https://github.com/misterblokhead/ha-car-insights`, install **Car Insights**, start it.
 2. Integration: in HACS add `https://github.com/misterblokhead/ha-car-insights` as a custom repository (type Integration), install, restart HA.
    Manual alternative: copy `custom_components/car_insights` into your HA `custom_components` directory.
-3. Add the **Car Insights receiver** integration once per vehicle (vehicle id, name, add-on URL). It writes `/share/car_insights/<vehicle_id>.conf` (webhook URL, secret, vehicle id/name) for the sender.
+3. Add the **Car Insights receiver** integration once per vehicle (vehicle id, name, add-on URL: `http://local-car-insights:8099` for a local install; a repository install uses `http://<repo-hash>-car-insights:8099`, shown on the add-on's Info page as its hostname). It writes `/share/car_insights/<vehicle_id>.conf` (webhook URL, secret, vehicle id/name) for the sender.
 
 ## Development
 

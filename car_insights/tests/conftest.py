@@ -17,6 +17,22 @@ def ms(iso: str) -> int:
     return (datetime.fromisoformat(iso) - datetime.fromisoformat("1970-01-01T00:00:00+00:00")) // timedelta(milliseconds=1)
 
 
+def paused(p):
+    """one plug at p, a cloud charge paused for 3 min, the car reading in between: two cloud spans, both within snap reach of the plug"""
+    m = 60_000
+    return [s(p, "plugged", True), s(p, "battery_wh", 20_000),
+            s(p + m, "charging_state", True), s(p + 3 * m, "charging_state", False),
+            s(p + 4 * m, "battery_wh", 25_000), s(p + 6 * m, "charging_state", True),
+            s(p + 60 * m, "charging_state", False), s(p + 61 * m, "battery_wh", 40_000)]
+
+
+def plugged_then_cloud(p):
+    """a short car-only plug that ended before a cloud charge began: a kept car span just before the cloud span"""
+    m = 60_000
+    return [s(p, "plugged", True), s(p + m, "plugged", False),
+            s(p + 2 * m, "charging_state", True), s(p + 30 * m, "charging_state", False)]
+
+
 class FakeMqtt:
     """records published messages; usable as a Publisher/TripSensors sink"""
 

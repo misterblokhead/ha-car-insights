@@ -1,9 +1,9 @@
 import pytest
 
-from car_insights import db
+from car_insights import db, derive
 from car_insights.derive import ALGO, ESTIMATE_HOLD_MS, Deriver
 from car_insights.trips import QUIET_MS
-from conftest import ms, s
+from conftest import ms, paused, plugged_then_cloud, s
 
 DAY = 86_400_000
 SRC = "phone-0000abcd"
@@ -52,6 +52,30 @@ def test_open_trip_tail_in_p_closes_once_the_car_is_quiet():
     assert d.update("car1", None, QUIET_MS - 1) == ([], [], set()) and d.current_trip("car1")["end"] is None
     trips, _, _ = d.update("car1", None, QUIET_MS)
     assert [t["end"] for t in trips] == [62_000] and d.current_trip("car1") is None
+
+
+def test_quiet_closed_trip_rejoins_when_backlog_arrives():
+    parked = [s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 61_000, 1000)], s(62_000, "gear", 4.0)]
+    conn, d = setup(parked)  # the car's last batch arrived at 0; the server was down for 12 min
+    trips, _, _ = d.update("car1", None, 720_000)
+    assert [t["end"] for t in trips] == [62_000] and d.current_trip("car1") is None
+    backlog = [*[s(t, "gear", 4.0) for t in range(63_000, 243_000, 1000)], s(243_000, "gear", 1.0),
+               *[s(t, "speed", 10.0) for t in range(243_000, 543_000, 1000)]]
+    db.ingest(conn, "car1", SRC, backlog, 730_000)
+    assert d.update("car1", 63_000, 730_000) == ([], [], set())  # an open trip again: no close, no refinement
+    assert d.stored_trips("car1") == []
+    cur = d.current_trip("car1")
+    assert cur["start"] == 0 and cur["end"] is None and "quiet_closed" not in cur
+    assert d.update("car1", None, 740_000) == ([], [], set())  # the car is back: not closed again
+
+
+def test_quiet_closed_trip_stays_closed_while_the_car_is_still_quiet():
+    parked = [s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 61_000, 1000)], s(62_000, "gear", 4.0)]
+    conn, d = setup(parked)
+    (trip,), _, _ = d.update("car1", None, 720_000)
+    assert "quiet_closed" not in trip and "quiet_closed" not in d.stored_trips("car1")[0]
+    db.ingest(conn, "car1", CLOUD, [s(800_000, "charging_state", False)], 900_000)  # a cloud report is not the car
+    assert d.update("car1", None, 900_000) == ([], [], set()) and d.current_trip("car1") is None
 
 
 def test_open_trip_is_current_not_stored():
@@ -111,7 +135,7 @@ def test_algo_change_clears_rows():
 
 def test_late_batch_inside_open_trip_keeps_trip_start():
     conn, d = setup([s(200_000, "battery_wh", 20_000.0), s(201_000, "plugged", True),
-                     s(3_600_000, "battery_wh", 25_000.0), s(3_700_000, "plugged", False)])
+                     s(500_000, "battery_wh", 25_000.0), s(600_000, "plugged", False)])  # under QUIET_MS apart: the open trip stays open
     d.update("car1", None, DAY)  # a later charge is stored, so the batches below take the late path
     db.ingest(conn, "car1", SRC, [s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 51_000, 1000)]], 0)
     d.update("car1", 0, DAY)
@@ -475,6 +499,58 @@ def test_stale_charging_state_seed_after_trip_ignored():
     assert charges == [] and d.stored_charges("car1", 10) == [c]
 
 
+def _cloud_charge_while_plugged():
+    """car plugged at p, a cloud charge p+1 min to p+60 min, car readings around it; the car never reports the unplug"""
+    p, m = at("09:00:00"), 60_000
+    conn, d = setup([s(p, "plugged", True), s(p, "battery_wh", 20_000.0), s(p + 61 * m, "battery_wh", 40_000.0)])
+    db.ingest(conn, "car1", CLOUD, [s(p + m, "charging_state", True), s(p + 60 * m, "charging_state", False)], 0)
+    _, charges, _ = d.update("car1", None, p + 2 * 3_600_000)
+    assert len(charges) == 1
+    return conn, d, p
+
+
+def test_plugged_seed_after_closed_cloud_charge_opens_nothing():
+    conn, d, p = _cloud_charge_while_plugged()
+    (c,) = d.stored_charges("car1", 10)
+    db.ingest(conn, "car1", SRC, [s(p + 3 * 3_600_000, "battery_wh", 40_000.0), s(p + 3 * 3_600_000 + 60_000, "battery_wh", 40_010.0)], 0)
+    _, charges, _ = d.update("car1", None, p + 4 * 3_600_000)  # still plugged, no new plug sample: the old flag opens nothing
+    assert charges == [] and d.stored_charges("car1", 10) == [c] and _count(conn, "charges") == 1
+
+
+def test_resent_plugged_true_after_a_closed_cloud_charge_opens_nothing():
+    conn, d, p = _cloud_charge_while_plugged()
+    (c,) = d.stored_charges("car1", 10)
+    h = 3_600_000
+    db.ingest(conn, "car1", SRC, [s(p + 3 * h, "plugged", True), s(p + 3 * h + 60_000, "battery_wh", 40_010.0)], 0)  # a restart re-sends the flag
+    d.update("car1", None, p + 4 * h)
+    assert _count(conn, "charges") == 1  # same window as the re-sent flag
+    db.ingest(conn, "car1", SRC, [s(p + 5 * h, "plugged", True), s(p + 5 * h + 60_000, "battery_wh", 40_020.0)], 0)
+    d.update("car1", None, p + 6 * h)  # the flag is the window's seed now, and sent again
+    assert d.stored_charges("car1", 10) == [c] and _count(conn, "charges") == 1
+
+
+def test_resent_plugged_after_a_missed_unplug_and_trip_opens_nothing_after_the_cloud_charge():
+    h, m = 3_600_000, 60_000
+    conn, d = setup([s(0, "gear", 4.0), s(0, "ignition", 2.0), s(0, "plugged", True), s(0, "battery_wh", 20_000.0)])  # the unplug is never stored
+    db.ingest(conn, "car1", SRC, trip_samples(2 * h), 0)
+    db.ingest(conn, "car1", SRC, [s(3 * h, "plugged", True), s(3 * h, "battery_wh", 40_000.0), s(4 * h + m, "battery_wh", 50_000.0)], 0)
+    db.ingest(conn, "car1", CLOUD, [s(3 * h + m, "charging_state", True), s(4 * h, "charging_state", False)], 0)
+    d.update("car1", None, 5 * h)
+    assert _count(conn, "charges") == 1  # the cloud charge (the plug before the trip gained nothing)
+    db.ingest(conn, "car1", SRC, [s(6 * h, "plugged", True), s(6 * h + m, "battery_wh", 50_010.0)], 0)  # re-sent while still plugged
+    d.update("car1", None, 7 * h)
+    assert _count(conn, "charges") == 1  # open rows count: no phantom at 6 h
+
+
+def test_plugged_again_after_a_closed_cloud_charge_still_opens_a_charge():
+    conn, d, p = _cloud_charge_while_plugged()
+    q = p + 3 * 3_600_000
+    db.ingest(conn, "car1", SRC, [s(q - 60_000, "plugged", False), s(q, "plugged", True), s(q, "battery_wh", 40_000.0),
+                                  s(q + 30 * 60_000, "battery_wh", 45_000.0), s(q + 31 * 60_000, "plugged", False)], 0)  # a new plug: newer than the closed charge's end
+    _, charges, _ = d.update("car1", None, p + 4 * 3_600_000)
+    assert [c["start"] for c in charges] == [q] and [c["start"] for c in d.stored_charges("car1", 10)] == [q, p]
+
+
 def test_algo_bump_rebuilds():
     conn, d = _cloud_setup()
     d.update("car1", None, at("11:30:00"))
@@ -510,6 +586,27 @@ def test_estimate_with_no_prior_car_reading_cannot_refine_so_is_not_held(monkeyp
     assert c["energy_source"] == "soc_estimate" and c["start_wh"] is None
     d.update("car1", None, at("11:31:00"))
     assert seen == [-1, at("11:21:29")]  # the second update reads on from the idle watermark, not from the estimate's start
+
+
+def test_paused_cloud_charge_derives_and_stores_both():
+    conn, d = setup(paused(at("09:00:00")))  # used to share one start: IntegrityError, and every update after
+    _, charges, _ = d.update("car1", None, at("12:00:00"))
+    assert len(charges) == 2 and _count(conn, "charges") == 2
+
+
+def test_cloud_charge_after_a_car_charge_derives_and_stores_both():
+    conn, d = setup(plugged_then_cloud(at("09:00:00")))
+    _, charges, _ = d.update("car1", None, at("12:00:00"))
+    assert len(charges) == 2 and _count(conn, "charges") == 2
+
+
+def test_duplicate_start_is_skipped_not_fatal(monkeypatch, caplog):
+    conn, d = setup(paused(at("09:00:00")))
+    real = derive.find_charges
+    monkeypatch.setattr(derive, "find_charges", lambda *a, **k: [c := real(*a, **k)[0], c])
+    _, charges, _ = d.update("car1", None, at("12:00:00"))
+    assert len(charges) == 1 and _count(conn, "charges") == 1 and _count(conn, "charge_series") == 1
+    assert "duplicate charges start" in caplog.text
 
 
 # --- series rows live and die with their trip/charge rows ---

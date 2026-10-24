@@ -1,4 +1,5 @@
 import json
+import logging
 from bisect import bisect_left, bisect_right
 from dataclasses import asdict
 from typing import Callable
@@ -9,6 +10,7 @@ from .live import FUTURE_SLACK_MS
 from .odometer import chain
 from .trips import KEYS as TRIP_KEYS, QUIET_MS, Trip, find_trips
 
+log = logging.getLogger(__name__)
 ALGO = 5  # bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
 ESTIMATE_HOLD_MS = 7 * 86_400_000  # a SoC-estimated charge this recent is re-derived on every update: the car's value may still arrive
 _TABLES = ("trips", "charges")
@@ -20,6 +22,7 @@ Zones = Callable[[float, float], str | None]
 def _trip_wire(t: Trip, zones: Zones, odo: tuple[float | None, float | None]) -> dict:
     d = asdict(t)
     first, last = d.pop("first_fix"), d.pop("last_fix")
+    d.pop("quiet_closed")
     return {**d, "from": zones(*first) if first else None, "to": zones(*last) if last else None, "duration_s": round(t.duration_s),
             "odometer_start_km": odo[0], "odometer_end_km": odo[1]}
 
@@ -36,6 +39,10 @@ class Deriver:
         self._idle: dict[str, int] = {}  # vehicle -> newest sample t read while nothing was open: the next window starts there
         self._ignition: set[str] = set()  # vehicles known to send an ignition signal (it never goes away)
         self._cloud: set[str] = set()  # vehicles with a cloud source (charging_state samples)
+        # vehicle -> start of its trip closed by the quiet rule alone: once the car is back its backlog may extend that trip;
+        # a rejoined trip fires a second ended event (same start) at its real close
+        # shortcut: in memory only, a restart between the quiet close and the backlog keeps the split; persist it if that shows up
+        self._quiet: dict[str, int] = {}
         # a vehicle with any old-version row in either table is rebuilt whole; `rebuild` (the zones changed) rebuilds every vehicle
         stale = {r[0] for t in _TABLES for r in conn.execute(f"SELECT vehicle_id FROM {t} WHERE algo!=? OR ?", (ALGO, rebuild))}
         with db.tx(conn):
@@ -50,6 +57,10 @@ class Deriver:
         args = (vid,) if below is None else (vid, below)
         return max(self._conn.execute(f"SELECT MAX(end) FROM {t} WHERE vehicle_id=?{cap}", args).fetchone()[0] or -1 for t in _TABLES)
 
+    def newest_end(self, vid: str) -> int:
+        """newest closed end over both tables, or -1"""
+        return self._newest_end(vid)
+
     def update(self, vid: str, min_t: int | None, received_ms: int) -> tuple[list[dict], list[dict], set[tuple[str, int]]]:
         """Re-derive everything after the last closed segment (or before min_t when late data arrived).
         Open segments are stored with a NULL end and replaced on every call. Returns the trips and
@@ -59,10 +70,10 @@ class Deriver:
         # shortcut: while a trip or charge is open each batch re-reads the samples since its start (a 2 h drive is ~43k
         # samples, ~0.1 s), fine until one runs for many hours; checkpoint open segments if it gets slow. An idle vehicle
         # reads only new samples, except in its first update after a restart (from its newest closed end).
-        # shortcut: the first full rebuild (fresh install or ALGO bump) loads all history in one request and find_charges is
-        # O(n x sessions); chunk the rebuild by window if it gets slow.
-        # shortcut: late data landing after a closed end (inside its P-stop proof window) does not reopen it; senders
-        # upload oldest-first, so that needs two car senders interleaving (cloud samples never reach find_trips).
+        # the start-up rebuild runs this in REBUILD_STEP_MS windows (pipeline.rebuild), so the first update of a vehicle never loads all history.
+        # shortcut: late data landing after a closed end (inside its P-stop proof window, or after a silence that closed it)
+        # does not reopen it; senders upload oldest-first, so that needs two car senders interleaving (cloud samples never
+        # reach find_trips). A trip closed only by the quiet rule is the exception: see _quiet.
         with db.tx(conn):
             w = max(self._newest_end(vid), self._idle.get(vid, -1))
             if min_t is not None and min_t <= w:  # late data: back to the newest closed end below it
@@ -75,6 +86,10 @@ class Deriver:
                                 " AND json_extract(json, '$.start_wh') IS NOT NULL", (vid, received_ms - ESTIMATE_HOLD_MS)).fetchone()[0]
             if held is not None:
                 w = min(w, held - 1)
+            last = db.car_last_received(conn, vid)
+            quiet = last is not None and received_ms - last >= QUIET_MS
+            if vid in self._quiet and not quiet:  # the car is back: re-derive the trip the quiet rule closed
+                w = min(w, self._quiet.pop(vid) - 1)
             while True:  # a stored segment (open or closed) straddling the window start must be re-derived whole
                 starts = [r[0] for t in _TABLES for r in conn.execute(
                     f"SELECT start FROM {t} WHERE vehicle_id=? AND (end IS NULL OR end>?) AND start<=?", (vid, w, w))]
@@ -96,23 +111,43 @@ class Deriver:
             samples = db.samples_after(conn, vid, w, received_ms + FUTURE_SLACK_MS, KEYS)
             seed = db.latest_at_or_before(conn, vid, w, KEYS)
             # a trip that started after a plugged/charging_state=True seed means that charge's end was missed (find_charges closed
-            # it at the trip start); the stale flag must not open a new session after the trip
+            # it at the trip start); the stale flag must not open a new session after the trip. A plugged flag older than the last
+            # charge's end is stale too: a cloud charge ended while the car stayed plugged and never sent the plug again.
+            # A cloud car may re-send plugged=True (a restart), so its plug is dated by the first True after the last False; the
+            # reset seed is marked held so such a repeat opens no car span either.
             for k in ("plugged", "charging_state"):
                 if seed.get(k) is True:
+                    last_t = db.latest_t(conn, vid, k, w) or -1
                     last_trip_start = conn.execute("SELECT MAX(start) FROM trips WHERE vehicle_id=?", (vid,)).fetchone()[0] or -1
-                    if last_trip_start > (db.latest_t(conn, vid, k, w) or -1):
+                    last_charge_end = -1
+                    plug_t = last_t
+                    if k == "plugged":
+                        last_charge_end = conn.execute("SELECT MAX(end) FROM charges WHERE vehicle_id=?", (vid,)).fetchone()[0] or -1
+                        if vid in self._cloud:
+                            plug_t = db.plug_start(conn, vid, w) or -1
+                    if last_trip_start > last_t:  # a True after the trip is a real plug, however often it was re-sent
                         seed[k] = False
+                    elif last_charge_end > plug_t:
+                        seed[k] = False
+                        seed["plugged_held"] = vid in self._cloud
             # a cloud report is no proof the car slept: find_trips sees only its own keys
-            last = db.car_last_received(conn, vid)
-            raw_trips = find_trips([x for x in samples if x.k in TRIP_KEYS], seed, vid in self._ignition,
-                                   quiet=last is not None and received_ms - last >= QUIET_MS)
+            raw_trips = find_trips([x for x in samples if x.k in TRIP_KEYS], seed, vid in self._ignition, quiet)
+            for trip in raw_trips:
+                if trip.quiet_closed:
+                    self._quiet[vid] = trip.start
             charges = [_charge_wire(c, self._zones) for c in find_charges(samples, seed, vid in self._cloud, self._capacity(vid))]
             new: dict[str, list[dict]] = {"trips": [], "charges": []}
             refined: set[tuple[str, int]] = set()
             trips: list[dict] = []
             times = [x.t for x in samples]
+            seen: set[tuple[str, int]] = set()
             for table, rows in (("trips", raw_trips), ("charges", charges)):
                 for r in rows:
+                    key = (table, r.start if table == "trips" else r["start"])
+                    if key in seen:  # a repeated start would break the primary key and roll back every update after
+                        log.warning("duplicate %s start %s for %s skipped", table, key[1], vid)
+                        continue
+                    seen.add(key)
                     if table == "trips":  # in start order: earlier closed trips are already stored, so chain sees them
                         r = _trip_wire(r, self._zones, chain(conn, vid, r.start, r.distance_m))
                         trips.append(r)

@@ -83,7 +83,7 @@ def test_seqs_contiguous_and_acked():
     poll(p)
     assert conn.execute("SELECT MIN(seq), MAX(seq), COUNT(*) FROM samples").fetchone() == (1, 7, 7)
     assert db.acked_seq(conn, "car1", SID) == 7
-    f.payload = FULL[:2] + [rows(ODO, (T, "1000"), (T + 900_000, "1005"))] + FULL[3:]
+    f.payload = FULL[:2] + [rows(ODO, (T, "1000"), (T + 3_000_000, "1005"))] + FULL[3:]
     poll(p)
     assert conn.execute("SELECT MAX(seq), COUNT(*) FROM samples").fetchone() == (8, 8)
     assert db.acked_seq(conn, "car1", SID) == 8
@@ -96,7 +96,27 @@ def test_second_poll_overlapping_history_adds_nothing():
     calls.clear()
     poll(p)
     assert conn.execute("SELECT COUNT(*) FROM samples").fetchone()[0] == 7 and calls == []
-    assert f.calls[1] == (IDS, min(db.cursors(conn, "car1", SID).values()) - REPORT_MAX_AGE_MS, NOW - 10_000)
+    assert f.calls[1] == (IDS, NOW - REPORT_MAX_AGE_MS, NOW - 10_000)
+
+
+def test_second_poll_starts_at_previous_poll():
+    f = Fetch(FULL)
+    p, conn, _ = make(f)
+    poll(p)
+    poll(p)
+    assert min(db.cursors(conn, "car1", SID).values()) < NOW - REPORT_MAX_AGE_MS  # the stale cursor would reach back further
+    assert f.calls[1][1] == NOW - REPORT_MAX_AGE_MS
+
+
+def test_failed_fetch_does_not_advance_the_window():
+    f = Fetch(FULL)
+    p, conn, _ = make(f)
+    poll(p)
+    f.error = RuntimeError("down")
+    poll(p)
+    f.error = None
+    poll(p)
+    assert f.calls[2][1] == f.calls[1][1]
 
 
 def test_restart_resumes_from_stored_cursor_without_duplicates():
@@ -198,3 +218,26 @@ def test_implausible_learned_capacity_keeps_the_previous_value(wh, caplog):
     poll(p)
     assert db.capacity_wh(conn, "car1", 0.0) == 57_000.0
     assert len([r for r in caplog.records if "outside" in r.getMessage()]) == 1  # logged once
+
+
+def test_quiet_car_is_not_reingested_from_the_start_time_state():
+    allrows = {r[0]["entity_id"]: [(x, r_["state"]) for x, r_ in zip([T, T + 600_000][:len(r)], r)] for r in FULL}
+
+    def ha(ids, start, end):  # like HA: the state at `start` stamped `start`, then the rows inside the window
+        out = []
+        for eid in ids:
+            hist = allrows.get(eid, [])
+            before = [st for t, st in hist if t <= start]
+            inside = [(t, st) for t, st in hist if start < t <= end]
+            r = ([(start, before[-1])] if before else []) + inside
+            if r:
+                out.append(rows(eid, *r))
+        return out
+
+    p, conn, calls = make(ha)
+    poll(p)
+    n = conn.execute("SELECT COUNT(*) FROM samples").fetchone()[0]
+    calls.clear()
+    poll(p)
+    poll(p)
+    assert conn.execute("SELECT COUNT(*) FROM samples").fetchone()[0] == n and calls == []

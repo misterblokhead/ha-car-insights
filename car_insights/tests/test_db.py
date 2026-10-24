@@ -222,8 +222,8 @@ def test_end_indexes_exist_and_serve_the_newest_end_lookup(conn):
         assert f"{t}_ve" in plan
 
 
-def test_synchronous_normal(conn):
-    assert conn.execute("PRAGMA synchronous").fetchone()[0] == 1
+def test_synchronous_full(conn):
+    assert conn.execute("PRAGMA synchronous").fetchone()[0] == 2
 
 
 def test_cursors_roundtrip_per_source_and_overwrite(conn):

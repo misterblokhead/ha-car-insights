@@ -74,6 +74,15 @@ def test_quiet_car_with_tail_in_p_ends_trip_at_the_first_p_sample():
     assert t.end is None  # not in P: it may still be driving with its batches held back
 
 
+@pytest.mark.parametrize("has_ignition", [False, True])
+def test_silence_without_park_ends_the_trip(has_ignition):
+    t1 = 12 * 3600_000 + 600_000
+    samples = [s(0, "gear", 1.0), *drive(0, 600_000), s(t1, "gear", 4.0), s(t1 + 1000, "gear", 3.0), *drive(t1 + 2000, t1 + 602_000)]
+    first, second = trips(samples, has_ignition=has_ignition)
+    assert first.end == 600_000
+    assert second.start == t1 + 2000
+
+
 def test_parked_with_ignition_on_and_samples_keeps_trip_open():
     parked = [s(t, "gps", [52.0, 5.0]) for t in range(120_000, 600_001, 60_000)]  # a sample every minute, never asleep
     (t,) = trips(STOP + parked)

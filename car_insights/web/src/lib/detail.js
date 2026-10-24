@@ -14,9 +14,6 @@ export function durationParts(s) {
   return [min >= 60 ? `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")}` : String(min), "min"];
 }
 
-// km/h; null without distance, or without a duration above zero
-export const avgSpeedKmh = (distance_m, duration_s) => (distance_m == null || !(duration_s > 0) ? null : (distance_m / duration_s) * 3.6);
-
 // kWh/100 km of a trip; null for a hop under 100 m, which gives a meaningless figure
 export const per100 = (trip) => (trip.distance_m >= 100 ? kwh100(trip.net_wh, trip.distance_m) : null);
 

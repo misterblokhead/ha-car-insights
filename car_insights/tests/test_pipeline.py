@@ -1,12 +1,13 @@
 import json
 import math
+import sqlite3
 from datetime import timezone
 
 import pytest
 
 from car_insights import access, db
-from car_insights.derive import Deriver
-from car_insights.pipeline import close_quiet, rebuild, refresh
+from car_insights.derive import ESTIMATE_HOLD_MS, Deriver
+from car_insights.pipeline import REBUILD_STEP_MS, close_quiet, rebuild, refresh
 from car_insights.trips import QUIET_MS
 from car_insights.totals_sensors import TotalsSensors
 from car_insights.trip_sensors import TripSensors
@@ -265,3 +266,104 @@ def test_summary_size_with_20_routed_trips(env):
     now = routed_env(env, 20)
     _, out = refresh(d, sensors, totals, "car1", None, now, TZ)
     assert len(out["trips"]) == 20 and len(json.dumps(out)) < 40_000
+
+
+def test_a_rejoined_quiet_trip_fires_no_second_event_until_it_closes_for_real(env):
+    conn, mqtt, d, sensors, totals = env
+    t0 = 10 * DAY
+    last = t0 + 31_000
+    db.ingest(conn, "car1", SRC, [*open_trip_samples(t0, 30), s(last, "gear", 4.0)], last)
+    summarize = lambda vid, min_t, received: refresh(d, sensors, totals, vid, min_t, received, TZ)
+    summarize("car1", None, last)
+    close_quiet(conn, summarize, last + QUIET_MS)
+    assert len(mqtt.on("car_insights/car1/trip_event")) == 1  # closed by the quiet rule
+    back = last + QUIET_MS + 5_000
+    db.ingest(conn, "car1", SRC, [s(last + 1000 * i, "gear", 4.0) for i in range(1, 60)] + [s(last + 60_000, "gear", 1.0),
+              *[s(last + 60_000 + 1000 * i, "speed", 10.0) for i in range(60)]], back)
+    cur, _ = refresh(d, sensors, totals, "car1", last + 1000, back, TZ)
+    assert cur["start"] == t0 and cur["end"] is None
+    assert len(mqtt.on("car_insights/car1/trip_event")) == 1  # the rejoin is no new close
+    db.ingest(conn, "car1", SRC, [s(last + 130_000, "ignition", 2.0)], back + 1000)
+    assert refresh(d, sensors, totals, "car1", last + 130_000, back + 1000, TZ)[0] is None
+    assert [e["event_type"] for e, _ in mqtt.on("car_insights/car1/trip_event")] == ["ended", "ended"]  # the real end is a second "ended"
+
+
+def history_95_days(conn):
+    """95 days: a short trip each morning, a charge every 5 days, two charges across a window edge (30 d + 6 h and one day on from it),
+    and a trip still open at the end. Returns `now`."""
+    base, h = 100 * DAY, 3_600_000
+    samples = []
+    for day in range(95):
+        if day not in (30, 31):  # those mornings hold the charges across the window edge
+            samples += trip_samples(base + day * DAY + 6 * h)
+        if day % 5 == 0:
+            p = base + day * DAY + 20 * h
+            samples += [s(p, "plugged", True), s(p, "battery_wh", 20_000.0), s(p + h, "battery_wh", 25_000.0), s(p + h + 100_000, "plugged", False)]
+    for p in (base + 30 * DAY + 5 * h + h // 2, base + 31 * DAY + 5 * h + h // 2):  # 30 min before the edge of the 1st window and of its 1-day look-ahead
+        samples += [s(p, "plugged", True), s(p, "battery_wh", 20_000.0), s(p + h, "battery_wh", 25_000.0), s(p + h + 100_000, "plugged", False)]
+    open_t = base + 95 * DAY + 6 * h
+    samples += open_trip_samples(open_t, 30)
+    conn.execute("INSERT INTO vehicles(vehicle_id) VALUES('car1')")
+    db.ingest(conn, "car1", SRC, samples, open_t + 31_000)
+    return open_t + 40_000
+
+
+def assert_rebuilt_like_one_pass(conn, now):
+    """rebuild `conn` in windows and a copy in one update: every derived table must be equal"""
+    copy = sqlite3.connect(":memory:")
+    conn.backup(copy)
+    rebuild(Deriver(conn, lambda la, lo: "Home"), TripSensors(conn, FakeMqtt(), lambda vid: 57_000.0, lambda kind, vid, start: None), conn, now)
+    Deriver(copy, lambda la, lo: "Home").update("car1", None, now)
+    for table in ("trips", "charges", "trip_series", "charge_series", "trip_routes"):
+        a, b = (c.execute(f"SELECT * FROM {table} ORDER BY start").fetchall() for c in (conn, copy))
+        assert a == b, table
+
+
+def test_rebuild_in_windows_matches_one_pass(env):
+    conn, *_ = env
+    assert_rebuilt_like_one_pass(conn, history_95_days(conn))
+    assert conn.execute("SELECT COUNT(*) FROM trips").fetchone()[0] == 94 and conn.execute("SELECT COUNT(*) FROM charges").fetchone()[0] == 21
+    assert conn.execute("SELECT COUNT(*) FROM trips WHERE end IS NULL").fetchone()[0] == 1
+
+
+def test_rebuild_reopens_a_cloud_charge_a_window_closed_before_the_car_reading(env):
+    conn, *_ = env
+    conn.execute("INSERT INTO vehicles(vehicle_id) VALUES('car1')")
+    edge = 100 * DAY + REBUILD_STEP_MS + DAY  # the first window's look-ahead cut-off
+    h = 3_600_000
+    car = [s(100 * DAY, "battery_wh", 10_000.0), s(edge - 4 * h, "battery_wh", 22_500.0), s(edge + 3 * h, "battery_wh", 46_550.0)]
+    cloud = [s(edge - 3 * h, "charging_state", True), s(edge - 3 * h, "soc_percent", 40.0), s(edge - h, "soc_percent", 81.0), s(edge - h, "charging_state", False)]
+    db.ingest(conn, "car1", SRC, car, 0)
+    db.ingest(conn, "car1", "ha_entities-0000abcd", cloud, 0)
+    assert_rebuilt_like_one_pass(conn, 100 * DAY + 40 * DAY)
+    assert conn.execute("SELECT json_extract(json, '$.energy_source') FROM charges").fetchall() == [("car",)]  # not the SoC estimate the first window made
+
+
+def test_rebuild_reads_bounded_windows(env, monkeypatch):
+    conn, mqtt, d, sensors, totals = env
+    now = history_95_days(conn)
+    spans, real = [], db.samples_after
+
+    def spy(*args):
+        out = real(*args)
+        spans.append(out[-1].t - out[0].t if out else 0)
+        return out
+
+    monkeypatch.setattr(db, "samples_after", spy)
+    rebuild(Deriver(conn, lambda la, lo: "Home"), sensors, conn, now)
+    assert len(spans) >= 4 and max(spans) <= REBUILD_STEP_MS + ESTIMATE_HOLD_MS + 2 * DAY  # a window re-opens the 7 days before the last one's cut-off
+
+
+def test_a_normal_restart_rebuilds_nothing_before_the_newest_closed_end(env, monkeypatch):
+    conn, mqtt, d, sensors, totals = env
+    now = history_95_days(conn)
+    d.update("car1", None, now)  # the live state: everything derived, no ALGO or zone change since
+    tables = ("trips", "charges", "trip_series", "charge_series", "trip_routes")
+    before = {t: conn.execute(f"SELECT * FROM {t} ORDER BY start").fetchall() for t in tables}
+    newest = Deriver(conn, lambda la, lo: "Home").newest_end("car1")
+    assert newest > 100 * DAY + 60 * DAY
+    reads, real = [], db.samples_after
+    monkeypatch.setattr(db, "samples_after", lambda *args: reads.append(args[2]) or real(*args))
+    rebuild(Deriver(conn, lambda la, lo: "Home"), sensors, conn, now)  # the restart
+    assert {t: conn.execute(f"SELECT * FROM {t} ORDER BY start").fetchall() for t in tables} == before
+    assert reads and min(reads) >= newest  # only what came after the newest closed row was read again

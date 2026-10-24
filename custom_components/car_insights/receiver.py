@@ -3,6 +3,9 @@ import asyncio
 import hashlib
 import hmac
 import json
+import os
+import shutil
+import tempfile
 from pathlib import Path
 
 import aiohttp
@@ -22,7 +25,7 @@ def body_vehicle_matches(body: bytes, vehicle_id: str) -> bool:
     """The X-CI-Vehicle header is not signed; the signed body's vehicle_id must match the entry."""
     try:
         return json.loads(body).get("vehicle_id") == vehicle_id
-    except (ValueError, AttributeError):  # bad JSON/UTF-8, or a non-object body
+    except (ValueError, AttributeError, RecursionError):  # bad JSON/UTF-8, deep nesting, or a non-object body
         return False
 
 
@@ -91,3 +94,35 @@ async def read_limited(content, limit: int) -> bytes | None:
 
 def config_file_text(webhook_url: str, secret: str, vehicle_id: str, vehicle_name: str) -> str:
     return f"webhook.url={webhook_url}\nsecret={secret}\nvehicle.id={vehicle_id}\nvehicle.name={vehicle_name}\n"
+
+
+def conf_with_url(text: str, url: str) -> str | None:
+    """The .conf text with its webhook.url line set to url (secret and the rest kept); None when it already holds url."""
+    new = "".join(f"webhook.url={url}\n" if line.startswith("webhook.url=") else line for line in text.splitlines(keepends=True))
+    return None if new == text else new
+
+
+def write_conf(path: Path, text: str, url: str) -> str | None:
+    """Create the .conf if absent ("created"); else point its webhook.url at url ("updated", or a full rewrite when
+    the line is missing); None when unchanged. Replaces the file atomically, keeping its mode."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("x") as f:
+            f.write(text)
+        return "created"
+    except FileExistsError:
+        pass
+    old = path.read_text()
+    new = conf_with_url(old, url) if "webhook.url=" in old else text
+    if new is None or new == old:
+        return None
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(new)
+        shutil.copymode(path, tmp)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    return "updated"

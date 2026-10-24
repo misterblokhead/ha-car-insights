@@ -1,7 +1,7 @@
 import pytest
 
 from car_insights.charges import KEYS, find_charges
-from conftest import ms, s
+from conftest import ms, paused, plugged_then_cloud, s
 
 
 def charges(samples, seed=None, **kw):
@@ -190,6 +190,17 @@ def test_two_cloud_spans_with_car_sample_between_stay_two():
     a, b = charges(two_spans(s(at("10:15:00"), "battery_wh", 30_000), *WAKE), cloud=True)
     assert (a.end, a.added_wh) == (at("10:00:00"), 7_500)
     assert (b.start, b.added_wh) == (at("10:30:00"), 16_550)
+
+
+def test_cloud_spans_near_one_plug_get_distinct_starts():
+    a, b = charges(paused(at("09:00:00")), cloud=True)
+    assert a.start == at("09:00:00") and b.start > a.end  # the second does not snap back to the first's plug sample
+
+
+def test_cloud_start_does_not_snap_into_a_kept_car_charge():
+    a, b = charges(plugged_then_cloud(at("09:00:00")), cloud=True)
+    assert (a.start, a.end, a.times_source) == (at("09:00:00"), at("09:01:00"), "car")
+    assert b.start == at("09:02:00") and b.times_source == "cloud"  # not snapped back to the plug sample the car charge starts at
 
 
 STALE = [s(at("09:09:35"), "battery_wh", 22_500), s(at("09:09:40"), "gear", 4),

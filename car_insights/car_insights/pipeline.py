@@ -6,7 +6,8 @@ from datetime import tzinfo
 from typing import Callable
 
 from . import db, route, summary
-from .derive import Deriver
+from .derive import ESTIMATE_HOLD_MS, Deriver
+from .live import FUTURE_SLACK_MS
 from .totals_sensors import TotalsSensors
 from .trip_sensors import TripSensors
 from .trips import QUIET_MS
@@ -14,6 +15,7 @@ from .trips import QUIET_MS
 log = logging.getLogger(__name__)
 
 EVENT_MAX_AGE_MS = 3_600_000  # a close older than this at arrival (a backlog) updates the sensors but fires no event
+REBUILD_STEP_MS = 30 * 86_400_000  # the start-up rebuild derives this much history per update
 
 
 def refresh(deriver: Deriver, sensors: TripSensors, totals: TotalsSensors, vid: str, min_t: int | None, received: int, tz: tzinfo) -> tuple[dict | None, dict]:
@@ -43,7 +45,20 @@ def rebuild(deriver: Deriver, sensors: TripSensors, conn: sqlite3.Connection, no
     its next ingest, then republish its last trip and charge states (a rebuild may have closed one). No events."""
     for (vid,) in conn.execute("SELECT vehicle_id FROM vehicles").fetchall():
         try:
-            deriver.update(vid, None, now_ms)
+            first = conn.execute("SELECT MIN(t) FROM samples WHERE vehicle_id=?", (vid,)).fetchone()[0]
+            if first is None:
+                continue
+            # a vehicle that kept its rows starts at its newest closed end (a normal restart is one update); an emptied one starts at its first sample
+            first = max(first, deriver.newest_end(vid))
+            # a window is one update at a past `received_ms`: it reads only that month, and the next one resumes from what is still open.
+            # A cloud charge ending just before a window's cut-off may be closed there as a SoC estimate, its car reading being beyond
+            # the cut-off; each later window re-opens what the one before could have closed that early, like late data would.
+            # shortcut: a segment open across windows (a car plugged for weeks, a stuck charging_state) pulls every window back to its
+            # start, so those reads grow with it; fine for real sessions, checkpoint if one runs for months.
+            cut = None
+            for m in [*range(first + REBUILD_STEP_MS, now_ms, REBUILD_STEP_MS), now_ms]:
+                deriver.update(vid, None if cut is None else cut - ESTIMATE_HOLD_MS, m)
+                cut = m + FUTURE_SLACK_MS
             trips, charges = deriver.stored_trips(vid, 1), deriver.stored_charges(vid, 1)
             sensors.publish(vid, trips[0] if trips else None, charges[0] if charges else None, [], [])
         except Exception:

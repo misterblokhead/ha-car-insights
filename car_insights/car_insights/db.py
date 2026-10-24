@@ -57,7 +57,7 @@ def tx(conn: sqlite3.Connection) -> Iterator[None]:
 def connect(path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")  # safe in WAL (no corruption, at worst the last commits); the car resends unacked data
+    conn.execute("PRAGMA synchronous=FULL")  # FULL: the ack makes the car delete its copy, so a commit must reach the disk first
     _migrate(conn)
     return conn
 
@@ -132,6 +132,14 @@ def latest_at_or_before(conn, vehicle_id: str, t: int, keys: Sequence[str]) -> d
 def latest_t(conn, vehicle_id: str, key: str, t: int) -> int | None:
     """t of the newest sample of key with sample t <= t, or None."""
     r = conn.execute("SELECT MAX(t) FROM samples WHERE vehicle_id=? AND key=? AND t<=?", (vehicle_id, key, t)).fetchone()
+    return r[0]
+
+
+def plug_start(conn, vehicle_id: str, t: int) -> int | None:
+    """t of the first plugged=True sample after the newest plugged=False at or before t (a re-sent True is no new plug), or None."""
+    r = conn.execute("SELECT MIN(t) FROM samples WHERE vehicle_id=? AND key='plugged' AND value_json='true' AND t<=? AND t>"
+                     "COALESCE((SELECT MAX(t) FROM samples WHERE vehicle_id=? AND key='plugged' AND value_json='false' AND t<=?), -1)",
+                     (vehicle_id, t, vehicle_id, t)).fetchone()
     return r[0]
 
 

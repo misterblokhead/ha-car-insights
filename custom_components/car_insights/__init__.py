@@ -1,7 +1,6 @@
 """Car Insights receiver: verifies HMAC-signed car batches and forwards them to the add-on."""
 import logging
 import time
-from pathlib import Path
 
 from aiohttp import web
 from homeassistant.components import cloud, persistent_notification, webhook
@@ -12,7 +11,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.network import NoURLAvailableError
 
 from .const import CONF_DIR, DOMAIN, MAX_BODY, TOKEN_PATH
-from .receiver import TokenCache, body_vehicle_matches, config_file_text, forward, is_https_url, map_addon_status, read_limited, verify_signature
+from .receiver import TokenCache, body_vehicle_matches, config_file_text, forward, is_https_url, map_addon_status, read_limited, verify_signature, write_conf
 
 _LOGGER = logging.getLogger(__name__)
 _last_warn = 0.0
@@ -24,17 +23,6 @@ def _warn_bad_signature(vehicle_id: str) -> None:
     if now - _last_warn >= 60:
         _last_warn = now
         _LOGGER.warning("Rejected request with bad signature for vehicle %s", vehicle_id)
-
-
-def _write_conf(path: Path, text: str) -> bool:
-    """Create the file only if absent; True if written."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with path.open("x") as f:
-            f.write(text)
-    except FileExistsError:
-        return False
-    return True
 
 
 def _uses_cloud(hass: HomeAssistant) -> bool:
@@ -102,7 +90,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         persistent_notification.async_create(
             hass,
             f"Car Insights needs an https external URL for Home Assistant (Nabu Casa, or your own domain with TLS); "
-            f"the car rejects http. Current URL: {url}. Fix it in Settings > System > Network; setup will retry.",
+            "the car rejects http. Fix it in Settings > System > Network; setup will retry.",
             title="Car Insights receiver",
             notification_id=f"{DOMAIN}_{vehicle_id}_nohttps",
         )
@@ -110,7 +98,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     conf_path = CONF_DIR / f"{vehicle_id}.conf"
     text = config_file_text(url, secret, vehicle_id, entry.data["vehicle_name"])
-    written = await hass.async_add_executor_job(_write_conf, conf_path, text)
+    written = await hass.async_add_executor_job(write_conf, conf_path, text, url)
 
     webhook.async_register(
         hass, DOMAIN, f"Car Insights {vehicle_id}", webhook_id, handler,
@@ -118,12 +106,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     if written:
+        what = (
+            f"Config file for {entry.data['vehicle_name']} written to {conf_path}. Copy it to the car USB stick."
+            if written == "created"
+            else f"The car's webhook URL changed. Copy the new {conf_path} to the USB stick and import it in the car app."
+        )
         persistent_notification.async_create(
-            hass,
-            f"Config file for {entry.data['vehicle_name']} written to {conf_path}. Copy it to the car USB stick. "
-            f"Webhook URL: {url}",
-            title="Car Insights receiver",
-            notification_id=f"{DOMAIN}_{vehicle_id}",
+            hass, what, title="Car Insights receiver", notification_id=f"{DOMAIN}_{vehicle_id}",
         )
     return True
 
