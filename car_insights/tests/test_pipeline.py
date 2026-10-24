@@ -265,3 +265,23 @@ def test_summary_size_with_20_routed_trips(env):
     now = routed_env(env, 20)
     _, out = refresh(d, sensors, totals, "car1", None, now, TZ)
     assert len(out["trips"]) == 20 and len(json.dumps(out)) < 40_000
+
+
+def test_a_rejoined_quiet_trip_fires_no_second_event_until_it_closes_for_real(env):
+    conn, mqtt, d, sensors, totals = env
+    t0 = 10 * DAY
+    last = t0 + 31_000
+    db.ingest(conn, "car1", SRC, [*open_trip_samples(t0, 30), s(last, "gear", 4.0)], last)
+    summarize = lambda vid, min_t, received: refresh(d, sensors, totals, vid, min_t, received, TZ)
+    summarize("car1", None, last)
+    close_quiet(conn, summarize, last + QUIET_MS)
+    assert len(mqtt.on("car_insights/car1/trip_event")) == 1  # closed by the quiet rule
+    back = last + QUIET_MS + 5_000
+    db.ingest(conn, "car1", SRC, [s(last + 1000 * i, "gear", 4.0) for i in range(1, 60)] + [s(last + 60_000, "gear", 1.0),
+              *[s(last + 60_000 + 1000 * i, "speed", 10.0) for i in range(60)]], back)
+    cur, _ = refresh(d, sensors, totals, "car1", last + 1000, back, TZ)
+    assert cur["start"] == t0 and cur["end"] is None
+    assert len(mqtt.on("car_insights/car1/trip_event")) == 1  # the rejoin is no new close
+    db.ingest(conn, "car1", SRC, [s(last + 130_000, "ignition", 2.0)], back + 1000)
+    assert refresh(d, sensors, totals, "car1", last + 130_000, back + 1000, TZ)[0] is None
+    assert [e["event_type"] for e, _ in mqtt.on("car_insights/car1/trip_event")] == ["ended", "ended"]  # the real end is a second "ended"

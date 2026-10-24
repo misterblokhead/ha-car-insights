@@ -22,6 +22,7 @@ Zones = Callable[[float, float], str | None]
 def _trip_wire(t: Trip, zones: Zones, odo: tuple[float | None, float | None]) -> dict:
     d = asdict(t)
     first, last = d.pop("first_fix"), d.pop("last_fix")
+    d.pop("quiet_closed")
     return {**d, "from": zones(*first) if first else None, "to": zones(*last) if last else None, "duration_s": round(t.duration_s),
             "odometer_start_km": odo[0], "odometer_end_km": odo[1]}
 
@@ -38,6 +39,9 @@ class Deriver:
         self._idle: dict[str, int] = {}  # vehicle -> newest sample t read while nothing was open: the next window starts there
         self._ignition: set[str] = set()  # vehicles known to send an ignition signal (it never goes away)
         self._cloud: set[str] = set()  # vehicles with a cloud source (charging_state samples)
+        # vehicle -> start of its trip closed by the quiet rule alone: once the car is back its backlog may extend that trip
+        # shortcut: in memory only, a restart between the quiet close and the backlog keeps the split; persist it if that shows up
+        self._quiet: dict[str, int] = {}
         # a vehicle with any old-version row in either table is rebuilt whole; `rebuild` (the zones changed) rebuilds every vehicle
         stale = {r[0] for t in _TABLES for r in conn.execute(f"SELECT vehicle_id FROM {t} WHERE algo!=? OR ?", (ALGO, rebuild))}
         with db.tx(conn):
@@ -63,8 +67,9 @@ class Deriver:
         # reads only new samples, except in its first update after a restart (from its newest closed end).
         # shortcut: the first full rebuild (fresh install or ALGO bump) loads all history in one request and find_charges is
         # O(n x sessions); chunk the rebuild by window if it gets slow.
-        # shortcut: late data landing after a closed end (inside its P-stop proof window) does not reopen it; senders
-        # upload oldest-first, so that needs two car senders interleaving (cloud samples never reach find_trips).
+        # shortcut: late data landing after a closed end (inside its P-stop proof window, or after a silence that closed it)
+        # does not reopen it; senders upload oldest-first, so that needs two car senders interleaving (cloud samples never
+        # reach find_trips). A trip closed only by the quiet rule is the exception: see _quiet.
         with db.tx(conn):
             w = max(self._newest_end(vid), self._idle.get(vid, -1))
             if min_t is not None and min_t <= w:  # late data: back to the newest closed end below it
@@ -77,6 +82,10 @@ class Deriver:
                                 " AND json_extract(json, '$.start_wh') IS NOT NULL", (vid, received_ms - ESTIMATE_HOLD_MS)).fetchone()[0]
             if held is not None:
                 w = min(w, held - 1)
+            last = db.car_last_received(conn, vid)
+            quiet = last is not None and received_ms - last >= QUIET_MS
+            if vid in self._quiet and not quiet:  # the car is back: re-derive the trip the quiet rule closed
+                w = min(w, self._quiet.pop(vid) - 1)
             while True:  # a stored segment (open or closed) straddling the window start must be re-derived whole
                 starts = [r[0] for t in _TABLES for r in conn.execute(
                     f"SELECT start FROM {t} WHERE vehicle_id=? AND (end IS NULL OR end>?) AND start<=?", (vid, w, w))]
@@ -105,9 +114,10 @@ class Deriver:
                     if last_trip_start > (db.latest_t(conn, vid, k, w) or -1):
                         seed[k] = False
             # a cloud report is no proof the car slept: find_trips sees only its own keys
-            last = db.car_last_received(conn, vid)
-            raw_trips = find_trips([x for x in samples if x.k in TRIP_KEYS], seed, vid in self._ignition,
-                                   quiet=last is not None and received_ms - last >= QUIET_MS)
+            raw_trips = find_trips([x for x in samples if x.k in TRIP_KEYS], seed, vid in self._ignition, quiet)
+            for t in raw_trips:
+                if t.quiet_closed:
+                    self._quiet[vid] = t.start
             charges = [_charge_wire(c, self._zones) for c in find_charges(samples, seed, vid in self._cloud, self._capacity(vid))]
             new: dict[str, list[dict]] = {"trips": [], "charges": []}
             refined: set[tuple[str, int]] = set()

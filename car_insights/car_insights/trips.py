@@ -6,7 +6,8 @@ from .protocol import PARK_GEAR, Sample, fix, num
 KEYS = ("gear", "ignition", "speed", "battery_wh", "outside_temp", "gps")  # the sample keys find_trips reads
 IGNITION_ENDS_TRIP = (1, 2)  # LOCK, OFF; 0 is UNDEFINED
 MERGE_GAP_MS = 180_000
-# no batch from the car for this long with the trip's tail in P: the car switched off and its last batch (ignition off) was lost
+# no batch from the car for this long with the trip's tail in P (server side: the car switched off and its last batch was lost),
+# or this much silence between two samples (the car side: it was off)
 QUIET_MS = 600_000
 MOVING_MPS = 0.2778  # 1 km/h
 MAX_SPEED_STEP_MS = 5_000  # a speed sample stands for at most this long
@@ -30,11 +31,12 @@ class Trip:
     avg_temp_c: float | None
     first_fix: tuple[float, float] | None
     last_fix: tuple[float, float] | None
+    quiet_closed: bool = False  # closed only by the quiet rule: the backlog may still extend it (Deriver re-derives it)
 
 
 def find_trips(samples: list[Sample], seed: dict[str, Any], has_ignition: bool, quiet: bool = False) -> list[Trip]:
     """samples are sorted by (t, seq); seed holds the latest value per key before the first sample.
-    A trip closes only on evidence in the samples (ignition off/lock, or a stop in P proven by a later sample):
+    A trip closes only on evidence in the samples (ignition off/lock, a stop in P proven by a later sample, or a QUIET_MS silence between samples):
     arrival time proves nothing, as a backlog arrives late. A tail without proof stays open, unless `quiet` (the car's
     senders delivered nothing for QUIET_MS, so no backlog is draining) and the tail is in P: it then ends at its first P sample."""
     gear, wh, temp = num(seed.get("gear")), num(seed.get("battery_wh")), num(seed.get("outside_temp"))
@@ -73,6 +75,7 @@ def find_trips(samples: list[Sample], seed: dict[str, Any], has_ignition: bool, 
         prev_t = s.t
     if cur and quiet and p is not None:
         close(p + 1, True)
+        out[-1].quiet_closed = True
     if cur:
         close(len(samples), False)
     # noise is dropped once closed: an open trip shows from its first second

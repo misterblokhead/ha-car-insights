@@ -54,6 +54,30 @@ def test_open_trip_tail_in_p_closes_once_the_car_is_quiet():
     assert [t["end"] for t in trips] == [62_000] and d.current_trip("car1") is None
 
 
+def test_quiet_closed_trip_rejoins_when_backlog_arrives():
+    parked = [s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 61_000, 1000)], s(62_000, "gear", 4.0)]
+    conn, d = setup(parked)  # the car's last batch arrived at 0; the server was down for 12 min
+    trips, _, _ = d.update("car1", None, 720_000)
+    assert [t["end"] for t in trips] == [62_000] and d.current_trip("car1") is None
+    backlog = [*[s(t, "gear", 4.0) for t in range(63_000, 243_000, 1000)], s(243_000, "gear", 1.0),
+               *[s(t, "speed", 10.0) for t in range(243_000, 543_000, 1000)]]
+    db.ingest(conn, "car1", SRC, backlog, 730_000)
+    assert d.update("car1", 63_000, 730_000) == ([], [], set())  # an open trip again: no close, no refinement
+    assert d.stored_trips("car1") == []
+    cur = d.current_trip("car1")
+    assert cur["start"] == 0 and cur["end"] is None and "quiet_closed" not in cur
+    assert d.update("car1", None, 740_000) == ([], [], set())  # the car is back: not closed again
+
+
+def test_quiet_closed_trip_stays_closed_while_the_car_is_still_quiet():
+    parked = [s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 61_000, 1000)], s(62_000, "gear", 4.0)]
+    conn, d = setup(parked)
+    (trip,), _, _ = d.update("car1", None, 720_000)
+    assert "quiet_closed" not in trip and "quiet_closed" not in d.stored_trips("car1")[0]
+    db.ingest(conn, "car1", CLOUD, [s(800_000, "charging_state", False)], 900_000)  # a cloud report is not the car
+    assert d.update("car1", None, 900_000) == ([], [], set()) and d.current_trip("car1") is None
+
+
 def test_open_trip_is_current_not_stored():
     conn, d = setup([s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 61_000, 1000)]])
     assert d.update("car1", None, 61_000) == ([], [], set())
