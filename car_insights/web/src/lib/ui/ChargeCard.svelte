@@ -4,14 +4,14 @@
   import ChargeBar from "./ChargeBar.svelte";
 
   // capacity: the vehicle's battery in Wh, for the charge percentages
-  let { item, capacity } = $props();
+  let { item, capacity, current = false } = $props();
   const level = (wh) => (wh == null || !capacity ? null : (wh / capacity) * 100);
   const from = $derived(level(item.start_wh)), to = $derived(level(item.end_wh));
   const [added, unit] = $derived(`${item.energy_source === "soc_estimate" && item.added_wh != null ? "~" : ""}${kwh(item.added_wh)}`.split(" "));
   const when = $derived(`${time(item.start)} – ${item.end == null ? "now" : time(item.end)} · ${kw(item.avg_w)}`);
 </script>
 
-<a href={hashOf(item)}>
+<a href={hashOf(item)} class:current aria-current={current ? "page" : undefined}>
   <span class="glyph" aria-hidden="true">
     <svg viewBox="0 0 24 24"><path d="M13 3 5 14h6l-1 7 8-11h-6z" /></svg>
   </span>
@@ -31,6 +31,7 @@
     display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 10px; align-items: center; padding: 14px;
     background: var(--card); border-radius: var(--radius-card); color: inherit; text-decoration: none; transition: transform 100ms;
   }
+  a.current { box-shadow: 0 0 0 2px var(--charge); }
   a:active { transform: scale(var(--press-scale)); }
   a:focus-visible { outline: 2px solid var(--charge); outline-offset: 2px; }
   .glyph { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--charge); grid-row: 1 / 3; align-self: start; }

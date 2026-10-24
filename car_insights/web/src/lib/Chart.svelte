@@ -2,47 +2,80 @@
   import uPlot from "uplot";
   import "uplot/dist/uPlot.min.css";
 
-  // x: numbers (seconds when `time`, else km); series: [{label, values, scale}]
-  let { x, series, time = false, xlabel = "" } = $props();
+  // x: numbers (seconds when `time`, else km, ...); series: [{label, values, scale = "y" | "y2" | "plug", kind = "line" | "area" | "bars",
+  // color: a token name such as "--trip", dash}]. `label` is what screen readers get (the key figures); it defaults to the series names.
+  let { x, series, time = false, xlabel = "", height = 180, label = "" } = $props();
   let el;
+  let scheme = $state(0); // bumped when the light or dark scheme flips: the colours are read from the tokens again
 
-  const COLORS = ["#2f7ed8", "#d97706", "#2a9d4a"];
+  // "#RRGGBB" with an opacity; any other colour form is left as it is
+  const tint = (c, a) => (/^#[0-9a-f]{6}$/i.test(c) ? c + Math.round(a * 255).toString(16).padStart(2, "0") : c);
 
   $effect(() => {
+    const dark = matchMedia("(prefers-color-scheme: dark)");
+    const flip = () => scheme++;
+    dark.addEventListener("change", flip);
+    return () => dark.removeEventListener("change", flip);
+  });
+
+  $effect(() => {
+    scheme;
     const css = getComputedStyle(el);
-    const muted = css.getPropertyValue("--muted").trim() || "#6b6b70";
-    const line = css.getPropertyValue("--line").trim() || "#dcdce0";
-    const axis = (scale, side) => ({ scale, side, stroke: muted, grid: { stroke: line, show: scale === "y" }, ticks: { stroke: line } });
+    const token = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
+    const muted = token("--muted", "#6b6b70");
+    const line = token("--line", "#dcdce0");
+    const font = "11px system-ui, -apple-system, 'Segoe UI', sans-serif";
+    const axis = (scale, side, extra = {}) => ({ scale, side, stroke: muted, font, grid: { stroke: line, width: 1, show: scale === "y" }, ticks: { stroke: line, width: 1 }, ...extra });
     const scales = { x: { time } };
+    // area and bars read from zero
+    if (series.some((s) => (s.scale ?? "y") === "y" && s.kind && s.kind !== "line")) scales.y = { range: [0, null] };
+    if (series.some((s) => s.scale === "y2")) scales.y2 = {};
     if (series.some((s) => s.scale === "plug")) scales.plug = { range: [0, 1] };
+    const side = (scale) => axis(scale, 1, scale === "plug" ? { splits: () => [0, 1], values: (u, v) => v.map((n) => (n ? "plugged" : "unplugged")) } : {});
+
+    const make = (s) => {
+      const color = token(s.color ?? "--trip", "#0A84FF");
+      const base = { label: s.label, scale: s.scale ?? "y", stroke: color, width: 2, spanGaps: true, points: { show: false } };
+      if (s.dash) base.dash = [6, 4];
+      if (s.scale === "plug") base.paths = uPlot.paths.stepped({ align: 1 });
+      if (s.kind === "area") base.fill = (u) => {
+        const g = u.ctx.createLinearGradient(0, u.bbox.top, 0, u.bbox.top + u.bbox.height);
+        g.addColorStop(0, tint(color, 0.35));
+        g.addColorStop(1, tint(color, 0.04));
+        return g;
+      };
+      if (s.kind === "bars") Object.assign(base, { paths: uPlot.paths.bars({ size: [0.6, 48], radius: 0.25 }), fill: color, width: 0 });
+      return base;
+    };
+
     const plot = new uPlot(
       {
         width: el.clientWidth || 300,
-        height: 220,
+        height,
+        legend: { show: series.length > 1 },
         cursor: { drag: { x: false, y: false } },
         scales,
         axes: [
-          { stroke: muted, grid: { stroke: line }, ticks: { stroke: line }, label: xlabel, labelSize: xlabel ? 24 : 0 },
+          { stroke: muted, font, grid: { stroke: line, width: 1 }, ticks: { stroke: line, width: 1 }, label: xlabel, labelFont: font, labelSize: xlabel ? 22 : 0 },
           axis("y", 3),
-          ...(scales.plug ? [axis("plug", 1)] : []),
+          ...(scales.y2 ? [side("y2")] : []),
+          ...(scales.plug ? [side("plug")] : []),
         ],
-        series: [
-          {},
-          ...series.map((s, i) => ({ label: s.label, scale: s.scale, stroke: COLORS[i % COLORS.length], width: 2, spanGaps: true, points: { show: false }, ...(s.scale === "plug" ? { paths: uPlot.paths.stepped({ align: 1 }) } : {}) })),
-        ],
+        series: [{}, ...series.map(make)],
       },
       [x, ...series.map((s) => s.values)],
       el,
     );
-    const ro = new ResizeObserver(() => plot.setSize({ width: el.clientWidth, height: 220 }));
+    const ro = new ResizeObserver(() => plot.setSize({ width: el.clientWidth, height }));
     ro.observe(el);
     return () => { ro.disconnect(); plot.destroy(); };
   });
 </script>
 
-<div bind:this={el} class="chart" role="img" aria-label={`Chart: ${series.map((s) => s.label).join(", ")}`}></div>
+<div bind:this={el} class="chart" role="img" aria-label={label || `Chart: ${series.map((s) => s.label).join(", ")}`}></div>
 
 <style>
   .chart { width: 100%; min-width: 0; color: var(--fg); }
-  .chart :global(.u-legend) { color: var(--fg); font-size: 0.85em; }
+  .chart :global(.u-legend) { color: var(--fg); font-size: 12px; text-align: left; }
+  .chart :global(.u-legend .u-series:first-child) { display: none; } /* the x value */
 </style>

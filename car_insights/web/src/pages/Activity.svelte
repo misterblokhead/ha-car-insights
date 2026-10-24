@@ -1,15 +1,23 @@
+<script module>
+  let fromList = false; // the open detail was reached from a card, so the history entry before it is the list
+</script>
+
 <script>
   import { untrack } from "svelte";
   import { get } from "../lib/api.js";
-  import { feed, load, more, refresh, visible } from "../lib/activity.svelte.js";
+  import { feed, hashOf, load, more, neighbours, refresh, visible } from "../lib/activity.svelte.js";
   import { dayLabel, daySummary } from "../lib/format.js";
   import { screen } from "../lib/media.svelte.js";
   import ChargeCard from "../lib/ui/ChargeCard.svelte";
   import LiveStrip from "../lib/ui/LiveStrip.svelte";
   import Segmented from "../lib/ui/Segmented.svelte";
+  import DetailPane from "../lib/ui/DetailPane.svelte";
   import TripCard from "../lib/ui/TripCard.svelte";
+  import ChargeDetail from "./ChargeDetail.svelte";
+  import TripDetail from "./TripDetail.svelte";
 
-  let { view } = $props();
+  // detail: {kind: "trip" | "charge", vid, start} from the route, or null
+  let { view, detail = null } = $props();
 
   const FILTERS = [{ value: "all", label: "All" }, { value: "trips", label: "Trips" }, { value: "charges", label: "Charges" }];
   const EMPTY = { all: "Your trips and charges appear here after the first drive.", trips: "No trips yet.", charges: "No charges yet." };
@@ -21,6 +29,31 @@
   let out = $state(false);
   let listEl;
   const days = $derived(visible(feed.days, shown));
+  const open = $derived(detail && hashOf({ kind: detail.kind, vehicle_id: detail.vid, start: detail.start }));
+  const around = $derived(detail ? neighbours(feed.days, feed.filter, detail.kind, detail.vid, detail.start) : { prev: null, next: null });
+  const isOpen = (item) => detail?.kind === item.kind && detail.vid === item.vehicle_id && detail.start === item.start;
+
+  const followed = (e) => e.button === 0 && !e.defaultPrevented && !(e.metaKey || e.ctrlKey || e.shiftKey);
+  const picked = (e) => {
+    if (followed(e) && listEl?.contains(e.target) && e.target.closest("a[href^='#/']")) fromList = true;
+  };
+  // back to the list: one step back when it is the entry before, else replace the detail (a link opened cold)
+  const close = () => (fromList ? history.back() : location.replace("#/activity"));
+
+  // stepping with the arrows keeps the open card in view
+  $effect(() => {
+    if (open) listEl?.querySelector("[aria-current=page]")?.closest("li").scrollIntoView({ block: "nearest" });
+  });
+
+  let last = "";
+  $effect(() => {
+    if (open) return void (last = open);
+    fromList = false;
+    if (!last || !listEl) return;
+    // focus goes back to the card that was open
+    [...listEl.querySelectorAll("a")].find((a) => a.getAttribute("href") === last)?.focus({ preventScroll: true });
+    last = "";
+  });
 
   async function live() {
     try {
@@ -61,6 +94,9 @@
   });
 </script>
 
+<svelte:window onclick={picked} />
+
+<div class="split" class:two={screen.split}>
 <div class="page" class:wide={screen.wide}>
   <h1>Activity</h1>
   <LiveStrip {vehicles} />
@@ -75,9 +111,9 @@
           {#each day.items as item (`${item.kind}/${item.vehicle_id}/${item.start}`)}
             <li>
               {#if item.kind === "trip"}
-                <TripCard {item} />
+                <TripCard {item} current={isOpen(item)} />
               {:else}
-                <ChargeCard {item} capacity={feed.capacity_wh[item.vehicle_id]} />
+                <ChargeCard {item} capacity={feed.capacity_wh[item.vehicle_id]} current={isOpen(item)} />
               {/if}
             </li>
           {/each}
@@ -101,7 +137,19 @@
   {/if}
 </div>
 
+{#if detail}
+  <DetailPane id={open} onclose={close} prev={around.prev} next={around.next}>
+    {#if detail.kind === "trip"}
+      <TripDetail vid={detail.vid} start={detail.start} />
+    {:else}
+      <ChargeDetail vid={detail.vid} start={detail.start} />
+    {/if}
+  </DetailPane>
+{/if}
+</div>
+
 <style>
+  .split.two { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 24px; align-items: start; } /* the list keeps its width with or without a detail */
   .page { --bleed: 16px; max-width: 760px; }
   .page.wide { --bleed: 24px; }
   h1 { margin: 0 0 12px; font-size: var(--fs-title); font-weight: 700; letter-spacing: -0.01em; }
@@ -114,6 +162,7 @@
     background: var(--chrome); -webkit-backdrop-filter: var(--chrome-filter); backdrop-filter: var(--chrome-filter);
   }
   h2 span { font-weight: 400; color: var(--muted); }
+  li { scroll-margin-block: 56px; } /* clear of the sticky day header */
   ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
   .msg { padding: 24px 0; text-align: center; color: var(--muted); }
   .msg p { margin: 0 0 8px; }

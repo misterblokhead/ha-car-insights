@@ -29,7 +29,7 @@
 
 <style>
   .shell { min-height: 100dvh; }
-  .shell.wide { display: grid; grid-template-columns: 240px minmax(0, 1fr); }
+  .shell.wide { display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); }
   header { padding: 12px 16px 0; }
   main { padding: 16px 16px calc(65px + env(safe-area-inset-bottom)); }  /* clear of the fixed tab bar (49 px + gap) */
   .wide main { padding: 24px; }

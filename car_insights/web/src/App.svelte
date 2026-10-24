@@ -70,7 +70,7 @@
     {:else if route.page === "stats"}
       <h1>Statistics</h1>
     {:else}
-      {#key view}<Activity {view} />{/key}
+      {#key view}<Activity {view} detail={route.detail} />{/key}
     {/if}
   </Shell>
 {/if}

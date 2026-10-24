@@ -3,14 +3,14 @@
   import { km, kwh, kwh100, duration, time, NA } from "../format.js";
   import RouteOutline from "./RouteOutline.svelte";
 
-  let { item } = $props();
+  let { item, current = false } = $props();
   const from = $derived(item.from ?? "Unknown"), to = $derived(item.to ?? "Unknown");
   const [dist, unit] = $derived(km(item.distance_m).split(" "));
   const per100 = $derived(kwh100(item.net_wh, item.distance_m));
   const when = $derived(`${time(item.start)} · ${item.end == null ? "now" : duration(item.duration_s)}`);
 </script>
 
-<a href={hashOf(item)}>
+<a href={hashOf(item)} class:current aria-current={current ? "page" : undefined}>
   <span class="glyph" aria-hidden="true">
     <svg viewBox="0 0 24 24"><path d="M5 16v-5l2-5h10l2 5v5M5 16h14M5 16v3h3v-3M16 16v3h3v-3M7 11h10" /></svg>
   </span>
@@ -30,6 +30,7 @@
     display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px; align-items: center; padding: 14px;
     background: var(--card); border-radius: var(--radius-card); color: inherit; text-decoration: none; transition: transform 100ms;
   }
+  a.current { box-shadow: 0 0 0 2px var(--trip); }
   a:active { transform: scale(var(--press-scale)); }
   a:focus-visible { outline: 2px solid var(--trip); outline-offset: 2px; }
   .glyph { grid-row: 1 / 3; align-self: start; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--trip); }
