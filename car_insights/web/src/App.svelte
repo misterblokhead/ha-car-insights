@@ -4,6 +4,7 @@
   import Shell from "./lib/ui/Shell.svelte";
   import Activity from "./pages/Activity.svelte";
   import Settings from "./pages/Settings.svelte";
+  import Stats from "./pages/Stats.svelte";
 
   let me = $state(null);
   let views = $state({ vehicles: [], groups: [] });
@@ -68,7 +69,7 @@
     {:else if !view}
       <p class="msg">No vehicles available to you.</p>
     {:else if route.page === "stats"}
-      <h1>Statistics</h1>
+      <Stats {view} />
     {:else}
       {#key view}<Activity {view} detail={route.detail} />{/key}
     {/if}
@@ -76,6 +77,5 @@
 {/if}
 
 <style>
-  h1 { margin: 0; font-size: var(--fs-title); }
   .msg { padding: 12px; color: var(--muted); }
 </style>

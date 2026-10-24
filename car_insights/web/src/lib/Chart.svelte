@@ -4,7 +4,8 @@
 
   // x: numbers (seconds when `time`, else km, ...); series: [{label, values, scale = "y" | "y2" | "plug", kind = "line" | "area" | "bars",
   // color: a token name such as "--trip", dash}]. `label` is what screen readers get (the key figures); it defaults to the series names.
-  let { x, series, time = false, xlabel = "", height = 180, label = "" } = $props();
+  // xaxis: extra uPlot options for the x axis (`splits`, `values`: category names on index x).
+  let { x, series, time = false, xlabel = "", height = 180, label = "", xaxis = {} } = $props();
   let el;
   let scheme = $state(0); // bumped when the light or dark scheme flips: the colours are read from the tokens again
 
@@ -29,6 +30,8 @@
     const scales = { x: { time } };
     // area and bars read from zero
     if (series.some((s) => (s.scale ?? "y") === "y" && s.kind && s.kind !== "line")) scales.y = { range: [0, null] };
+    // bars on a category index (x = 0, 1, 2, ...) get half a slot each side so the outer bars are not cut
+    if (!time && series.some((s) => s.kind === "bars")) scales.x.range = (u, min, max) => [min - 0.5, max + 0.5];
     if (series.some((s) => s.scale === "y2")) scales.y2 = {};
     if (series.some((s) => s.scale === "plug")) scales.plug = { range: [0, 1] };
     const side = (scale) => axis(scale, 1, scale === "plug" ? { size: 76, splits: () => [0, 1], values: (u, v) => v.map((n) => (n ? "plugged" : "unplugged")) } : {});
@@ -56,7 +59,7 @@
         cursor: { drag: { x: false, y: false } },
         scales,
         axes: [
-          { stroke: muted, font, grid: { stroke: line, width: 1 }, ticks: { stroke: line, width: 1 }, label: xlabel, labelFont: font, labelSize: xlabel ? 22 : 0 },
+          { stroke: muted, font, grid: { stroke: line, width: 1 }, ticks: { stroke: line, width: 1 }, label: xlabel, labelFont: font, labelSize: xlabel ? 22 : 0, ...xaxis },
           axis("y", 3),
           ...(scales.y2 ? [side("y2")] : []),
           ...(scales.plug ? [side("plug")] : []),

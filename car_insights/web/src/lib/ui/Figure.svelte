@@ -1,11 +1,12 @@
 <script>
-  // one tile of a detail page's figure grid; an empty unit leaves the value alone (the missing "–" has none)
-  let { label, value, unit = "" } = $props();
+  // one tile of a detail page's figure grid; an empty unit leaves the value alone (the missing "–" has none); children: a line under the value
+  let { label, value, unit = "", children } = $props();
 </script>
 
 <div class="fig">
   <span class="label">{label}</span>
   <span class="value">{value}{#if unit}{" "}<small>{unit}</small>{/if}</span>
+  {@render children?.()}
 </div>
 
 <style>
