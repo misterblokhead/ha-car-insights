@@ -1,11 +1,15 @@
+import asyncio
 import logging
 import sqlite3
+import time
 from datetime import tzinfo
+from typing import Callable
 
-from . import summary
+from . import db, summary
 from .derive import Deriver
 from .totals_sensors import TotalsSensors
 from .trip_sensors import TripSensors
+from .trips import QUIET_MS
 
 log = logging.getLogger(__name__)
 
@@ -37,3 +41,21 @@ def rebuild(deriver: Deriver, conn: sqlite3.Connection, now_ms: int) -> None:
             deriver.update(vid, None, now_ms)
         except Exception:
             log.exception("rebuild of %s failed", vid)
+
+
+def close_quiet(conn: sqlite3.Connection, summarize: Callable[[str, int | None, int], object], now_ms: int) -> None:
+    """Re-derive each vehicle with an open trip whose car went quiet: no batch will arrive to close it (its last one was lost)."""
+    # shortcut: a quiet car whose trip tail is not in P stays open and is re-derived every tick until its car returns
+    for (vid,) in conn.execute("SELECT DISTINCT vehicle_id FROM trips WHERE end IS NULL").fetchall():
+        last = db.car_last_received(conn, vid)
+        if last is not None and now_ms - last >= QUIET_MS:
+            try:
+                summarize(vid, None, now_ms)
+            except Exception:
+                log.exception("closing the quiet trip of %s failed", vid)
+
+
+async def run_close_quiet(conn: sqlite3.Connection, summarize: Callable[[str, int | None, int], object], interval_s: float = 60) -> None:
+    while True:
+        await asyncio.sleep(interval_s)
+        close_quiet(conn, summarize, int(time.time() * 1000))

@@ -7,7 +7,7 @@ from . import db, route, series
 from .charges import KEYS as CHARGE_KEYS, Charge, find_charges
 from .live import FUTURE_SLACK_MS
 from .odometer import chain
-from .trips import KEYS as TRIP_KEYS, Trip, find_trips
+from .trips import KEYS as TRIP_KEYS, QUIET_MS, Trip, find_trips
 
 ALGO = 5  # bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
 ESTIMATE_HOLD_MS = 7 * 86_400_000  # a SoC-estimated charge this recent is re-derived on every update: the car's value may still arrive
@@ -103,7 +103,9 @@ class Deriver:
                     if last_trip_start > (db.latest_t(conn, vid, k, w) or -1):
                         seed[k] = False
             # a cloud report is no proof the car slept: find_trips sees only its own keys
-            raw_trips = find_trips([x for x in samples if x.k in TRIP_KEYS], seed, vid in self._ignition)
+            last = db.car_last_received(conn, vid)
+            raw_trips = find_trips([x for x in samples if x.k in TRIP_KEYS], seed, vid in self._ignition,
+                                   quiet=last is not None and received_ms - last >= QUIET_MS)
             charges = [_charge_wire(c, self._zones) for c in find_charges(samples, seed, vid in self._cloud, self._capacity(vid))]
             new: dict[str, list[dict]] = {"trips": [], "charges": []}
             refined: set[tuple[str, int]] = set()

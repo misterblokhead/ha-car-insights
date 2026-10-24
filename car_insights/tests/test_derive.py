@@ -2,6 +2,7 @@ import pytest
 
 from car_insights import db
 from car_insights.derive import ALGO, ESTIMATE_HOLD_MS, Deriver
+from car_insights.trips import QUIET_MS
 from conftest import ms, s
 
 DAY = 86_400_000
@@ -16,10 +17,10 @@ def trip_samples(t0, step=1000, secs=100):
             s(t0 + secs * 1000, "gps", [52.1, 5.1]), s(t0 + secs * 1000 + 10_000, "ignition", 2.0)]
 
 
-def setup(*batches):
+def setup(*batches, received=0):
     conn = db.connect(":memory:")
     for b in batches:
-        db.ingest(conn, "car1", SRC, b, 0)
+        db.ingest(conn, "car1", SRC, b, received)
     return conn, Deriver(conn, lambda la, lo: "Home")
 
 
@@ -43,6 +44,14 @@ def test_rebuild_drops_rows_and_renames_places():
     assert d2.stored_trips("car1", 10) == []
     d2.update("car1", None, 10 * DAY)
     assert d2.stored_trips("car1", 10)[0]["from"] == "Work"
+
+
+def test_open_trip_tail_in_p_closes_once_the_car_is_quiet():
+    parked = [s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 61_000, 1000)], s(62_000, "gear", 4.0)]
+    conn, d = setup(parked)  # ingested at 0
+    assert d.update("car1", None, QUIET_MS - 1) == ([], [], set()) and d.current_trip("car1")["end"] is None
+    trips, _, _ = d.update("car1", None, QUIET_MS)
+    assert [t["end"] for t in trips] == [62_000] and d.current_trip("car1") is None
 
 
 def test_open_trip_is_current_not_stored():
@@ -195,12 +204,12 @@ def test_open_charge_not_stored():
 def test_backlog_boundary_in_p_stop_keeps_one_trip():
     now = 3 * DAY  # backlog arrives days later, so the first batch's trailing P stop looks like a closed trip
     b1 = [s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 60_001, 1000)], s(60_000, "gear", 4.0)]
-    conn, d = setup(b1)
+    conn, d = setup(b1, received=now)
     first, _, _ = d.update("car1", 0, now)
-    assert first == [] and d.current_trip("car1")["start"] == 0  # no later sample proves the stop: stays open however old
+    assert first == [] and d.current_trip("car1")["start"] == 0  # no later sample proves the stop, and the car is still sending
     b2 = [s(120_000, "gps", [52.0, 5.0]), s(150_000, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(150_000, 300_001, 1000)],
           s(300_000, "gear", 4.0), s(310_000, "ignition", 2.0)]
-    db.ingest(conn, "car1", SRC, b2, 0)
+    db.ingest(conn, "car1", SRC, b2, now)
     trips, _, _ = d.update("car1", 120_000, now)
     stored = d.stored_trips("car1", 10)
     assert [(t["start"], t["end"]) for t in stored] == [(0, 310_000)] and trips == stored
@@ -218,12 +227,12 @@ def test_backlog_boundary_in_long_p_stop_keeps_one_trip():
     now = 3 * DAY  # P with ignition on for 4 min, a gps fix every minute, the batch boundary falls inside the stop
     b1 = [s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 60_001, 1000)], s(60_000, "gear", 4.0),
           *[s(t, "gps", [52.0, 5.0]) for t in range(120_000, 300_001, 60_000)]]
-    conn, d = setup(b1)
+    conn, d = setup(b1, received=now)
     first, _, _ = d.update("car1", 0, now)
     assert first == []
     b2 = [s(310_000, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(310_000, 400_001, 1000)],
           s(400_000, "gear", 4.0), s(410_000, "ignition", 2.0)]
-    db.ingest(conn, "car1", SRC, b2, 0)
+    db.ingest(conn, "car1", SRC, b2, now)
     trips, _, _ = d.update("car1", 310_000, now)
     stored = d.stored_trips("car1", 10)
     assert [(t["start"], t["end"]) for t in stored] == [(0, 410_000)] and trips == stored
@@ -480,7 +489,7 @@ def test_cloud_sample_is_not_proof_the_car_slept_in_a_p_stop():
     # a P stop, the car goes offline, a cloud SoC report lands 4 min later, then the drive goes on: one trip, no early close
     drive1 = [s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(1000 + i * 1000, "speed", 15.0) for i in range(600)],
               s(601_000, "speed", 0.0), s(602_000, "gear", 4.0)]
-    conn, d = setup(drive1)
+    conn, d = setup(drive1, received=610_000)  # the car's last batch before it went offline
     d.update("car1", None, 610_000)
     db.ingest(conn, "car1", CLOUD, [s(602_000 + 240_000, "soc_percent", 50.0)], 0)
     trips, _, _ = d.update("car1", 842_000, 842_000 + 120_000)

@@ -8,9 +8,9 @@ def drive(t0, t1, v=10.0, step=1000):
     return [s(t, "speed", v) for t in range(t0, t1 + 1, step)]
 
 
-def trips(samples, seed=None, has_ignition=True):
+def trips(samples, seed=None, has_ignition=True, quiet=False):
     samples = sorted(samples, key=lambda x: (x.t, x.seq))
-    return find_trips(samples, seed or {}, has_ignition)
+    return find_trips(samples, seed or {}, has_ignition, quiet)
 
 
 def test_trip_ends_on_ignition_off():
@@ -64,6 +64,14 @@ def test_car_asleep_ends_trip():
     assert t.end is None
     (t,) = trips(STOP)
     assert t.end is None  # silence is no proof: the next sample may still continue the trip
+
+
+def test_quiet_car_with_tail_in_p_ends_trip_at_the_first_p_sample():
+    for has_ignition in (True, False):
+        (t,) = trips(STOP + [s(70_000, "gear", 4.0)], has_ignition=has_ignition, quiet=True)
+        assert t.end == 60_000
+    (t,) = trips(STOP + [s(70_000, "gear", 1.0)], quiet=True)
+    assert t.end is None  # not in P: it may still be driving with its batches held back
 
 
 def test_parked_with_ignition_on_and_samples_keeps_trip_open():

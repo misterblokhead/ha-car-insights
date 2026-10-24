@@ -139,6 +139,11 @@ def has_key(conn, vehicle_id: str, key: str) -> bool:
     return conn.execute("SELECT 1 FROM samples WHERE vehicle_id=? AND key=? LIMIT 1", (vehicle_id, key)).fetchone() is not None
 
 
+def car_last_received(conn, vehicle_id: str) -> int | None:
+    """When the vehicle's own senders (not a polled cloud source) last delivered a batch, or None."""
+    return conn.execute("SELECT MAX(last_received_ms) FROM sources WHERE vehicle_id=? AND type!='ha_entities'", (vehicle_id,)).fetchone()[0]
+
+
 def cursors(conn, vehicle_id: str, source_id: str) -> dict[str, int]:
     """entity id -> last_changed (epoch ms) of the newest history row a polled source has consumed"""
     return dict(conn.execute("SELECT entity_id, last_changed_ms FROM source_cursors WHERE vehicle_id=? AND source_id=?",

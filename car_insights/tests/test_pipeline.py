@@ -4,7 +4,8 @@ import pytest
 
 from car_insights import access, db
 from car_insights.derive import Deriver
-from car_insights.pipeline import rebuild, refresh
+from car_insights.pipeline import close_quiet, rebuild, refresh
+from car_insights.trips import QUIET_MS
 from car_insights.totals_sensors import TotalsSensors
 from car_insights.trip_sensors import TripSensors
 from conftest import FakeMqtt, ms, s
@@ -163,3 +164,41 @@ def test_rebuild_survives_one_vehicle_failing(env):
             return super().update(vid, min_t, received_ms)
     rebuild(Boom(conn, lambda la, lo: "Home"), conn, now)
     assert [r[0] for r in conn.execute("SELECT DISTINCT vehicle_id FROM trips")] == ["car2"]
+
+
+def test_a_quiet_car_closes_its_trip_at_the_first_p_sample_with_an_event(env):
+    conn, mqtt, d, sensors, totals = env
+    t0 = 10 * DAY
+    last = t0 + 31_000  # parked, then the ignition-off batch never came
+    db.ingest(conn, "car1", SRC, [*open_trip_samples(t0, 30), s(last, "gear", 4.0)], last)
+    db.ingest(conn, "car1", "ha_entities-0000abcd", [], last + QUIET_MS)  # a cloud report proves nothing about the car
+    calls = []
+
+    def summarize(vid, min_t, received):
+        calls.append(received)
+        return refresh(d, sensors, totals, vid, min_t, received, TZ)
+
+    summarize("car1", None, last)
+    close_quiet(conn, summarize, last + QUIET_MS - 1)
+    assert len(calls) == 1 and d.current_trip("car1")["end"] is None  # not quiet long enough
+    close_quiet(conn, summarize, last + QUIET_MS)
+    assert d.current_trip("car1") is None and d.stored_trips("car1")[0]["end"] == last
+    assert len(mqtt.on("car_insights/car1/trip_event")) == 1
+    close_quiet(conn, summarize, last + 2 * QUIET_MS)
+    assert len(calls) == 2  # nothing open any more
+
+
+def test_close_quiet_survives_one_vehicle_failing(env):
+    conn, _, d, *_ = env
+    for vid in ("car1", "car2"):
+        db.ingest(conn, vid, SRC, open_trip_samples(0, 30), 0)
+        d.update(vid, None, 0)
+    seen = []
+
+    def summarize(vid, min_t, received):
+        seen.append(vid)
+        if vid == "car1":
+            raise RuntimeError("boom")
+
+    close_quiet(conn, summarize, QUIET_MS)
+    assert sorted(seen) == ["car1", "car2"]

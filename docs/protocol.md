@@ -76,7 +76,7 @@ Summary keys: `rev` (first 12 hex chars of the sha1 of the compact, key-sorted J
 - Charge: `start`, `end`, `place` (zone name or `null`), `start_wh`, `end_wh`, `added_wh`, `duration_s`, `range_added_m`, `avg_w`, `times_source` (`"car"` or `"cloud"`: whether start and end come from the car or from the cloud source), `energy_source` (`"car"`: from the car's `battery_wh` before and after; `"soc_estimate"`: estimated from the cloud's state of charge and the learned usable capacity; `null`: unknown).
 - Day (`today` and each `week` entry): `date` (`YYYY-MM-DD`, local date in the Home Assistant time zone), `distance_m`, `net_wh`, `charged_wh`. A trip or charge counts on the day it started; only closed ones count, so the open trip joins the totals when it ends. Days without data are zeros (sums, not measurements).
 
-When a trip ends: an ignition off/lock sample ends it; without proof it stays open, so a car that falls asleep without sending ignition off keeps its trip open until its next sample arrives. Trips under 100 m and 60 s are dropped once closed, but shown while open. An open charge ends at the next trip start if the unplug was never seen.
+When a trip ends: an ignition off/lock sample ends it; without proof it stays open until its next sample arrives, except when the trip's last sample is in P and the car has sent no batch for 10 minutes (it switched off and its ignition-off batch was lost): the add-on then ends the trip at that first P sample, checked every minute. Trips under 100 m and 60 s are dropped once closed, but shown while open. An open charge ends at the next trip start if the unplug was never seen.
 
 ## Cloud source
 
