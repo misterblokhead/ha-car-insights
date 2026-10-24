@@ -352,3 +352,18 @@ def test_rebuild_reads_bounded_windows(env, monkeypatch):
     monkeypatch.setattr(db, "samples_after", spy)
     rebuild(Deriver(conn, lambda la, lo: "Home"), sensors, conn, now)
     assert len(spans) >= 4 and max(spans) <= REBUILD_STEP_MS + ESTIMATE_HOLD_MS + 2 * DAY  # a window re-opens the 7 days before the last one's cut-off
+
+
+def test_a_normal_restart_rebuilds_nothing_before_the_newest_closed_end(env, monkeypatch):
+    conn, mqtt, d, sensors, totals = env
+    now = history_95_days(conn)
+    d.update("car1", None, now)  # the live state: everything derived, no ALGO or zone change since
+    tables = ("trips", "charges", "trip_series", "charge_series", "trip_routes")
+    before = {t: conn.execute(f"SELECT * FROM {t} ORDER BY start").fetchall() for t in tables}
+    newest = Deriver(conn, lambda la, lo: "Home").newest_end("car1")
+    assert newest > 100 * DAY + 60 * DAY
+    reads, real = [], db.samples_after
+    monkeypatch.setattr(db, "samples_after", lambda *args: reads.append(args[2]) or real(*args))
+    rebuild(Deriver(conn, lambda la, lo: "Home"), sensors, conn, now)  # the restart
+    assert {t: conn.execute(f"SELECT * FROM {t} ORDER BY start").fetchall() for t in tables} == before
+    assert reads and min(reads) >= newest  # only what came after the newest closed row was read again
