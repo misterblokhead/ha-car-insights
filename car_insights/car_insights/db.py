@@ -57,7 +57,7 @@ def tx(conn: sqlite3.Connection) -> Iterator[None]:
 def connect(path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")  # safe in WAL (no corruption, at worst the last commits); the car resends unacked data
+    conn.execute("PRAGMA synchronous=FULL")  # FULL: the ack makes the car delete its copy, so a commit must reach the disk first
     _migrate(conn)
     return conn
 
