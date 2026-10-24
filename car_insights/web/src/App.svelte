@@ -78,7 +78,7 @@
     {:else if route.page === "stats"}
       {#key view}<Stats {view} />{/key}
     {:else}
-      {#key view}<Activity {view} detail={route.detail} />{/key}
+      {#key view}<Activity {view} detail={route.detail} isAdmin={me.is_admin} />{/key}
     {/if}
   </Shell>
 {/if}

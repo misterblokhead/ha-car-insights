@@ -17,7 +17,7 @@
   import TripDetail from "./TripDetail.svelte";
 
   // detail: {kind: "trip" | "charge", vid, start} from the route, or null
-  let { view, detail = null } = $props();
+  let { view, detail = null, isAdmin = false } = $props();
 
   const FILTERS = [{ value: "all", label: "All" }, { value: "trips", label: "Trips" }, { value: "charges", label: "Charges" }];
   const EMPTY = { all: "Your trips and charges appear here after the first drive.", trips: "No trips yet.", charges: "No charges yet." };
@@ -154,7 +154,7 @@
     {#if detail.kind === "trip"}
       <TripDetail vid={detail.vid} start={detail.start} />
     {:else}
-      <ChargeDetail vid={detail.vid} start={detail.start} />
+      <ChargeDetail vid={detail.vid} start={detail.start} {isAdmin} />
     {/if}
   </DetailPane>
 {/if}

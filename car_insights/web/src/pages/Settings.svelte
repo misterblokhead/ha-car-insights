@@ -2,6 +2,9 @@
   import { tick } from "svelte";
   import { get, send } from "../lib/api.js";
   import { when } from "../lib/format.js";
+  import FixedCosts from "./settings/FixedCosts.svelte";
+  import Prices from "./settings/Prices.svelte";
+  import "./settings/settings.css";
 
   let data = $state(null);
   let error = $state("");
@@ -59,11 +62,13 @@
   const rename = (g) => keepFocus(() => change(() => send("PUT", `api/ui/groups/${g.id}`, { name: names[g.id] })));
   const remove = (g) => confirm(`Delete group "${g.name}"?`) && change(() => send("DELETE", `api/ui/groups/${g.id}`));
   const setVehicle = (v, group_id, viewers) => () => send("PUT", `api/ui/vehicles/${v.id}`, { group_id, viewers });
+  // the card fields are sent together; a blank one counts as 0
+  const setCard = (v, card) => () => send("PUT", `api/ui/vehicles/${v.id}/card`, card);
 
   load();
 </script>
 
-<div class="page">
+<div class="page settings">
 <h1>Settings</h1>
 {#if error}<p class="err" role="alert">{error}</p>{/if}
 {#if data}
@@ -84,6 +89,8 @@
     </form>
   </div>
 
+  <Prices {data} {change} />
+
   <h2>Vehicles</h2>
   <p class="note">Users appear here after they open this page once. Administrators always see every vehicle.</p>
   {#each data.vehicles as v (v.id)}
@@ -96,6 +103,13 @@
             {#each data.groups as g}<option value={g.id}>{g.name}</option>{/each}
           </select>
         </label>
+        {#each [["markup_pct", "Card markup %"], ["start_fee", "Card start fee"]] as [key, label]}
+          {@const card = data.prices.cards[v.id] ?? { markup_pct: 0, start_fee: 0 }}
+          <label class="row split">{label}
+            <input type="number" min="0" step="any" inputmode="decimal" disabled={busy} value={card[key]}
+              onchange={(e) => control(e, setCard(v, { ...card, [key]: Number(e.currentTarget.value) }), (el) => (el.value = card[key]))} />
+          </label>
+        {/each}
       </div>
       <fieldset>
         <legend>Viewers</legend>
@@ -112,6 +126,7 @@
       </fieldset>
     </section>
   {/each}
+  <FixedCosts {data} {change} />
 {:else if !error}
   <p class="msg">Loading…</p>
 {/if}
@@ -120,28 +135,6 @@
 <style>
   .page { max-width: 640px; }
   h1 { margin: 0 0 12px; font-size: var(--fs-title); font-weight: 700; letter-spacing: -0.01em; }
-  h2, h3, legend { margin: 20px 0 6px 14px; padding: 0; font-size: 13px; font-weight: 400; color: var(--muted); }
-  h2 + .note { margin-top: -2px; }
-  fieldset { min-width: 0; margin: 14px 0 0; padding: 0; border: 0; }
-  .list { background: var(--card); border: var(--edge); border-radius: var(--radius-card); overflow: hidden; }
-  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; box-sizing: border-box; min-height: 44px; margin: 0; padding: 0 14px; }
-  .row + .row { border-top: 1px solid var(--line); }
-  .split { justify-content: space-between; cursor: pointer; }
-  .grow { flex: 1 1 8em; min-width: 0; }
-  .empty, .msg, .note, .muted { color: var(--muted); }
-  .note { margin: 0 14px 8px; font-size: 13px; }
-  .msg { padding: 24px 0; text-align: center; }
-  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  input:not([type="checkbox"]), select, button { font: inherit; color: var(--fg); background: none; border: 0; }
-  input:not([type="checkbox"]) { width: 100%; box-sizing: border-box; min-height: 44px; padding: 0; }
-  input::placeholder { color: var(--muted); opacity: 1; }
-  select { min-height: 44px; max-width: 100%; cursor: pointer; }
-  input[type="checkbox"] { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--trip); cursor: pointer; }
-  button { min-height: 44px; min-width: 44px; padding: 0 8px; font-weight: 600; color: var(--trip-text); cursor: pointer; transition: transform 100ms; }
-  button.danger { color: var(--warn-text); }
-  button:active:not(:disabled) { transform: scale(var(--press-scale)); }
-  button:disabled, select:disabled { opacity: 0.35; cursor: default; }
-  :is(input, select, button):focus-visible { outline: 2px solid var(--trip); outline-offset: -2px; border-radius: 6px; } /* inside: the list clips its rows */
   .err { margin: 0 0 8px; padding: 8px 14px; color: #b00020; }
   @media (prefers-color-scheme: dark) { .err { color: #ff8a80; } }
 </style>
