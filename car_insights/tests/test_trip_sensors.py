@@ -46,6 +46,18 @@ def test_cost_sensor_and_event(env):
     assert mqtt.on("car_insights/car1/trip_event")[0][0]["cost"] == 1.23 and mqtt.on("car_insights/car1/charge_event")[0][0]["cost"] == 1.23
 
 
+def test_failing_cost_gives_null_and_still_publishes(env, caplog):
+    conn, mqtt, _ = env
+
+    def boom(kind, vid, row):
+        raise RuntimeError("no price")
+    ts = TripSensors(conn, mqtt, lambda vid: 57_000.0, lambda kind, vid, start: SERIES, cost=boom)
+    with caplog.at_level(logging.ERROR):
+        ts.publish("car1", trip(1000), None, [trip(1000)], [])
+    assert mqtt.on("car_insights/car1/last_trip")[0][0]["cost"] is None and mqtt.on("car_insights/car1/trip_event")[0][0]["cost"] is None
+    assert "cost of trip car1 at 1000 failed" in caplog.text
+
+
 def test_cost_defaults_to_null(env):
     _, mqtt, ts = env
     ts.publish("car1", trip(1000), None, [trip(1000)], [])

@@ -72,7 +72,11 @@ class TripSensors:
         return out
 
     def _euros(self, kind: str, vid: str, w: dict) -> float | None:
-        c = self._cost(kind, vid, w)
+        try:
+            c = self._cost(kind, vid, w)
+        except Exception:  # a cost problem is a null, never a lost state or event
+            log.exception("cost of %s %s at %s failed", kind, vid, w.get("start"))
+            return None
         return None if c is None else round(c, 2)
 
     def _curve(self, kind: str, vid: str, w: dict) -> list[tuple[str, str]]:
