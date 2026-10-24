@@ -461,7 +461,7 @@ def test_algo_bump_rebuilds():
     d.update("car1", None, at("11:30:00"))
     conn.execute("UPDATE charges SET algo=1")
     d2 = Deriver(conn, lambda la, lo: "Home")
-    assert d2.stored_charges("car1") == [] and ALGO == 4
+    assert d2.stored_charges("car1") == [] and ALGO == 5
     _, charges, _ = d2.update("car1", None, at("11:30:00"))
     assert len(charges) == 1
 
@@ -537,3 +537,23 @@ def test_algo_bump_drops_series_of_rebuilt_vehicles():
     conn.execute("UPDATE charges SET algo=?", (ALGO - 1,))
     Deriver(conn, lambda la, lo: "Home")
     assert _count(conn, "trips") == _count(conn, "charges") == _count(conn, "trip_series") == _count(conn, "charge_series") == 0
+
+
+def test_trip_route_stored_and_rebuilt():
+    conn, d = setup(trip_samples(0))
+    d.update("car1", None, 10 * DAY)
+    assert d.trip_route("car1", 0) == [[52.0, 5.0], [52.1, 5.1]]
+    assert d.trip_route("car1", 1) is None and d.trip_route("other", 0) is None
+    db.ingest(conn, "car1", SRC, [s(50_000, "gps", [52.0, 5.1])], 0)  # late fix far off the line
+    d.update("car1", 50_000, 10 * DAY)
+    assert d.trip_route("car1", 0) == [[52.0, 5.0], [52.0, 5.1], [52.1, 5.1]] and _count(conn, "trip_routes") == 1
+    conn.execute("UPDATE trips SET algo=?", (ALGO - 1,))
+    Deriver(conn, lambda la, lo: "Home")
+    assert _count(conn, "trips") == _count(conn, "trip_routes") == 0
+
+
+def test_trip_without_fixes_stores_an_empty_route():
+    conn, d = setup([s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 61_000, 1000)],
+                     s(70_000, "ignition", 2.0)])
+    d.update("car1", None, 10 * DAY)
+    assert d.trip_route("car1", 0) == []

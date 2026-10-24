@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { tripCharts, chargeCharts, chargePercents } from "./series.js";
+import { tripCharts, chargeCharts, chargePercents, consumptionBuckets, chargeSpeed } from "./series.js";
 
 const cols = ["t", "km", "net_kwh", "gross_kwh", "recup_kwh", "speed_kmh"];
 
@@ -50,4 +50,43 @@ test("chargePercents uses real values", () => {
   assert.equal(p.to, 100);
   assert.deepEqual(chargePercents({ added_wh: 1, start_wh: null, end_wh: null }, null), { added: null, from: null, to: null });
   assert.equal(chargePercents({ added_wh: 5700, start_wh: null, end_wh: 1 }, 57000).added, 10);
+});
+
+test("consumption buckets per half km", () => {
+  const b = consumptionBuckets({
+    cols,
+    rows: [[0, 0, 0, 0, 0, 0], [1, 0.3, 0.05, 0.06, 0.01, 0], [2, 0.6, 0.1, 0.12, 0.02, 0], [3, 1.0, 0.2, 0.25, 0.05, 0]],
+  });
+  assert.deepEqual(b.x, [0.5, 1.0]);
+  assert.deepEqual(b.net.map((v) => +v.toFixed(6)), [0.05, 0.15]);
+  assert.equal(consumptionBuckets(null), null);
+  assert.equal(consumptionBuckets({ cols, rows: [] }), null);
+});
+
+const H = 3600000;
+test("charge speed from the car", () => {
+  const car = [0, 1, 2, 3, 4, 5].map((i) => [i * 0.4 * H, 22.5 + (i * 24.1) / 5]);
+  const c = chargeSpeed({ car_kwh: car, cloud_soc: [] }, 60000);
+  assert.equal(c.source, "car");
+  assert.equal(c.kw.length, 5);
+  for (const v of c.kw) assert.ok(Math.abs(v - 12.05) < 0.01);
+  assert.ok(c.min <= c.max);
+  assert.ok(Math.abs(c.x[0] - ((22.5 + 24.1 / 10) / 60) * 100) < 0.01);
+});
+
+test("charge speed falls back to cloud and smooths", () => {
+  const soc = [0, 1, 2, 3, 4, 5].map((i) => [i * 0.1 * H, 40 + i * 8.2]);
+  soc[2][1] += 2; // a bump the smoothing must flatten
+  const c = chargeSpeed({ car_kwh: [[0, 20], [H, 30]], cloud_soc: soc }, 60000);
+  assert.equal(c.source, "cloud");
+  assert.equal(c.kw.length, 5);
+  // unsmoothed: 49.2, 61.2, 37.2, 49.2, 49.2 kW; the 3-point average flattens the bump
+  assert.ok(Math.max(...c.kw) < 61.2 - 1);
+  assert.ok(c.kw.every(Number.isFinite));
+});
+
+test("charge speed null with too few points", () => {
+  assert.equal(chargeSpeed({ car_kwh: [[0, 1], [H, 2]], cloud_soc: [[0, 1], [H, 2]] }, 60000), null);
+  assert.equal(chargeSpeed(null, 60000), null);
+  assert.equal(chargeSpeed({ car_kwh: [], cloud_soc: [] }, 60000), null);
 });

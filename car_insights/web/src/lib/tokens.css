@@ -1,0 +1,87 @@
+:root {
+  color-scheme: light dark;
+  --bg: #F2F2F7;
+  --card: #FFFFFF;
+  --fill: rgba(120, 120, 128, 0.12);
+  --fg: #000000;
+  --muted: rgba(60, 60, 67, 0.78);
+  --line: rgba(60, 60, 67, 0.29);
+  --chrome: rgba(249, 249, 249, 0.78);
+  --chrome-filter: saturate(180%) blur(20px);
+  --marker: var(--card); /* the selected segment */
+  --edge: 0; /* the border of cards and bars: none, a visible one under more contrast */
+  --trip: #0A84FF;
+  --charge: #30D158;
+  --energy: #FF9500;
+  --good: #34C759;
+  --warn: #FF3B30;
+  /* text and icon variants of the colours above: the bright ones are under 4.5:1 as text on a white card */
+  --trip-text: #0062C4;
+  --charge-text: #1E7B34;
+  --good-text: #1E7B34;
+  --warn-text: #C40018;
+  --energy-text: #A84B00;
+  --on-charge: #06300F; /* the glyph on a charge circle: white is 2:1 on #30D158 */
+  --radius-card: 14px;
+  --radius-ctl: 10px;
+  --sidebar: 240px;
+  --press-scale: 0.97;
+  --fade: 150ms;
+  --fs-title: 28px;
+  --fs-num: 17px;
+  --fs-body: 15px;
+  --fs-small: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --card: #1C1C1E;
+    --fill: rgba(120, 120, 128, 0.24);
+    --fg: #FFFFFF;
+    --muted: rgba(235, 235, 245, 0.6);
+    --line: rgba(84, 84, 88, 0.65);
+    --chrome: rgba(30, 30, 30, 0.72);
+    --marker: rgba(255, 255, 255, 0.18);
+    --energy: #FF9F0A;
+    --good: #30D158;
+    --warn: #FF453A;
+    --trip-text: #4DA3FF;
+    --charge-text: #30D158;
+    --good-text: #30D158;
+    --warn-text: #FF6961;
+    --energy-text: #FF9F0A;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --chrome: var(--card);
+    --chrome-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --muted: var(--fg);
+    --line: var(--fg);
+    --chrome: var(--card);
+    --chrome-filter: none;
+    --edge: 1px solid var(--line);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --press-scale: 1;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: var(--fs-body);
+  font-variant-numeric: tabular-nums;
+}

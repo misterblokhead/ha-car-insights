@@ -2,15 +2,16 @@
 import dataclasses
 import json
 import time
-from typing import Annotated, Awaitable, Callable
+from datetime import date, datetime
+from typing import Annotated, Awaitable, Callable, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel
 
-from . import access, db
+from . import access, activity, db, stats
 from .access import Viewer
 from .derive import Deriver, Zones
-from .protocol import fix
+from .protocol import fix, num
 from .totals import totals
 
 MAX_LIMIT = 200
@@ -132,15 +133,29 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
     async def charges(request: Request, view: str = "", before: EpochMs | None = None, limit: int = 50):
         return page("charges", vids_of(await who(request), view), before, limit)
 
+    @r.get("/activity")
+    async def get_activity(request: Request, view: str = "", before: EpochMs | None = None):
+        return activity.page(conn, vids_of(await who(request), view), before, now_ms(), tz, lambda v: db.device_info(conn, v)[0],
+                             deriver.trip_route, capacity)
+
+    @r.get("/stats")
+    async def get_stats(request: Request, view: str = "", period: Literal["week", "month", "year"] = "week", at: date | None = None):
+        vids, today = vids_of(await who(request), view), datetime.fromtimestamp(now_ms() / 1000, tz).date()
+        if at is not None and at > today:
+            raise HTTPException(422, "at is in the future")
+        return stats.stats(conn, vids, period, at or today, tz, (lambda v: db.device_info(conn, v)[0]) if view.startswith("g:") else None)
+
     @r.get("/trips/{vid}/{start}")
     async def trip(request: Request, vid: str, start: StartMs):
         row, series = detail("trips", deriver.trip_series, await who(request), vid, start)
-        return {"trip": row, "series": series}
+        return {"trip": row, "series": series, "route": deriver.trip_route(vid, start),
+                "similar": stats.similar_trips(conn, vid, row), "capacity_wh": capacity(vid)}
 
     @r.get("/charges/{vid}/{start}")
     async def charge(request: Request, vid: str, start: StartMs):
         row, series = detail("charges", deriver.charge_series, await who(request), vid, start)
-        return {"charge": row, "series": series, "capacity_wh": capacity(vid)}
+        return {"charge": row, "series": series, "capacity_wh": capacity(vid),
+                "outside_temp_c": num(db.latest_at_or_before(conn, vid, start, ("outside_temp",)).get("outside_temp"))}
 
     @r.get("/settings")
     async def get_settings(request: Request):

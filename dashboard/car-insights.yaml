@@ -1,67 +1,166 @@
-# Car Insights dashboard view. Replace every VEHICLE with the entity prefix of your car's device
-# (the device name slugified, e.g. device "My Car" gives sensor.my_car_status).
+# Car Insights dashboard view (sections layout). Replace every VEHICLE with the entity prefix of your car's device
+# (the device name slugified, e.g. device "My Car" gives sensor.my_car_status), and the view title with your car's name.
 # The two charts need apexcharts-card from HACS: https://github.com/RomRider/apexcharts-card
-title: Car Insights
+title: VEHICLE
 path: car-insights
-cards:
-  - type: entities
-    title: Live
-    entities:
-      - sensor.VEHICLE_status
-      - sensor.VEHICLE_speed
-      - sensor.VEHICLE_state_of_charge
-      - sensor.VEHICLE_range
-      - binary_sensor.VEHICLE_plugged_in
-  - type: glance
-    title: Last trip and charge
-    columns: 3
-    entities:
-      - entity: sensor.VEHICLE_last_trip_distance
-        name: Trip distance
-      - entity: sensor.VEHICLE_last_trip_energy
-        name: Trip energy
-      - entity: sensor.VEHICLE_last_trip_consumption
-        name: Trip consumption
-      - entity: sensor.VEHICLE_last_charge_added
-        name: Charge added
-      - entity: sensor.VEHICLE_last_charge_percentage
-        name: Charge percentage
-      - entity: sensor.VEHICLE_last_charge_average_power
-        name: Charge avg power
-  - type: entities
-    title: Totals
-    entities:
-      - sensor.VEHICLE_month_distance
-      - sensor.VEHICLE_month_energy
-      - sensor.VEHICLE_month_charged
-      - sensor.VEHICLE_year_distance
-      - sensor.VEHICLE_year_energy
-      - sensor.VEHICLE_year_charged
-  - type: custom:apexcharts-card
-    header:
-      show: true
-      title: Battery (24 h)
-    graph_span: 24h
-    yaxis:
-      - min: 0
-        max: 100
-    series:
-      - entity: sensor.VEHICLE_state_of_charge
-        name: State of charge
-        type: line
-  - type: custom:apexcharts-card
-    header:
-      show: true
-      title: Range (24 h)
-    graph_span: 24h
-    series:
-      - entity: sensor.VEHICLE_range
+type: sections
+max_columns: 3
+sections:
+  - type: grid
+    cards:
+      - type: heading
+        heading: Now
+        icon: mdi:car-electric
+        badges:
+          - type: entity
+            entity: sensor.VEHICLE_status
+            show_state: true
+      - type: tile
+        entity: sensor.VEHICLE_state_of_charge
+        name: Battery
+        features:
+          - type: bar-gauge
+            min: 0
+            max: 100
+        grid_options:
+          columns: 12
+      - type: tile
+        entity: sensor.VEHICLE_range
         name: Range
-        type: line
-  - type: button
-    name: Open Car Insights
-    icon: mdi:car-electric
-    # replace the slug (local_car_insights) if the add-on is installed from a repository
-    tap_action:
-      action: navigate
-      navigation_path: /hassio/ingress/local_car_insights
+        grid_options:
+          columns: 6
+      - type: tile
+        entity: binary_sensor.VEHICLE_plugged_in
+        name: Plug
+        grid_options:
+          columns: 6
+      - type: tile
+        entity: sensor.VEHICLE_speed
+        name: Speed
+        grid_options:
+          columns: 6
+      - type: tile
+        entity: sensor.VEHICLE_outside_temperature
+        name: Outside
+        grid_options:
+          columns: 6
+      - type: shortcut
+        label: Trips & charging
+        icon: mdi:chart-timeline-variant
+        # replace the slug (local_car_insights) if the add-on is installed from a repository
+        tap_action:
+          action: navigate
+          navigation_path: /hassio/ingress/local_car_insights
+        grid_options:
+          columns: 12
+  - type: grid
+    cards:
+      - type: heading
+        heading: Last trip
+        icon: mdi:map-marker-path
+      - type: tile
+        entity: sensor.VEHICLE_last_trip_distance
+        name: Distance
+        grid_options:
+          columns: 6
+      - type: tile
+        entity: sensor.VEHICLE_last_trip_consumption
+        name: Consumption
+        grid_options:
+          columns: 6
+      - type: tile
+        entity: sensor.VEHICLE_last_trip_energy
+        name: Energy
+        grid_options:
+          columns: 6
+      - type: heading
+        heading: Last charge
+        icon: mdi:ev-station
+      - type: tile
+        entity: sensor.VEHICLE_last_charge_added
+        name: Added
+        grid_options:
+          columns: 6
+      - type: tile
+        entity: sensor.VEHICLE_last_charge_percentage
+        name: Percentage
+        grid_options:
+          columns: 6
+      - type: tile
+        entity: sensor.VEHICLE_last_charge_average_power
+        name: Average power
+        grid_options:
+          columns: 6
+  - type: grid
+    cards:
+      - type: heading
+        heading: This month
+        icon: mdi:calendar-month
+      - type: tile
+        entity: sensor.VEHICLE_month_distance
+        name: Distance
+        grid_options:
+          columns: 6
+      - type: tile
+        entity: sensor.VEHICLE_month_energy
+        name: Used
+        grid_options:
+          columns: 6
+      - type: tile
+        entity: sensor.VEHICLE_month_charged
+        name: Charged
+        grid_options:
+          columns: 6
+      - type: heading
+        heading: This year
+        icon: mdi:calendar
+      - type: tile
+        entity: sensor.VEHICLE_year_distance
+        name: Distance
+        grid_options:
+          columns: 6
+      - type: tile
+        entity: sensor.VEHICLE_year_energy
+        name: Used
+        grid_options:
+          columns: 6
+      - type: tile
+        entity: sensor.VEHICLE_year_charged
+        name: Charged
+        grid_options:
+          columns: 6
+  - type: grid
+    column_span: 3
+    cards:
+      - type: heading
+        heading: Last 24 hours
+        icon: mdi:chart-line
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: Battery
+        graph_span: 24h
+        yaxis:
+          - min: 0
+            max: 100
+        series:
+          - entity: sensor.VEHICLE_state_of_charge
+            name: State of charge
+            type: area
+            curve: smooth
+        grid_options:
+          columns: 12
+          rows: auto
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: Range
+        graph_span: 24h
+        series:
+          - entity: sensor.VEHICLE_range
+            name: Range
+            type: area
+            curve: smooth
+        grid_options:
+          columns: 12
+          rows: auto

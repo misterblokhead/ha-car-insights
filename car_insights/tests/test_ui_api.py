@@ -109,9 +109,40 @@ def test_detail_has_series_and_capacity(conn):
     conn.execute("INSERT INTO charge_series VALUES('car1',1000,?)", (json.dumps({"t": [1, 2]}),))
     c, _ = client(conn)
     t = c.get("/api/ui/trips/car1/1000", headers=VIEWER).json()
-    assert t == {"trip": {"start": 1000, "end": 2000}, "series": None}
+    assert t == {"trip": {"start": 1000, "end": 2000}, "series": None, "route": None, "similar": None, "capacity_wh": CAP["car1"]}
     ch = c.get("/api/ui/charges/car1/1000", headers=VIEWER).json()
-    assert ch == {"charge": {"start": 1000, "end": 2000}, "series": {"t": [1, 2]}, "capacity_wh": 57_000.0}
+    assert ch == {"charge": {"start": 1000, "end": 2000}, "series": {"t": [1, 2]}, "capacity_wh": CAP["car1"], "outside_temp_c": None}
+
+
+def test_trip_detail_route_and_similar(conn):
+    put(conn, "trips", "car1", 500, 900, {"from": "Home", "to": "Work", "duration_s": 60, "distance_m": 1000, "net_wh": 100})
+    put(conn, "trips", "car1", 1000, 2000, {"from": "Home", "to": "Work"})
+    pts = [[52.0 + i / 1000, 5.0] for i in range(300)]
+    conn.execute("INSERT INTO trip_routes VALUES('car1',1000,?,?)", (ALGO, json.dumps(pts)))
+    c, _ = client(conn)
+    t = c.get("/api/ui/trips/car1/1000", headers=VIEWER).json()
+    assert t["route"] == pts and len(t["route"]) == 300
+    assert t["similar"] == {"n": 1, "avg_duration_s": 60, "avg_wh_per_100km": 10_000}
+
+
+def test_charge_outside_temp_from_sample_before_start(conn):
+    put(conn, "charges", "car1", 1000, 2000)
+    put(conn, "charges", "car1", 5000, 6000)
+    conn.execute("INSERT INTO samples VALUES('car1','a',1,500,'outside_temp','7.5')")
+    conn.execute("INSERT INTO samples VALUES('car1','a',2,3000,'outside_temp','12')")
+    conn.execute("INSERT INTO samples VALUES('car1','a',3,1500,'outside_temp','99')")  # after the first start
+    c, _ = client(conn)
+    assert c.get("/api/ui/charges/car1/1000", headers=VIEWER).json()["outside_temp_c"] == 7.5
+    assert c.get("/api/ui/charges/car1/5000", headers=VIEWER).json()["outside_temp_c"] == 12
+    put(conn, "charges", "car1", 100, 200)
+    assert c.get("/api/ui/charges/car1/100", headers=VIEWER).json()["outside_temp_c"] is None
+
+
+def test_charge_outside_temp_non_number_is_null(conn):
+    put(conn, "charges", "car1", 1000, 2000)
+    conn.execute("""INSERT INTO samples VALUES('car1','a',1,500,'outside_temp','"warm"')""")
+    c, _ = client(conn)
+    assert c.get("/api/ui/charges/car1/1000", headers=VIEWER).json()["outside_temp_c"] is None
 
 
 def test_group_view_merges_lists_newest_first(conn):
@@ -290,3 +321,60 @@ def test_admin_cache_wired_into_the_router(conn):
     c = TestClient(app, client=("172.30.32.2", 50000))
     assert c.get("/api/ui/settings", headers=ADMIN).status_code == 200
     assert c.get("/api/ui/settings", headers=VIEWER).status_code == 403
+
+
+def test_activity_visibility(conn):
+    put(conn, "trips", "car1", 1000, 1500)
+    put(conn, "trips", "car3", 2000, 2500)
+    gid = access.create_group(conn, "Fleet")
+    access.set_vehicle(conn, "car1", gid, ["u-viewer"])
+    access.set_vehicle(conn, "car3", gid, [])  # in the cost group, hidden from the viewer
+    c, _ = client(conn)
+    assert c.get("/api/ui/activity?view=v:car3", headers=VIEWER).status_code == 404
+    assert c.get(f"/api/ui/activity?view=g:{gid}", headers=VIEWER).status_code == 404  # a partly hidden group is not listed
+    r = c.get("/api/ui/activity?view=v:car1", headers=VIEWER).json()
+    assert [i["vehicle_id"] for d in r["days"] for i in d["items"]] == ["car1"] and list(r["capacity_wh"]) == ["car1"]
+
+
+def test_activity_before_validated(conn):
+    c, _ = client(conn)
+    assert c.get("/api/ui/activity?view=v:car1&before=-1", headers=VIEWER).status_code == 422
+
+
+def ms(*a):
+    return int(datetime(*a, tzinfo=TZ).timestamp() * 1000)
+
+
+def test_stats_future_at_422(conn):
+    c, _ = client(conn)
+    assert c.get("/api/ui/stats?view=v:car1&period=week&at=2026-10-24", headers=VIEWER).status_code == 422  # tomorrow
+    assert c.get("/api/ui/stats?view=v:car1&period=week&at=2026-10-23", headers=VIEWER).status_code == 200  # today
+    assert c.get("/api/ui/stats?view=v:car1&period=decade", headers=VIEWER).status_code == 422
+    assert c.get("/api/ui/stats?view=v:car1&period=week&at=nope", headers=VIEWER).status_code == 422
+
+
+def test_stats_hidden_vehicle_excluded(conn):
+    put(conn, "trips", "car1", ms(2026, 10, 20), ms(2026, 10, 20, 1), {"distance_m": 1000, "net_wh": 100})
+    put(conn, "trips", "car3", ms(2026, 10, 21), ms(2026, 10, 21, 1), {"distance_m": 90_000, "net_wh": 1, "recup_wh": 7, "gross_wh": 8})
+    put(conn, "charges", "car3", ms(2026, 10, 21), ms(2026, 10, 21, 1), {"added_wh": 9999, "place": "Shop"})
+    gid = access.create_group(conn, "Fleet")
+    access.set_vehicle(conn, "car1", gid, ["u-viewer"])
+    access.set_vehicle(conn, "car3", gid, [])  # in the cost group, hidden from the viewer
+    c, _ = client(conn)
+    q = "/api/ui/stats?period=week&at=2026-10-23&view="
+    assert c.get(q + "v:car3", headers=VIEWER).status_code == 404
+    assert c.get(q + f"g:{gid}", headers=VIEWER).status_code == 404  # a partly hidden group is not listed
+    r = c.get(q + "v:car1", headers=VIEWER).json()
+    assert r["totals"]["distance_m"] == 1000 and r["totals"]["charges"] == 0 and r["by_place"] == []
+    assert r["highlights"]["longest"]["vehicle_id"] == "car1" and r["highlights"]["recup_wh"] == 0 and r["per_vehicle"] is None
+    a = c.get(q + f"g:{gid}", headers=ADMIN).json()  # the admin sees the whole group, split per car
+    assert a["totals"]["distance_m"] == 91_000 and [(p["id"], p["name"]) for p in a["per_vehicle"]] == [("car1", "Car One"), ("car3", "Car Three")]
+
+
+def test_stats_defaults_to_today(conn):
+    put(conn, "trips", "car1", ms(2026, 10, 19), ms(2026, 10, 19, 1), {"distance_m": 1000})  # Monday of NOW's week
+    put(conn, "trips", "car1", ms(2026, 10, 18), ms(2026, 10, 18, 1), {"distance_m": 5000})
+    c, _ = client(conn)
+    r = c.get("/api/ui/stats?view=v:car1&period=week", headers=VIEWER).json()
+    assert r["period"] == {"start": ms(2026, 10, 19), "end": ms(2026, 10, 26)}
+    assert r["totals"]["distance_m"] == 1000 and r["previous"]["distance_m"] == 5000
