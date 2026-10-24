@@ -35,7 +35,7 @@
   a:focus-visible { outline: 2px solid var(--trip); outline-offset: 2px; }
   .glyph { grid-row: 1 / 3; align-self: start; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--trip); }
   svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  .title { grid-column: 2; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .title { grid-column: 2; font-weight: 600; overflow-wrap: anywhere; }
   .sub { color: var(--muted); font-size: 13px; }
   .when { grid-column: 2; grid-row: 2; align-self: start; }
   .big { grid-column: 3; font-size: 28px; font-weight: 600; line-height: 1.1; letter-spacing: -0.01em; white-space: nowrap; text-align: right; }

@@ -66,7 +66,7 @@
   });
 </script>
 
-<article class="d-stack" style="--accent: var(--trip)">
+<article class="d-stack" style="--accent: var(--trip-text)">
   <header>
     <h1 class="d-title" tabindex="-1" bind:this={title}>
       {#if t}{from} → {to}{:else if error?.status === 404}Not available{:else if error}Couldn't load this trip{:else}Trip{/if}
@@ -164,10 +164,10 @@
   .foot { margin: 0; }
   .foot div:first-child { border-top: 0; }
   .cmp { margin-top: 14px; }
-  .line { display: flex; justify-content: space-between; margin-bottom: 10px; }
-  .line b { font-weight: 600; color: var(--muted); }
-  .line b.good { color: var(--good); }
-  .line b.worse { color: var(--energy); }
+  .line { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 12px; margin-bottom: 10px; }
+  .line b { font-weight: 600; color: var(--muted); white-space: nowrap; }
+  .line b.good { color: var(--good-text); }
+  .line b.worse { color: var(--energy-text); }
   .track { position: relative; height: 6px; margin: 0 7px 8px; border-radius: 3px; background: var(--fill); }
   .usual { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--muted); border-radius: 1px; }
   .dot { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--trip); box-shadow: 0 0 0 3px var(--card); }

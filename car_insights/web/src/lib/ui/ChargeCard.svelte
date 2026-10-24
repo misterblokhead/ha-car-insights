@@ -28,20 +28,20 @@
 
 <style>
   a {
-    display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 10px; align-items: center; padding: 14px;
+    display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px; align-items: center; padding: 14px;
     background: var(--card); border-radius: var(--radius-card); color: inherit; text-decoration: none; transition: transform 100ms;
   }
-  a.current { box-shadow: 0 0 0 2px var(--charge); }
+  a.current { box-shadow: 0 0 0 2px var(--charge-text); }
   a:active { transform: scale(var(--press-scale)); }
-  a:focus-visible { outline: 2px solid var(--charge); outline-offset: 2px; }
+  a:focus-visible { outline: 2px solid var(--charge-text); outline-offset: 2px; }
   .glyph { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--charge); grid-row: 1 / 3; align-self: start; }
-  svg { width: 20px; height: 20px; fill: #fff; stroke: #fff; stroke-width: 1.2; stroke-linejoin: round; }
-  .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  svg { width: 20px; height: 20px; fill: var(--on-charge); stroke: var(--on-charge); stroke-width: 1.2; stroke-linejoin: round; }
+  .title { font-weight: 600; overflow-wrap: anywhere; }
   .sub { color: var(--muted); font-size: 13px; }
-  .when { grid-column: 2 / 4; margin-top: -8px; }
+  .when { grid-column: 2 / 4; }
   .big { font-size: 28px; font-weight: 600; line-height: 1.1; letter-spacing: -0.01em; white-space: nowrap; text-align: right; }
   small { font-size: 15px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
-  .level { grid-column: 2 / 4; display: flex; align-items: center; gap: 10px; }
+  .level { grid-column: 2 / 4; margin-top: 8px; display: flex; align-items: center; gap: 10px; }
   .level :global(.bar) { flex: 1; }
   .level .sub { flex: none; }
 </style>

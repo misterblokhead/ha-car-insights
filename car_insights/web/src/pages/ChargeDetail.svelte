@@ -58,7 +58,7 @@
   });
 </script>
 
-<article class="d-stack" style="--accent: var(--charge)">
+<article class="d-stack" style="--accent: var(--charge-text)">
   <header>
     <h1 class="d-title" tabindex="-1" bind:this={title}>
       {#if c}{c.place ? `Charged at ${c.place}` : "Charged"}{:else if error?.status === 404}Not available{:else if error}Couldn't load this charge{:else}Charge{/if}

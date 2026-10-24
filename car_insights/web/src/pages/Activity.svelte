@@ -174,7 +174,7 @@
   .msg p { margin: 0 0 8px; }
   button {
     min-height: 44px; min-width: 44px; padding: 0 20px; border: 0; border-radius: var(--radius-ctl);
-    background: var(--fill); color: var(--trip); font: inherit; font-weight: 600; cursor: pointer; transition: transform 100ms;
+    background: var(--fill); color: var(--trip-text); font: inherit; font-weight: 600; cursor: pointer; transition: transform 100ms;
   }
   button:active { transform: scale(var(--press-scale)); }
   button:focus-visible { outline: 2px solid var(--trip); outline-offset: 2px; }

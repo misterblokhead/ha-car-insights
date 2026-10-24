@@ -86,6 +86,6 @@
     border: 0; border-radius: var(--radius-ctl); background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer;
   }
   .menu button:hover { background: var(--fill); }
-  .menu [aria-checked="true"] { color: var(--trip); font-weight: 600; }
+  .menu [aria-checked="true"] { color: var(--trip-text); font-weight: 600; }
   :is(.pill, .menu button):focus-visible { outline: 2px solid var(--trip); outline-offset: 2px; }
 </style>

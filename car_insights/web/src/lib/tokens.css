@@ -4,7 +4,7 @@
   --card: #FFFFFF;
   --fill: rgba(120, 120, 128, 0.12);
   --fg: #000000;
-  --muted: rgba(60, 60, 67, 0.6);
+  --muted: rgba(60, 60, 67, 0.78);
   --line: rgba(60, 60, 67, 0.29);
   --chrome: rgba(249, 249, 249, 0.78);
   --chrome-filter: saturate(180%) blur(20px);
@@ -13,6 +13,13 @@
   --energy: #FF9500;
   --good: #34C759;
   --warn: #FF3B30;
+  /* text and icon variants of the colours above: the bright ones are under 4.5:1 as text on a white card */
+  --trip-text: #0062C4;
+  --charge-text: #1E7B34;
+  --good-text: #1E7B34;
+  --warn-text: #C40018;
+  --energy-text: #A84B00;
+  --on-charge: #06300F; /* the glyph on a charge circle: white is 2:1 on #30D158 */
   --radius-card: 14px;
   --radius-ctl: 10px;
   --sidebar: 240px;
@@ -36,6 +43,11 @@
     --energy: #FF9F0A;
     --good: #30D158;
     --warn: #FF453A;
+    --trip-text: #4DA3FF;
+    --charge-text: #30D158;
+    --good-text: #30D158;
+    --warn-text: #FF6961;
+    --energy-text: #FF9F0A;
   }
 }
 

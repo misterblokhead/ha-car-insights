@@ -26,10 +26,10 @@
 
 <style>
   ul { list-style: none; margin: 0; padding: 4px 14px; background: var(--card); border-radius: var(--radius-card); }
-  li { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+  li { display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; min-height: 40px; } /* wraps at large text sizes */
   i { flex: none; width: 10px; height: 10px; border-radius: 50%; }
-  .where { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+  .where { flex: 1 1 8em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
   b { color: var(--fg); font-weight: 600; }
-  .vals { flex: none; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-  svg { width: 16px; height: 16px; fill: none; stroke: var(--charge); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .vals { flex: none; margin-left: auto; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  svg { width: 16px; height: 16px; fill: none; stroke: var(--charge-text); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 </style>

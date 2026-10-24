@@ -203,7 +203,7 @@
   .steps { display: flex; }
   button {
     min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 2px; padding: 0 8px;
-    border: 0; border-radius: var(--radius-ctl); background: none; color: var(--trip); font: inherit; font-size: 17px; cursor: pointer;
+    border: 0; border-radius: var(--radius-ctl); background: none; color: var(--trip-text); font: inherit; font-size: 17px; cursor: pointer;
     transition: transform 100ms;
   }
   button:active:not(:disabled) { transform: scale(var(--press-scale)); }

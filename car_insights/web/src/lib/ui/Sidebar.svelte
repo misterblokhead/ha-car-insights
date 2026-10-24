@@ -28,7 +28,7 @@
     min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: var(--radius-ctl);
     color: var(--fg); text-decoration: none; transition: transform 100ms;
   }
-  a[aria-current] { background: var(--fill); color: var(--trip); font-weight: 600; }
+  a[aria-current] { background: var(--fill); color: var(--trip-text); font-weight: 600; }
   a:active { transform: scale(var(--press-scale)); }
   a:focus-visible { outline: 2px solid var(--trip); outline-offset: 2px; }
   svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }

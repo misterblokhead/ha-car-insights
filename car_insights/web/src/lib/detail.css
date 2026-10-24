@@ -8,8 +8,9 @@
 .d-card { padding: 14px; background: var(--card); border-radius: var(--radius-card); }
 .d-card h2 { margin: 0; font-size: var(--fs-body); font-weight: 600; }
 .d-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 8px; }
-.d-figs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-.d-figs.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.d-head .d-note { white-space: nowrap; }
+.d-figs { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(150px, 8em), 1fr)); gap: 8px; }  /* em: one column at large text sizes */
+.d-figs.three { grid-template-columns: repeat(auto-fit, minmax(max(96px, 6.4em), 1fr)); }
 .d-rows { display: flex; flex-direction: column; margin: 8px 0 0; }
 .d-rows div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
 .d-rows dt { color: var(--muted); }
