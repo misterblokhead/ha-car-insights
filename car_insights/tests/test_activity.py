@@ -112,6 +112,7 @@ def test_first_page_reads_only_recent_rows(conn):
         put(conn, "trips", "car1", at(2026, 9, 1) + i * 3_600_000, at(2026, 9, 1) + i * 3_600_000 + 60_000, {"distance_m": i})
     for i in range(60):  # charges interleaved with the trips, one sharing a start with a trip
         put(conn, "charges", "car1", at(2026, 9, 1) + i * 7_200_000, at(2026, 9, 1) + i * 7_200_000 + 60_000, {"added_wh": i})
+    put(conn, "charges", "car1", at(2026, 9, 1) + 180 * 3_600_000, at(2026, 9, 1) + 180 * 3_600_000 + 60_000)  # ties the 20th newest trip
     put(conn, "charges", "car2", at(2026, 9, 8, 10), None)
     put(conn, "trips", "car2", at(2026, 9, 8, 9), None)
     seen = []
@@ -124,6 +125,13 @@ def test_first_page_reads_only_recent_rows(conn):
 
     got = activity.page(Spy(), ["car1", "car2"], None, NOW, TZ, lambda v: v, lambda v, s: None, lambda v: 50_000.0, min_items=20)
     n = sum(len(d["items"]) for d in got["days"])
-    assert 20 <= n < 100 and got["next"] is not None
+    assert 20 <= n < 100
+    allrows = [(r[0], k, r[1]) for k, t in (("trip", "trips"), ("charge", "charges")) for r in conn.execute(f"SELECT start, end FROM {t}")]
+    starts = sorted((r[0] for r in allrows), reverse=True)
+    cut = datetime.fromtimestamp(min(starts[19], *(r[0] for r in allrows if r[2] is None)) / 1000, TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+    cut = int(cut.timestamp() * 1000)
+    assert got["next"] == cut
+    want = sorted(((st, k) for st, k, _ in allrows if st >= cut), key=lambda r: (-r[0], r[1]))
+    assert sorted(((i["start"], i["kind"]) for d in got["days"] for i in d["items"]), key=lambda r: (-r[0], r[1])) == want
     assert all("LIMIT" in q or "start>=?" in q or "end IS NULL" in q for q in seen)
     assert sum(i["end"] is None for d in got["days"] for i in d["items"]) == 2  # both open rows are there

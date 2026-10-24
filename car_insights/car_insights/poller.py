@@ -71,6 +71,8 @@ class Poller:
             if eid not in history and eid not in self._missing:
                 self._missing.add(eid)
                 log.warning("entity %s is not in the Home Assistant history; check entity_stem", eid)
+        if key in self._until:  # HA answers with each entity's state at `start`, stamped `start`: that is not a new row
+            cursor = {**cursor, **{e: max(cursor.get(e, -1), start) for e in ids}}
         found, new_cursor = to_samples(mapping, conf.entity_stem, history, cursor)
         if new_cursor == cursor:
             self._until[key] = now
