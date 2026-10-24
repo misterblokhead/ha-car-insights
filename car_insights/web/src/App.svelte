@@ -2,6 +2,7 @@
   import { get } from "./lib/api.js";
   import { parse } from "./lib/routes.js";
   import Shell from "./lib/ui/Shell.svelte";
+  import Activity from "./pages/Activity.svelte";
   import Settings from "./pages/Settings.svelte";
 
   let me = $state(null);
@@ -69,7 +70,7 @@
     {:else if route.page === "stats"}
       <h1>Statistics</h1>
     {:else}
-      <h1>Activity</h1>
+      {#key view}<Activity {view} />{/key}
     {/if}
   </Shell>
 {/if}
