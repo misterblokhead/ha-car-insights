@@ -4,7 +4,7 @@
 
 <script>
   import { untrack } from "svelte";
-  import { get } from "../lib/api.js";
+  import { get, latest } from "../lib/api.js";
   import { feed, hashOf, linkAction, load, more, neighbours, refresh, visible } from "../lib/activity.svelte.js";
   import { dayLabel, daySummary } from "../lib/format.js";
   import { screen } from "../lib/media.svelte.js";
@@ -59,15 +59,19 @@
     last = "";
   });
 
+  const liveRequest = latest();
   async function live() {
+    const ticket = liveRequest.next();
     try {
-      vehicles = (await get(`api/ui/overview?view=${encodeURIComponent(view)}`)).vehicles;
+      const d = await get(`api/ui/overview?view=${encodeURIComponent(view)}`);
+      if (ticket.current) vehicles = d.vehicles;
     } catch {} // the strip keeps what it shows
   }
 
   $effect(() => {
     load(view);
     live();
+    return liveRequest.reset; // another view (or leaving the page) drops the reply still on its way
   });
 
   $effect(() => {

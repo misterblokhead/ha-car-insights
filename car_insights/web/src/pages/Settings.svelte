@@ -1,6 +1,6 @@
 <script>
   import { tick } from "svelte";
-  import { get, send } from "../lib/api.js";
+  import { get, latest, send } from "../lib/api.js";
   import { when } from "../lib/format.js";
   import FixedCosts from "./settings/FixedCosts.svelte";
   import Prices from "./settings/Prices.svelte";
@@ -10,23 +10,28 @@
   let error = $state("");
   let newName = $state("");
   let names = $state({});
-  let busy = $state(false);
+  let pending = $state(0); // changes still running; the controls stay disabled until the last one is done
+  const busy = $derived(pending > 0);
+  const request = latest();
 
   const fail = (e) => (error = e.detail || `Could not save (${e.message})`);
 
   async function load() {
+    const ticket = request.next();
     try {
-      data = await get("api/ui/settings");
-      names = Object.fromEntries(data.groups.map((g) => [g.id, g.name]));
+      const d = await get("api/ui/settings");
+      if (!ticket.current) return;
+      data = d;
+      names = Object.fromEntries(d.groups.map((g) => [g.id, g.name]));
     } catch (e) {
-      error = `Could not load (${e.message})`;
+      if (ticket.current) error = `Could not load (${e.message})`;
     }
   }
 
   // Every change is sent at once; on failure show the error and reload so the form shows the truth.
   async function change(fn) {
     error = "";
-    busy = true;
+    pending++;
     let ok = true;
     try {
       await fn();
@@ -35,7 +40,7 @@
       fail(e);
     }
     await load();
-    busy = false;
+    pending--;
     return ok;
   }
 

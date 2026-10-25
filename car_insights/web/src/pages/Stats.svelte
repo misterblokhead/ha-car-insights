@@ -1,5 +1,5 @@
 <script>
-  import { get } from "../lib/api.js";
+  import { get, latest } from "../lib/api.js";
   import { hashOf } from "../lib/activity.js";
   import { NA, km, kwh, kwhPer100, consumption, delta, dayKey, dayLabel } from "../lib/format.js";
   import { place, split } from "../lib/detail.js";
@@ -19,26 +19,29 @@
   let data = $state(null);
   let error = $state(false);
   let loading = $state(true);
-  let seq = 0;
+  const request = latest();
 
   // switching the period starts at the present again; the arrows wait for its data, so a step uses the dates of the period on screen
   const setPeriod = (p) => ((period = p), (at = null));
 
   // the newest request wins; the data on screen stays (dimmed) until the next arrives
   async function load() {
-    const n = ++seq;
+    const ticket = request.next();
     loading = true;
     error = false;
     try {
       const d = await get(statsUrl(view, period, at));
-      if (n === seq) data = d;
+      if (ticket.current) data = d;
     } catch {
-      if (n === seq) error = true;
+      if (ticket.current) error = true;
     } finally {
-      if (n === seq) loading = false;
+      if (ticket.current) loading = false;
     }
   }
-  $effect(load);
+  $effect(() => {
+    load();
+    return request.reset; // a new view, period or date drops the reply still on its way
+  });
 
   // "▲ 12 %" against the previous period; null without one. `hint` colours it (more energy used is the warning), never alone
   const trend = (now, before, hint = false) => {

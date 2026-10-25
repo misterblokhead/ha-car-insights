@@ -1,5 +1,5 @@
 <script>
-  import { get } from "./lib/api.js";
+  import { get, latest } from "./lib/api.js";
   import { parse } from "./lib/routes.js";
   import Shell from "./lib/ui/Shell.svelte";
   import Activity from "./pages/Activity.svelte";
@@ -20,9 +20,13 @@
   ]);
 
   // groups made on the Settings page show up in the switcher when the user leaves it
+  const viewsRequest = latest();
   async function reloadViews() {
+    const ticket = viewsRequest.next();
     try {
-      views = await get("api/ui/views");
+      const v = await get("api/ui/views");
+      if (!ticket.current) return;
+      views = v;
       if (!options.some((o) => o.value === view)) view = options[0]?.value || "";
     } catch {} // keep the lists we have
   }

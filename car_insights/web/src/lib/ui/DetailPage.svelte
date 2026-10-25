@@ -1,6 +1,6 @@
 <script>
   import { onMount, tick } from "svelte";
-  import { get } from "../api.js";
+  import { get, latest } from "../api.js";
 
   // The frame of a trip or charge detail: loads `url`, owns the heading fallbacks and the loading / not-found / retry messages, and
   // focuses the heading after the first load. The page gives snippets: title(data) and subtitle(data) for the header (subtitle
@@ -12,20 +12,25 @@
   let error = $state(null);
   let h1 = $state();
 
+  const request = latest(); // the first load, Retry and a reload after a save: the newest reply wins
+
   async function load() {
+    const ticket = request.next();
     error = null;
     try {
       const d = await get(url);
+      if (!ticket.current) return;
       onloaded?.(d);
       data = d;
     } catch (e) {
-      error = e;
+      if (ticket.current) error = e;
     }
   }
 
   onMount(() => {
     load();
     tick().then(() => h1?.focus({ preventScroll: true })); // after the pane has moved to <body>
+    return request.reset;
   });
 </script>
 
