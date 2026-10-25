@@ -6,6 +6,8 @@ from typing import Callable, Iterator, Sequence
 from .protocol import Sample
 
 # Ordered migrations: index i upgrades user_version i -> i+1. Never edit a released entry, append instead.
+# The derived tables (trips, charges, their series and routes) are a cache: they change by drop, create and an ALGO bump (the start-up
+# rebuild fills them again). Tables holding the owner's data are never dropped and never lose a column.
 _MIGRATIONS = ["""
 CREATE TABLE IF NOT EXISTS samples(vehicle_id TEXT, source_id TEXT, seq INTEGER, t INTEGER, key TEXT, value_json TEXT,
   PRIMARY KEY(vehicle_id, source_id, seq));
@@ -41,6 +43,23 @@ CREATE TABLE fixed_costs(cost_id TEXT PRIMARY KEY, vehicle_id TEXT NOT NULL, nam
 CREATE TABLE charge_receipts(vehicle_id TEXT, start INTEGER, amount REAL NOT NULL, PRIMARY KEY(vehicle_id, start));
 ALTER TABLE vehicles ADD COLUMN card_markup_pct REAL NOT NULL DEFAULT 0;
 ALTER TABLE vehicles ADD COLUMN card_start_fee REAL NOT NULL DEFAULT 0
+""", """
+DROP TABLE trips;
+DROP TABLE charges;
+DROP TABLE trip_series;
+DROP TABLE charge_series;
+DROP TABLE trip_routes;
+CREATE TABLE trips(vehicle_id TEXT, start INTEGER, end INTEGER, algo INTEGER, distance_m REAL, net_wh REAL, gross_wh REAL, recup_wh REAL,
+  duration_s INTEGER, from_lat REAL, from_lon REAL, to_lat REAL, to_lon REAL, from_place TEXT, to_place TEXT, json TEXT,
+  PRIMARY KEY(vehicle_id, start));
+CREATE TABLE charges(vehicle_id TEXT, start INTEGER, end INTEGER, algo INTEGER, added_wh REAL, energy_source TEXT, start_wh REAL,
+  lat REAL, lon REAL, zone TEXT, place TEXT, json TEXT, PRIMARY KEY(vehicle_id, start));
+CREATE TABLE trip_series(vehicle_id TEXT, start INTEGER, json TEXT, PRIMARY KEY(vehicle_id, start));
+CREATE TABLE charge_series(vehicle_id TEXT, start INTEGER, json TEXT, PRIMARY KEY(vehicle_id, start));
+CREATE TABLE trip_routes(vehicle_id TEXT, start INTEGER, points TEXT, PRIMARY KEY(vehicle_id, start));
+CREATE INDEX trips_ve ON trips(vehicle_id, end);
+CREATE INDEX charges_ve ON charges(vehicle_id, end);
+CREATE INDEX trips_places ON trips(vehicle_id, from_place, to_place)
 """]
 
 

@@ -5,14 +5,14 @@ from datetime import timezone
 
 import pytest
 
-from car_insights import access, db, store
+from car_insights import access, costs, db, prices, store
 from car_insights.derive import ESTIMATE_HOLD_MS, Deriver
-from car_insights.kinds import TRIP
+from car_insights.kinds import CHARGE, TRIP
 from car_insights.pipeline import REBUILD_STEP_MS, close_quiet, rebuild, refresh, republish
 from car_insights.trips import QUIET_MS
 from car_insights.totals_sensors import TotalsSensors
 from car_insights.trip_sensors import TripSensors
-from conftest import FakeMqtt, ms, s
+from conftest import FakeMqtt, ms, s, v6_database
 
 SRC = "phone-0000abcd"
 TZ = timezone.utc
@@ -163,7 +163,7 @@ def test_rebuild_purges_stale_rows_itself(env):
     conn.execute("INSERT INTO vehicles(vehicle_id) VALUES('car1')")
     db.ingest(conn, "car1", SRC, trip_samples(now - 200_000), now)
     refresh(d, sensors, totals, conn, CAP, "car1", None, now, TZ)
-    conn.execute("UPDATE trips SET algo=algo-1, json=json_set(json,'$.distance_m',-1)")  # a row the old derivation got wrong
+    conn.execute("UPDATE trips SET algo=algo-1, distance_m=-1")  # a row the old derivation got wrong
     rebuild(Deriver(conn, lambda la, lo: "Home", CAP), sensors, conn, now)  # the restart
     assert [t["distance_m"] for t in store.closed(conn, TRIP, "car1")] == [1000]
 
@@ -397,7 +397,7 @@ def test_rebuild_reopens_a_cloud_charge_a_window_closed_before_the_car_reading(e
     db.ingest(conn, "car1", SRC, car, 0)
     db.ingest(conn, "car1", "ha_entities-0000abcd", cloud, 0)
     assert_rebuilt_like_one_pass(conn, 100 * DAY + 40 * DAY)
-    assert conn.execute("SELECT json_extract(json, '$.energy_source') FROM charges").fetchall() == [("car",)]  # not the SoC estimate the first window made
+    assert conn.execute("SELECT energy_source FROM charges").fetchall() == [("car",)]  # not the SoC estimate the first window made
 
 
 def test_rebuild_reads_bounded_windows(env, monkeypatch):
@@ -428,3 +428,22 @@ def test_a_normal_restart_rebuilds_nothing_before_the_newest_closed_end(env, mon
     rebuild(Deriver(conn, lambda la, lo: "Home"), sensors, conn, now)  # the restart
     assert {t: conn.execute(f"SELECT * FROM {t} ORDER BY start").fetchall() for t in tables} == before
     assert reads and min(reads) >= newest  # only what came after the newest closed row was read again
+
+
+def test_upgrade_keeps_receipt_and_spot(tmp_path):
+    path, now = str(tmp_path / "m.db"), 10 * DAY
+    old = v6_database(path)  # what the released add-on left: a charge at a saved spot, with a receipt for it
+    start = now - 4_000_000
+    old.execute("INSERT INTO vehicles(vehicle_id) VALUES('car1')")
+    old.execute("INSERT INTO charge_spots(spot_id, name, lat, lon, radius_m) VALUES('sp1','Plaza',52.0,5.0,100)")
+    old.execute("INSERT INTO charge_receipts VALUES('car1',?,9.5)", (start + 1000,))
+    old.execute("INSERT INTO trips VALUES('car1',1,2,6,'{}')")  # a derived row of the old layout
+    old.close()
+    conn = db.connect(path)  # migrates to 7
+    db.ingest(conn, "car1", SRC, [s(start, "battery_wh", 20_000.0), s(start + 500, "gps", [52.0, 5.0]), s(start + 1000, "plugged", True),
+                                  s(start + 3_600_000, "battery_wh", 25_000.0), s(start + 3_700_000, "plugged", False)], now)
+    deriver = Deriver(conn, lambda la, lo: None, CAP, spots=lambda la, lo: prices.spot_name_at(conn, la, lo))
+    rebuild(deriver, TripSensors(conn, FakeMqtt(), CAP), conn, now)
+    [charge] = store.closed(conn, CHARGE, "car1")
+    assert charge["place"] == "Plaza" and charge["zone"] is None
+    assert costs.charge_cost(prices.book(conn, "car1"), charge)["basis"] == "receipt"

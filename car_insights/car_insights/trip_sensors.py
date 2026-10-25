@@ -22,7 +22,7 @@ _SENSORS = {
     "last_charge_cost": ("last_charge", "cost", "Last charge cost", "EUR", "monetary"),
 }
 _EVENTS = {k.name: k.event for k in KINDS}
-_PRIVATE = ("lat", "lon", "zone")  # the exact GPS point stays out of events
+_PRIVATE = ("lat", "lon", "zone", "from_lat", "from_lon", "to_lat", "to_lon")  # the exact GPS points stay out of events
 
 
 def _div(v: float | None, d: float) -> float | None:

@@ -4,6 +4,7 @@ import pytest
 
 from car_insights.db import acked_seq, connect, ingest, latest_per_key, vehicle
 from car_insights.protocol import Sample
+from conftest import v6_database
 
 S = "car_app-0000abcd"
 
@@ -111,11 +112,11 @@ def _version(c):
 def test_fresh_db_sets_version_and_reopen_keeps_it(tmp_path):
     path = str(tmp_path / "m.db")
     c = connect(path)
-    assert _version(c) == 6
+    assert _version(c) == 7
     assert c.execute("SELECT name FROM sqlite_master WHERE name='trip_routes'").fetchone() == ("trip_routes",)
     c.close()
     c = connect(path)
-    assert _version(c) == 6
+    assert _version(c) == 7
 
 
 def test_newer_schema_refused(tmp_path):
@@ -134,7 +135,7 @@ def test_unversioned_db_with_duplicate_gaps_is_upgraded(tmp_path):
     old.commit()
     old.close()
     c = connect(path)
-    assert c.execute("SELECT COUNT(*) FROM gaps").fetchone()[0] == 1 and _version(c) == 6
+    assert c.execute("SELECT COUNT(*) FROM gaps").fetchone()[0] == 1 and _version(c) == 7
 
 
 def test_failed_migration_rolls_back_and_keeps_version(tmp_path, monkeypatch):
@@ -253,3 +254,30 @@ def test_ingest_after_hook_commits_with_samples_and_rolls_back_together(conn):
 def test_migration_3_creates_access_and_series_tables(conn):
     names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"cost_groups", "vehicle_viewers", "seen_users", "trip_series", "charge_series"} <= names
+
+
+def test_migration_7_recreates_derived_tables(tmp_path):
+    path = str(tmp_path / "m.db")
+    old = v6_database(path)
+    owner = {"samples": "INSERT INTO samples VALUES('car1','s',1,1,'speed','1.0')",
+             "vehicles": "INSERT INTO vehicles(vehicle_id, name) VALUES('car1','Car')",
+             "charge_spots": "INSERT INTO charge_spots(spot_id, name, lat, lon) VALUES('a','Plaza',52.0,5.0)",
+             "tariffs": "INSERT INTO tariffs(target, valid_from, per_kwh) VALUES('ac',0,0.3)",
+             "fixed_costs": "INSERT INTO fixed_costs VALUES('c','car1','Insurance',300,'quarter','2026-01-01',NULL)",
+             "charge_receipts": "INSERT INTO charge_receipts VALUES('car1',1,12.5)"}
+    derived = ["INSERT INTO trips VALUES('car1',1,2,6,'{}')", "INSERT INTO charges VALUES('car1',3,4,6,'{}')",
+               "INSERT INTO trip_series VALUES('car1',1,'{}')", "INSERT INTO charge_series VALUES('car1',3,'{}')",
+               "INSERT INTO trip_routes VALUES('car1',1,6,'[]')"]
+    for sql in (*owner.values(), *derived):
+        old.execute(sql)
+    old.close()
+    c = connect(path)
+    cols = lambda t: {r[1] for r in c.execute(f"PRAGMA table_info({t})")}
+    assert _version(c) == 7
+    assert {"distance_m", "net_wh", "gross_wh", "recup_wh", "duration_s", "from_lat", "from_lon", "to_lat", "to_lon", "from_place",
+            "to_place", "algo", "json"} <= cols("trips")
+    assert {"added_wh", "energy_source", "start_wh", "lat", "lon", "zone", "place", "algo", "json"} <= cols("charges")
+    assert cols("trip_routes") == {"vehicle_id", "start", "points"}
+    assert [c.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("trips", "charges", "trip_series", "charge_series", "trip_routes")] == [0] * 5
+    assert {"trips_ve", "charges_ve", "trips_places"} <= {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+    assert {t: c.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in owner} == {t: 1 for t in owner}

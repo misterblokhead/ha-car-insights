@@ -3,8 +3,9 @@ import pytest
 from car_insights import db, derive, store
 from car_insights.derive import ALGO, ESTIMATE_HOLD_MS, Deriver
 from car_insights.kinds import CHARGE, TRIP
+from car_insights.trip_sensors import TripSensors
 from car_insights.trips import QUIET_MS
-from conftest import ms, paused, plugged_then_cloud, s, seed_charge, seed_trip
+from conftest import FakeMqtt, ms, paused, plugged_then_cloud, s, seed_charge, seed_trip
 
 DAY = 86_400_000
 SRC = "phone-0000abcd"
@@ -654,7 +655,7 @@ def test_algo_bump_rebuilds():
     conn.execute("UPDATE charges SET algo=1")
     d2 = Deriver(conn, lambda la, lo: "Home")
     d2.purge_stale()
-    assert store.closed(conn, CHARGE, "car1") == [] and ALGO == 6
+    assert store.closed(conn, CHARGE, "car1") == [] and ALGO == 7
     _, charges, _ = d2.update("car1", None, at("11:30:00"))
     assert len(charges) == 1
 
@@ -771,3 +772,21 @@ def test_trip_without_fixes_stores_an_empty_route():
                      s(70_000, "ignition", 2.0)])
     d.update("car1", None, 10 * DAY)
     assert store.route(conn, "car1", 0) == []
+
+
+POINTS = ("from_lat", "from_lon", "to_lat", "to_lon")
+
+
+def test_trip_points_stay_off_the_wire():
+    conn, d = setup([*trip_samples(0), s(1000, "gps", [52.0, 5.0])])  # a fix after the start: the first one inside the trip
+    trips, _, _ = d.update("car1", None, 10 * DAY)
+    assert conn.execute("SELECT from_lat, from_lon, to_lat, to_lon FROM trips").fetchone() == (52.0, 5.0, 52.1, 5.1)  # kept, in columns
+    mqtt = FakeMqtt()
+    sensors = TripSensors(conn, mqtt, lambda vid: 57_000.0)
+    sensors.publish("car1", trips[0], None, trips, [])
+    # a row that did carry the points would still leave them out of the event
+    sensors.publish("car1", None, None, [{**trips[0], **dict(zip(POINTS, (52.0, 5.0, 52.1, 5.1)))}], [])
+    wires = [*trips, store.row(conn, TRIP, "car1", 0), *store.closed(conn, TRIP, "car1"), *store.ended(conn, TRIP, "car1", 0),
+             *[e for e, _ in mqtt.on("car_insights/car1/trip_event")], store.current_trip(conn, "car1") or {}]
+    assert len(wires) == 7 and all(k not in w for w in wires for k in POINTS)
+    assert len(mqtt.on("car_insights/car1/trip_event")) == 2

@@ -1,3 +1,4 @@
+import json
 import re
 from pathlib import Path
 
@@ -19,8 +20,15 @@ def conn():
 
 def test_only_store_reads_derived_tables():
     reads = re.compile(rf"""SELECT[^"']*FROM\s+{DERIVED}\b""", re.I)
-    readers = [p.name for p in Path(car_insights.__file__).parent.glob("*.py") if reads.search(p.read_text(encoding="utf-8"))]
-    assert [r for r in readers if r != "store.py"] == []
+    from_ = re.compile(rf"FROM\s+{DERIVED}\b", re.I)
+    sources = {p.name: p.read_text(encoding="utf-8") for p in Path(car_insights.__file__).parent.glob("*.py") if p.name != "store.py"}
+    assert [n for n, src in sources.items() if reads.search(src) or from_.search(src)] == []
+
+
+def test_no_json_extract():
+    """a field SQL needs is a column, so no module digs into the json column"""
+    sources = {p.name: p.read_text(encoding="utf-8") for p in Path(car_insights.__file__).parent.glob("*.py")}
+    assert [n for n, src in sources.items() if "json_extract(json" in src or "json_set(json" in src] == []
 
 
 def test_kinds_name_their_tables():
@@ -223,3 +231,36 @@ def test_charge_places_and_set_place(conn):
     assert (c["vehicle_id"], c["start"], c["lat"], c["zone"], c["place"]) == ("car1", 0, 52.0, None, "Old")
     store.set_place(conn, "car1", 0, "New")
     assert store.row(conn, CHARGE, "car1", 0)["place"] == "New"
+
+
+TRIP_FIELDS = {"distance_m": 1500.5, "duration_s": 360, "net_wh": 220.5, "gross_wh": 300.0, "recup_wh": 79.5, "from": "Home", "to": "Work",
+               "avg_speed_mps": 12.5, "max_speed_mps": 25.0, "start_wh": 50_000.0, "end_wh": 49_780.0, "avg_temp_c": 11.5,
+               "odometer_start_km": 100.0, "odometer_end_km": 101.5}
+CHARGE_FIELDS = {"added_wh": 5000.0, "energy_source": "car", "start_wh": 20_000.0, "end_wh": 25_000.0, "lat": 52.0, "lon": 5.0, "zone": "Home",
+                 "place": "Home", "duration_s": 3600, "range_added_m": 30_000.0, "avg_w": 5000.0, "times_source": "car"}
+POINTS = {"from_lat": 52.0, "from_lon": 5.0, "to_lat": 52.1, "to_lon": 5.1}
+
+
+def test_columns_round_trip(conn):
+    trip = seed_trip(conn, "car1", 1000, 2000, **TRIP_FIELDS)
+    cloud = {**CHARGE_FIELDS, "lat": None, "lon": None, "zone": None, "place": None, "times_source": "cloud"}
+    charges = [seed_charge(conn, "car1", 1000, 2000, **CHARGE_FIELDS), seed_charge(conn, "car1", 3000, None, **cloud)]
+    assert trip == {"start": 1000, "end": 2000, **TRIP_FIELDS} and store.row(conn, TRIP, "car1", 1000) == trip
+    assert charges == [{"start": 1000, "end": 2000, **CHARGE_FIELDS}, {"start": 3000, "end": None, **cloud}]
+    assert [store.row(conn, CHARGE, "car1", c["start"]) for c in charges] == charges
+    assert store.closed(conn, TRIP, "car1") == [trip] and store.closed(conn, CHARGE, "car1") == charges[:1]
+    # a field is in a column or in json, never both; the null ones are columns too
+    assert conn.execute("SELECT json FROM trips").fetchone()[0].count("distance_m") == 0
+    assert set(json.loads(conn.execute("SELECT json FROM charges WHERE start=3000").fetchone()[0])) == {
+        "end_wh", "duration_s", "range_added_m", "avg_w", "times_source"}
+
+
+def test_trip_points_are_columns_never_in_a_row(conn):
+    store.insert(conn, TRIP, "car1", {"start": 1, "end": 2, **POINTS, **TRIP_FIELDS}, None, None, ALGO)
+    assert conn.execute("SELECT from_lat, from_lon, to_lat, to_lon FROM trips").fetchone() == tuple(POINTS.values())
+    leaked = set(store.row(conn, TRIP, "car1", 1)) | set(json.loads(conn.execute("SELECT json FROM trips").fetchone()[0]))
+    assert not set(POINTS) & leaked
+    seed_trip(conn, "car1", 3, 4)  # no fix
+    assert store.trip_points(conn) == [("car1", 1, *POINTS.values())]
+    store.insert(conn, TRIP, "car2", {"start": 5, "end": 6, "from_lat": 1.0, "from_lon": 2.0}, None, None, ALGO)  # only a start fix
+    assert ("car2", 5, 1.0, 2.0, None, None) in store.trip_points(conn)

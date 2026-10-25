@@ -101,15 +101,15 @@ def test_hidden_vehicle_trip_is_404_like_missing(conn):
 
 
 def test_detail_has_series_and_capacity(conn):
-    seed_trip(conn, "car1", 1000, 2000)
-    seed_charge(conn, "car1", 1000, 2000, series={"t": [1, 2]})
+    row = seed_trip(conn, "car1", 1000, 2000)
+    charge = seed_charge(conn, "car1", 1000, 2000, series={"t": [1, 2]})
     c, _ = client(conn)
     t = c.get("/api/ui/trips/car1/1000", headers=VIEWER).json()
-    assert t == {"trip": {"start": 1000, "end": 2000}, "cost": {"energy": None, "fixed": None, "total": None}, "series": None, "route": None, "similar": None, "capacity_wh": CAP["car1"]}
+    assert t == {"trip": row, "cost": {"energy": None, "fixed": None, "total": None}, "series": None, "route": None, "similar": None, "capacity_wh": CAP["car1"]}
     ch = c.get("/api/ui/charges/car1/1000", headers=VIEWER).json()
     cost = ch.pop("cost")
     assert cost["amount"] is None and cost["basis"] is None  # no tariff set: not computable, never 0
-    assert ch == {"charge": {"start": 1000, "end": 2000}, "series": {"t": [1, 2]}, "capacity_wh": CAP["car1"], "outside_temp_c": None}
+    assert ch == {"charge": charge, "series": {"t": [1, 2]}, "capacity_wh": CAP["car1"], "outside_temp_c": None}
 
 
 def test_trip_detail_route_and_similar(conn):

@@ -11,7 +11,7 @@ from .protocol import FUTURE_SLACK_MS
 from .trips import KEYS as TRIP_KEYS, QUIET_MS, Trip, find_trips
 
 log = logging.getLogger(__name__)
-ALGO = 6  # charges gained lat, lon and zone; bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
+ALGO = 7  # trips keep their start and end points, rows have real columns; bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
 ESTIMATE_HOLD_MS = 7 * 86_400_000  # a SoC-estimated charge this recent is re-derived on every update: the car's value may still arrive
 KEYS = tuple(sorted({*TRIP_KEYS, *CHARGE_KEYS, *series.KEYS}))  # the only sample keys derivation loads
 Zones = Callable[[float, float], str | None]
@@ -21,7 +21,9 @@ def _trip_wire(t: Trip, zones: Zones, odo: tuple[float | None, float | None]) ->
     d = asdict(t)
     first, last = d.pop("first_fix"), d.pop("last_fix")
     d.pop("quiet_closed")
+    # the points ride in the row for the store's columns only; update strips them (store.public) before a row goes anywhere else
     return {**d, "from": zones(*first) if first else None, "to": zones(*last) if last else None, "duration_s": round(t.duration_s),
+            "from_lat": first and first[0], "from_lon": first and first[1], "to_lat": last and last[0], "to_lon": last and last[1],
             "odometer_start_km": odo[0], "odometer_end_km": odo[1]}
 
 
@@ -151,9 +153,10 @@ class Deriver:
                         continue
                     seen.add((kind.table, x.start))
                     r = to_row(x)
-                    stored[kind].append(r)
                     span = samples[bisect_left(times, r["start"]):None if r["end"] is None else bisect_right(times, r["end"])]
                     store.insert(conn, kind, vid, r, to_series(r, span), route.from_samples(span) if kind.has_route else None, ALGO)
+                    r = store.public(r)
+                    stored[kind].append(r)
                     if r["end"] is not None and old[kind].get(r["start"]) != r:
                         new[kind.table].append(r)
                         if r["start"] in old[kind] and old[kind][r["start"]]["end"] is not None:
