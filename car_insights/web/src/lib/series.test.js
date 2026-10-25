@@ -62,6 +62,17 @@ test("charge speed from the car", () => {
   assert.ok(Math.abs(c.x[0] - ((22.5 + 24.1 / 10) / 60) * 100) < 0.01);
 });
 
+test("charge speed from the car is measured over 2 min spans", () => {
+  // 11 kW in 50 Wh steps, a reading every few seconds, and one step that goes back and forth within 5 s
+  const car = [];
+  for (let s = 0; s <= 1800; s += 4) car.push([s * 1000, Math.floor((20000 + (11000 * s) / 3600) / 50) * 50 / 1000]);
+  car.splice(200, 0, [car[199][0] + 1000, car[199][1] + 0.05], [car[199][0] + 2000, car[199][1]]);
+  const c = chargeSpeed({ car_kwh: car, cloud_soc: [] }, 60000);
+  assert.equal(c.source, "car");
+  assert.ok(c.kw.length >= 10);
+  for (const v of c.kw) assert.ok(v > 9 && v < 13, `${v} kW`);
+});
+
 test("charge speed falls back to cloud and smooths", () => {
   const soc = [0, 1, 2, 3, 4, 5].map((i) => [i * 0.1 * H, 40 + i * 8.2]);
   soc[2][1] += 2; // a bump the smoothing must flatten
