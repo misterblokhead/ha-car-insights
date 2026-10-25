@@ -64,3 +64,18 @@ export const temp = (c) => (c == null ? NA : `${c.toFixed(0)} °C`);
 
 // the props of one Figure tile from a label and a [value, unit] pair
 export const fig = (label, [value, unit]) => ({ label, value, unit });
+
+// the driving events of a trip's style and their names
+export const EVENTS = [["accel", "Hard accelerations"], ["brake", "Hard brakings"], ["corner", "Sharp corners"]];
+
+// the word beside a trip's smoothness score (0-100); null is a trip too short to score
+export const scoreWord = (score) => (score == null ? "Too short for a score" : score >= 80 ? "Smooth" : score >= 60 ? "Average" : "Lively");
+
+// "1.1 per 10 km" for n events over km
+export const per10 = (n, km) => (km > 0 ? `${((n / km) * 10).toFixed(1)} per 10 km` : NA);
+
+// The speed bands of a trip's style ({"0-50": [m, wh], ...}) as rows: share of the distance (0-1) and kWh/100 km, null under minKm or without energy readings.
+export function bandRows(bands, minKm) {
+  const total = Object.values(bands).reduce((a, [m]) => a + m, 0);
+  return Object.entries(bands).map(([name, [m, wh]]) => ({ name, share: total ? m / total : 0, kwhPer100: m >= minKm * 1000 && m > 0 && wh != null ? (wh / m) * 100 : null }));
+}

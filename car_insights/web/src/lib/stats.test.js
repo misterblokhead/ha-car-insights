@@ -1,7 +1,7 @@
 process.env.TZ = "America/New_York"; // the browser is west of the server
 import test from "node:test";
 import assert from "node:assert/strict";
-import { statsUrl, mapUrl, change, periodLabel, bucketLabel, places } from "./stats.js";
+import { statsUrl, mapUrl, change, periodLabel, bucketLabel, places, styleRows, pointsTag } from "./stats.js";
 import { setZone } from "./time.js";
 
 setZone("Europe/Amsterdam");
@@ -64,4 +64,44 @@ test("without a zone name the labels still read the server's midnights", () => {
   assert.equal(periodLabel("month", ams("2026-10-01T00:00+02:00"), ams("2026-11-01T00:00+01:00")), "October 2026");
   assert.equal(bucketLabel("month", ams("2026-10-05T00:00+02:00")), "5");
   setZone("Europe/Amsterdam");
+});
+
+const B = (v) => Object.fromEntries(["0-50", "50-80", "80-100", "100-120", "120+"].map((k, i) => [k, { km: 1, kwh_per_100km: v[i] }]));
+
+test("styleRows: events per 10 km with their change, bands relative to the largest", () => {
+  const now = { km: 100, accel: 20, brake: 10, corner: 0, score: 80, bands: B([14, 18, 20, null, 10]) };
+  const before = { km: 50, accel: 5, brake: 10, corner: 5, score: 77, bands: B([]) };
+  const r = styleRows(now, before);
+  assert.deepEqual(r.events, [
+    { k: "accel", name: "Hard accelerations", change: 1 }, // 2.0 against 1.0 per 10 km
+    { k: "brake", name: "Hard brakings", change: -0.5 },
+    { k: "corner", name: "Sharp corners", change: -1 }, // 1.0 down to none
+  ]);
+  assert.equal(r.points, 3);
+  assert.deepEqual(r.bands.map((b) => [b.name, b.value, b.share]), [
+    ["0-50", 14, 0.7], ["50-80", 18, 0.9], ["80-100", 20, 1], ["100-120", null, 0], ["120+", 10, 0.5],
+  ]);
+});
+
+test("styleRows: a band of net recuperation has no bar", () => {
+  const r = styleRows({ km: 10, accel: 0, brake: 0, corner: 0, score: 90, bands: B([-3, 10, null, null, null]) }, null);
+  assert.deepEqual(r.bands.map((b) => b.share), [0, 1, 0, 0, 0]);
+  assert.ok(styleRows({ km: 10, accel: 0, brake: 0, corner: 0, score: 90, bands: B([-3, -1, null, null, null]) }, null).bands.every((b) => b.share === 0));
+});
+
+test("styleRows: nothing to compare against without a previous period", () => {
+  const now = { km: 10, accel: 1, brake: 1, corner: 1, score: null, bands: B([1, 1, 1, 1, 1]) };
+  const none = { km: 0, accel: 0, brake: 0, corner: 0, score: null, bands: B([]) };
+  for (const p of [none, null]) {
+    const r = styleRows(now, p);
+    assert.equal(r.points, null);
+    assert.ok(r.events.every((e) => e.change == null));
+  }
+});
+
+test("pointsTag: the arrow carries the sign, the text the size", () => {
+  assert.deepEqual(pointsTag(3), { dir: 1, text: "3", hint: false });
+  assert.deepEqual(pointsTag(-2), { dir: -1, text: "2", hint: false });
+  assert.equal(pointsTag(0).text, "same");
+  assert.equal(pointsTag(null), null);
 });

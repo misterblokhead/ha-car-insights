@@ -223,3 +223,51 @@ def test_by_place_groups_unnamed_by_address():
     store.save_address(c, 512000, 43000, "A 1, B", 1)
     s = stats.stats(c, ["car1"], "week", OCT24, TZ)
     assert s["by_place"] == [{"place": "A 1, B", "wh": 3000}, {"place": None, "wh": 500}]
+
+
+def styled(km, score, accel=0, brake=0, corner=0, bands=None):
+    z = {n: [0, 0] for n in ("0-50", "50-80", "80-100", "100-120", "120+")}
+    return {"distance_m": km * 1000, "style": {"accel": [accel, 0.0], "brake": [brake, 0.0], "corner": [corner, 0.0], "bands": {**z, **(bands or {})}, "score": score}}
+
+
+def test_style_aggregates_period():
+    c = connect(":memory:")
+    row(c, "trips", ms(2026, 10, 19), styled(10, 90, accel=1, brake=2, corner=3, bands={"80-100": [6000, 1200]}))
+    row(c, "trips", ms(2026, 10, 20), styled(30, 70, accel=4, brake=5, corner=6))
+    row(c, "trips", ms(2026, 10, 21), {"distance_m": 5000})  # no style: skipped
+    s = stats.stats(c, ["car1"], "week", OCT24, TZ)["style"]
+    assert (s["km"], s["score"], s["accel"], s["brake"], s["corner"]) == (40.0, 75, 5, 7, 9)
+    assert s["bands"]["80-100"] == {"km": 6.0, "kwh_per_100km": 20.0}
+
+
+def test_band_under_5_km_is_null():
+    c = connect(":memory:")
+    row(c, "trips", ms(2026, 10, 19), styled(10, 90, bands={"50-80": [4900, 900]}))
+    assert stats.stats(c, ["car1"], "week", OCT24, TZ)["style"]["bands"]["50-80"] == {"km": 4.9, "kwh_per_100km": None}
+
+
+def test_band_without_energy_is_not_diluted():
+    c = connect(":memory:")
+    row(c, "trips", ms(2026, 10, 19), styled(10, 90, bands={"80-100": [10_000, 2000]}))
+    row(c, "trips", ms(2026, 10, 20), styled(10, 90, bands={"80-100": [10_000, None]}))  # a trip without energy readings
+    assert stats.stats(c, ["car1"], "week", OCT24, TZ)["style"]["bands"]["80-100"] == {"km": 20.0, "kwh_per_100km": 20.0}
+
+
+def test_band_with_only_energyless_trips_is_null():
+    c = connect(":memory:")
+    row(c, "trips", ms(2026, 10, 19), styled(10, 90, bands={"80-100": [10_000, None]}))
+    assert stats.stats(c, ["car1"], "week", OCT24, TZ)["style"]["bands"]["80-100"] == {"km": 10.0, "kwh_per_100km": None}
+
+
+def test_previous_style():
+    c = connect(":memory:")
+    row(c, "trips", ms(2026, 10, 12), styled(20, 60, accel=2))
+    st = stats.stats(c, ["car1"], "week", OCT24, TZ)
+    assert st["previous_style"]["score"] == 60 and st["previous_style"]["accel"] == 2 and st["style"]["km"] == 0.0
+
+
+def test_period_without_scored_trips():
+    c = connect(":memory:")
+    row(c, "trips", ms(2026, 10, 19), styled(1, None))
+    s = stats.stats(c, ["car1"], "week", OCT24, TZ)["style"]
+    assert s["score"] is None and s["km"] == 1.0

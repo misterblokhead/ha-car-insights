@@ -8,7 +8,10 @@ from .figures import wh_per_100km
 from .kinds import CHARGE, TRIP
 from .periods import local_date, midnight_ms, period_bounds, span
 from .series import downsample
+from .style import BANDS, KINDS
 from .totals import sums
+
+SPEED_BANDS = tuple(n for _, n in BANDS)
 
 
 def similar_trips(conn: sqlite3.Connection, vid: str, trip: dict, limit: int = 20) -> dict | None:
@@ -25,6 +28,27 @@ def similar_trips(conn: sqlite3.Connection, vid: str, trip: dict, limit: int = 2
             "avg_wh_per_100km": wh_per_100km(sum(m for m, _ in used), sum(wh for _, wh in used))}
 
 
+def _style(rows: list[dict]) -> dict:
+    """Driving style of the trips that carry it: summed events, distance-weighted score, consumption per speed band."""
+    rows = [r for r in rows if r.get("style")]
+    km = {b: 0.0 for b in SPEED_BANDS}
+    wh, wh_km = dict(km), dict(km)  # wh_km: the km of the trips that have energy for the band
+    scored = []  # (distance_m, score)
+    for r in rows:
+        for b, (m, w) in r["style"]["bands"].items():
+            km[b] += m / 1000
+            if w is not None:
+                wh[b] += w
+                wh_km[b] += m / 1000
+        if r["style"]["score"] is not None:
+            scored.append((r.get("distance_m") or 0, r["style"]["score"]))
+    weight = sum(m for m, _ in scored)
+    return {"km": round(sum(r.get("distance_m") or 0 for r in rows) / 1000, 1),
+            **{e: sum(r["style"][e][0] for r in rows) for e in KINDS},
+            "score": round(sum(m * sc for m, sc in scored) / weight) if weight else None,
+            "bands": {b: {"km": round(km[b], 1), "kwh_per_100km": round(wh[b] / wh_km[b] / 10, 1) if wh_km[b] >= 5 else None} for b in SPEED_BANDS}}
+
+
 def stats(conn: sqlite3.Connection, vids: list[str], period: str, at: date, tz: tzinfo,
           names: Callable[[str], str] | None = None, now_ms: int | None = None) -> dict:
     """Totals of the closed trips and charges of `vids` in the period containing `at`, against the period before it."""
@@ -39,7 +63,8 @@ def stats(conn: sqlite3.Connection, vids: list[str], period: str, at: date, tz: 
     buckets = {key(d): [0.0, 0.0] for d in days}
     longest = best = None
     recup = gross = 0.0
-    for t in store.in_range(conn, TRIP, vids, lo, hi):
+    trips = store.in_range(conn, TRIP, vids, lo, hi)
+    for t in trips:
         vid, start, dist, net, a, b = t["vehicle_id"], t["start"], t.get("distance_m"), t.get("net_wh"), t.get("from"), t.get("to")
         s = buckets[key(local_date(start, tz))]
         s[0] += dist or 0
@@ -62,6 +87,8 @@ def stats(conn: sqlite3.Connection, vids: list[str], period: str, at: date, tz: 
         "buckets": [{"start": midnight_ms(d, tz), "distance_m": m, "net_wh": wh, "wh_per_100km": wh_per_100km(m, wh)} for d, (m, wh) in buckets.items()],
         "by_place": places,
         "highlights": {"longest": longest, "most_efficient": best, "recup_wh": recup, "gross_wh": gross},
+        "style": _style(trips),
+        "previous_style": _style(store.in_range(conn, TRIP, vids, plo, phi)),
         "per_vehicle": [{"id": v, "name": names(v), "totals": sums(conn, [v], lo, hi, tz, now_ms)} for v in vids] if names else None,
     }
 

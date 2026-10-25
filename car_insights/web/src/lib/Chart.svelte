@@ -6,7 +6,8 @@
   // x: numbers (seconds when `time`, else km, ...); series: [{label, values, scale = "y" | "y2" | "plug", kind = "line" | "area" | "bars",
   // color: a token name such as "--trip", dash}]. `label` is what screen readers get (the key figures); it defaults to the series names.
   // xaxis: extra uPlot options for the x axis (`splits`, `values`: category names on index x).
-  let { x, series, time = false, xlabel = "", height = 180, label = "", xaxis = {} } = $props();
+  // marks: [{x, color: a token name}], small triangles on the x axis (the driving events of a trip).
+  let { x, series, time = false, xlabel = "", height = 180, label = "", xaxis = {}, marks = [] } = $props();
   let el;
   let scheme = $state(0); // bumped when the light or dark scheme flips: the colours are read from the tokens again
 
@@ -54,6 +55,22 @@
       return base;
     };
 
+    const drawMarks = (u) => {
+      const { ctx, bbox } = u, r = 4 * devicePixelRatio, y = bbox.top + bbox.height;
+      const { min, max } = u.scales.x;
+      if (min == null) return; // no data
+      for (const m of marks) {
+        // a mark just past the data (events are rounded to 0.1 km) is pinned to the edge, and drawn whole inside the plot
+        const cx = Math.min(bbox.left + bbox.width - r, Math.max(bbox.left + r, u.valToPos(Math.min(max, Math.max(min, m.x)), "x", true)));
+        ctx.fillStyle = token(m.color);
+        ctx.beginPath();
+        ctx.moveTo(cx - r, y);
+        ctx.lineTo(cx + r, y);
+        ctx.lineTo(cx, y - 1.6 * r);
+        ctx.fill();
+      }
+    };
+
     const tz = zone(); // time axes follow HA's zone; without one uPlot keeps the browser's
     const plot = new uPlot(
       {
@@ -62,6 +79,7 @@
         height,
         legend: { show: series.length > 1, live: false }, // names and swatches only: the live "--" would read as missing data
         cursor: { drag: { x: false, y: false } },
+        hooks: { draw: [drawMarks] },
         scales,
         axes: [
           { stroke: muted, font, grid: { stroke: line, width: 1 }, ticks: { stroke: line, width: 1 }, label: xlabel, labelFont: font, labelSize: xlabel ? 22 : 0, ...xaxis },

@@ -1,4 +1,5 @@
 // Period arithmetic for the statistics page. Dates are "YYYY-MM-DD" (calendar days, no time zone); weeks start on Monday.
+import { EVENTS } from "./detail.js";
 import { periodDay } from "./time.js";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -45,3 +46,23 @@ export function places(byPlace, max = 5) {
   const total = out.reduce((s, p) => s + p.wh, 0);
   return out.map((p) => ({ ...p, share: p.wh / total }));
 }
+
+// The driving-style card of a period: score change in points, events per 10 km with their change against `previous`
+// (no change without km there), and the speed bands as bars relative to the largest kWh/100 km (none for a band of net recuperation).
+export function styleRows(style, previous) {
+  const prev = previous?.km > 0 ? previous : null;
+  const rate = (s, k) => (s.km > 0 ? (s[k] / s.km) * 10 : null);
+  const values = Object.values(style.bands).map((b) => b.kwh_per_100km);
+  const max = Math.max(0, ...values.filter((v) => v != null));
+  return {
+    points: style.score != null && prev?.score != null ? style.score - prev.score : null,
+    events: EVENTS.map(([k, name]) => {
+      const now = rate(style, k);
+      return { k, name, change: prev ? change(now, rate(prev, k)) : null };
+    }),
+    bands: Object.entries(style.bands).map(([name, b]) => ({ name, value: b.kwh_per_100km, share: b.kwh_per_100km == null || !max ? 0 : Math.max(0, b.kwh_per_100km / max) })),
+  };
+}
+
+// The change tag of the score: points, not a percentage of a 0-100 score; "same" at 0, null without a change.
+export const pointsTag = (p) => (p == null ? null : { dir: Math.sign(p), text: p ? String(Math.abs(p)) : "same", hint: false });

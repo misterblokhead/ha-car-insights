@@ -43,6 +43,25 @@ def test_closed_trip_stored_and_returned_once():
     assert store.current_trip(conn, "car1") is None
 
 
+def test_trip_row_carries_style():
+    (long,) = setup(trip_samples(0, secs=300))[1].update("car1", None, 10 * DAY)[0]  # 3 km: scored
+    (short,) = setup(trip_samples(0, secs=150))[1].update("car1", None, 10 * DAY)[0]  # 1.5 km: too short to score
+    assert long["style"]["score"] == 100 and short["style"]["score"] is None
+    assert long["style"]["bands"]["0-50"] == [3000, None]  # 36 km/h, no battery readings
+
+
+def test_open_trip_has_style_and_events_are_found_once(monkeypatch):
+    found = []
+    real = derive.style.events
+    monkeypatch.setattr(derive.style, "events", lambda *a, **k: found.append(1) or real(*a, **k))
+    ramp = lambda t: 25.0 if t <= 100 else 10.0 if t >= 103 else 25.0 - 5 * (t - 100)  # 5 m/s2 for 3 s: one hard brake
+    conn, d = setup([s(0, "gear", 1.0), *[s(t, "speed", ramp(t / 1000)) for t in range(0, 200_001, 200)]])
+    d.update("car1", None, 1000)
+    cur = store.current_trip(conn, "car1")
+    assert cur["end"] is None and cur["style"]["brake"][0] == 1 and len(found) == 1
+    assert store.series(conn, TRIP, "car1", cur["start"])["events"] == [[2.5, "brake"]]
+
+
 def test_open_trip_tail_in_p_closes_once_the_car_is_quiet():
     parked = [s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 61_000, 1000)], s(62_000, "gear", 4.0)]
     conn, d = setup(parked)  # ingested at 0
@@ -646,7 +665,7 @@ def test_algo_bump_rebuilds():
     conn.execute("UPDATE charges SET algo=1")
     d2 = Deriver(conn, lambda la, lo: "Home")
     d2.purge_stale()
-    assert store.closed(conn, CHARGE, "car1") == [] and ALGO == 8
+    assert store.closed(conn, CHARGE, "car1") == [] and ALGO == 9
     _, charges, _ = d2.update("car1", None, at("11:30:00"))
     assert len(charges) == 1
 

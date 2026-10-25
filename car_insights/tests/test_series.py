@@ -63,3 +63,11 @@ def test_charge_series_open_has_no_upper_bound():
     samples = [s(0, "battery_wh", 1000.0), s(100, "battery_wh", 20_000.0), s(10**12, "battery_wh", 30_000.0)]
     assert series.charge(samples, 100, None)["car_kwh"] == [[100, 20.0], [10**12, 30.0]]
     assert series.charge(samples, 100, 200)["car_kwh"] == [[100, 20.0]]
+
+
+def test_series_carries_events():
+    ramp = lambda t: 25.0 if t <= 100 else 10.0 if t >= 103 else 25.0 - 5 * (t - 100)  # 5 m/s2 for 3 s: one hard brake
+    samples = [s(t, "speed", ramp(t / 1000)) for t in range(0, 200_001, 200)]
+    out = series.trip(samples, None, 0)
+    assert out["events"] == [[2.5, "brake"]]
+    assert series.trip([], None, 0)["events"] == []

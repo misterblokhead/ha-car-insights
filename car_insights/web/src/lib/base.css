@@ -44,6 +44,7 @@ button, select, input[type="checkbox"] { cursor: pointer; }
 .d-card h2 { margin: 0; font-size: var(--fs-body); font-weight: 600; }
 .d-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 8px; }
 .d-head .d-note { white-space: nowrap; }
+.d-head.bandhead { margin: 14px 0 8px; } /* a second heading inside a card */
 .d-figs { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(150px, 8em), 1fr)); gap: 8px; }  /* em: one column at large text sizes */
 .d-figs.three { grid-template-columns: repeat(auto-fit, minmax(max(96px, 6.4em), 1fr)); }
 .d-rows { display: flex; flex-direction: column; margin: 8px 0 0; }
@@ -52,4 +53,6 @@ button, select, input[type="checkbox"] { cursor: pointer; }
 .d-rows dd { margin: 0; text-align: right; }
 .d-rows.foot { margin: 0; } /* the last card of a detail page: its rows, no rule above the first */
 .d-rows.foot div:first-child { border-top: 0; }
+.share-bar { display: flex; gap: 2px; height: 12px; border-radius: 6px; overflow: hidden; } /* a share bar: its segments are <i style="flex: share 1 0; background: ..."> */
+.share-bar i { min-width: 2px; }
 .d-link { color: var(--accent); font-weight: 600; }
