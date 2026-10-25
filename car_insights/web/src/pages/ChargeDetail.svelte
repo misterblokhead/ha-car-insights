@@ -9,6 +9,7 @@
   import DetailPage from "../lib/ui/DetailPage.svelte";
   import Figure from "../lib/ui/Figure.svelte";
   import ChargeBar from "../lib/ui/ChargeBar.svelte";
+  import MapView from "../lib/ui/MapView.svelte";
 
   let { vid, start, isAdmin = false } = $props();
   let data = $state(null); // the frame's copy, for what the script needs outside the markup
@@ -77,7 +78,7 @@
 </script>
 
 <DetailPage url={`api/ui/charges/${encodeURIComponent(vid)}/${start}`} noun="charge" accent="--charge-text" onloaded={loaded}>
-  {#snippet title()}{chargedAt(c.place)}{/snippet}
+  {#snippet title()}{chargedAt(c)}{/snippet}
   {#snippet subtitle()}
     <p class="d-sub">{rangeLine(c.start, c.end)}</p>
     {#if c.times_source === "cloud" || estimated}
@@ -97,6 +98,10 @@
         <span class="end"><span class="d-note">End</span><b>{level(c.end_wh, c.end_pct)}</b></span>
       </div>
     </section>
+
+    {#if c.lat != null && c.lon != null}
+      <MapView dots={[{ lat: c.lat, lon: c.lon, kind: "charge" }]} height={180} />
+    {/if}
 
     <div class="d-figs three">
       {#each figures as f (f.label)}<Figure {...f} size="small" />{/each}

@@ -1,4 +1,6 @@
 import json
+import logging
+import threading
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -501,3 +503,113 @@ def test_raw_samples_admin_only_in_range(conn):
     assert c.get(q, headers=ADMIN).json() == {"key": "battery_wh", "rows": [[NOW - 2000, 46_550]]}
     assert c.get(f"/api/ui/samples/car1?key=battery_wh&start=0&end={2 * 86_400_000}", headers=ADMIN).status_code == 400
     assert c.get(f"/api/ui/samples/nope?key=battery_wh&start=0&end=1", headers=ADMIN).status_code == 404
+
+
+def tile_client(conn, fn):
+    return client(conn, tile=fn)[0]
+
+
+def test_tile_forwards_and_caches(conn):
+    got = []
+    c = tile_client(conn, lambda z, x, y: got.append((z, x, y)) or b"PNG")
+    r = c.get("/api/ui/tiles/3/4/5.png", headers=VIEWER)
+    assert (r.status_code, r.content, r.headers["content-type"], r.headers["cache-control"]) == (200, b"PNG", "image/png", "private, max-age=604800")
+    assert got == [(3, 4, 5)]
+
+
+def test_tile_bounds(conn):
+    got = []
+    c = tile_client(conn, lambda z, x, y: got.append((z, x, y)) or b"PNG")
+    for p in ("20/0/0", "3/8/0", "3/0/-1", "x/0/0"):
+        assert c.get(f"/api/ui/tiles/{p}.png", headers=VIEWER).status_code in (404, 422)
+    assert got == []
+
+
+def test_tile_upstream_error_is_502(conn):
+    def boom(z, x, y):
+        raise OSError("down")
+    r = tile_client(conn, boom).get("/api/ui/tiles/3/4/5.png", headers=VIEWER)
+    assert (r.status_code, r.content) == (502, b"")
+
+
+def test_tile_needs_a_viewer(conn):
+    c = tile_client(conn, lambda z, x, y: b"PNG")
+    assert c.get("/api/ui/tiles/3/4/5.png").status_code == 403
+
+
+def test_map_period_and_thinning(conn):
+    pts = [[52 + i / 10_000, 5 + i / 10_000] for i in range(400)]
+    seed_trip(conn, "car1", ms(2026, 10, 21), ms(2026, 10, 21, 1), route=pts)
+    seed_trip(conn, "car1", ms(2026, 10, 14), ms(2026, 10, 14, 1), route=pts)  # the week before
+    put(conn, "charges", "car1", ms(2026, 10, 22), ms(2026, 10, 22, 2), {"lat": 52.0, "lon": 5.0})
+    conn.execute("INSERT INTO addresses VALUES(520000, 50000, 'Some Street 1', 0)")
+    c, _ = client(conn)
+    r = c.get("/api/ui/map?view=v:car1&period=week", headers=VIEWER).json()
+    assert [(t["vid"], t["start"], len(t["route"])) for t in r["trips"]] == [("car1", ms(2026, 10, 21), 300)]
+    assert r["charges"] == [{"vid": "car1", "start": ms(2026, 10, 22), "lat": 52.0, "lon": 5.0, "name": "Some Street 1"}]
+    y = c.get("/api/ui/map?view=v:car1&period=year", headers=VIEWER).json()
+    assert sorted(len(t["route"]) for t in y["trips"]) == [48, 48]
+
+
+def test_map_empty_period(conn):
+    c, _ = client(conn)
+    assert c.get("/api/ui/map?view=v:car1&period=week", headers=VIEWER).json() == {"trips": [], "charges": []}
+
+
+def test_map_future_at_is_422(conn):
+    c, _ = client(conn)
+    assert c.get("/api/ui/map?view=v:car1&period=week&at=2026-10-24", headers=VIEWER).status_code == 422
+
+
+def _access(path, status=200):
+    return logging.LogRecord("uvicorn.access", logging.INFO, "", 0, '%s - "%s %s HTTP/%s" %d', ("172.30.32.2:1", "GET", path, "1.1", status), None)
+
+
+def test_the_access_log_drops_tile_requests_only():
+    quiet = ui_api.QuietTiles()
+    assert not quiet.filter(_access("/api/ui/tiles/3/4/5.png"))
+    assert quiet.filter(_access("/ingest", 200)) and quiet.filter(_access("/api/ui/map?view=v:car1")) and quiet.filter(_access("/health"))
+    assert quiet.filter(logging.LogRecord("uvicorn.access", logging.INFO, "", 0, "plain", None, None))
+
+
+def test_the_access_filter_survives_uvicorn_logging_setup():
+    import uvicorn
+    logger, quiet = logging.getLogger("uvicorn.access"), ui_api.QuietTiles()
+    logger.addFilter(quiet)
+    try:
+        uvicorn.Config(lambda *a: None).configure_logging()
+        assert quiet in logger.filters
+    finally:
+        logger.removeFilter(quiet)
+
+
+def test_a_failed_tile_is_logged_once_a_minute_without_its_coordinates(conn, caplog):
+    def boom(z, x, y):
+        raise OSError("down")
+    c = tile_client(conn, boom)
+    with caplog.at_level(logging.WARNING, logger="car_insights.ui_api"):
+        assert [c.get(f"/api/ui/tiles/12/{x}/2048.png", headers=VIEWER).status_code for x in (2000, 2001)] == [502, 502]
+    assert [r.getMessage() for r in caplog.records] == ["tile fetch failed: OSError('down')"]  # the second failure is inside the minute
+    assert caplog.records[0].exc_info is None and "2000" not in caplog.text and "2048" not in caplog.text
+
+
+def test_tile_fetches_run_in_their_own_pool(conn):
+    names = []
+    tile_client(conn, lambda z, x, y: names.append(threading.current_thread().name) or b"PNG").get("/api/ui/tiles/3/4/5.png", headers=VIEWER)
+    assert names[0].startswith("tiles")
+
+
+def test_map_leaves_out_a_charge_without_a_position_and_an_open_trip(conn):
+    seed_trip(conn, "car1", ms(2026, 10, 21), ms(2026, 10, 21, 1), route=[[52.0, 5.0], [52.1, 5.1]])
+    seed_trip(conn, "car1", ms(2026, 10, 22), None, route=[[52.0, 5.0], [52.1, 5.1]])  # open: its end is where the car is
+    put(conn, "charges", "car1", ms(2026, 10, 22), ms(2026, 10, 22, 2))
+    put(conn, "charges", "car1", ms(2026, 10, 22, 3), ms(2026, 10, 22, 4), {"lat": 52.0, "lon": 5.0})
+    c, _ = client(conn)
+    r = c.get("/api/ui/map?view=v:car1&period=week", headers=VIEWER).json()
+    assert [t["start"] for t in r["trips"]] == [ms(2026, 10, 21)]
+    assert [(ch["start"], ch["name"]) for ch in r["charges"]] == [(ms(2026, 10, 22, 3), None)]
+
+
+def test_map_of_a_hidden_vehicle_is_404(conn):
+    c, _ = client(conn)
+    assert c.get("/api/ui/map?view=v:car3&period=week", headers=VIEWER).status_code == 404

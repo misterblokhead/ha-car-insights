@@ -5,8 +5,9 @@ from typing import Callable
 
 from . import store
 from .figures import wh_per_100km
-from .kinds import TRIP
+from .kinds import CHARGE, TRIP
 from .periods import local_date, midnight_ms, period_bounds, span
+from .series import downsample
 from .totals import sums
 
 
@@ -46,7 +47,8 @@ def stats(conn: sqlite3.Connection, vids: list[str], period: str, at: date, tz: 
         recup += t.get("recup_wh") or 0
         gross += t.get("gross_wh") or 0
         if dist is not None and (longest is None or dist > longest["distance_m"]):
-            longest = {"vehicle_id": vid, "start": start, "distance_m": dist, "from": a, "to": b}
+            longest = {"vehicle_id": vid, "start": start, "distance_m": dist, "from": a, "to": b,
+                       "from_address": t.get("from_address"), "to_address": t.get("to_address")}
         if dist is not None and dist >= 5000 and (w := wh_per_100km(dist, net)) is not None and (best is None or w < best["wh_per_100km"]):
             best = {"vehicle_id": vid, "start": start, "wh_per_100km": w}
     places = [{"place": p, "wh": wh} for p, wh in store.charged_by_place(conn, vids, lo, hi)]
@@ -61,4 +63,17 @@ def stats(conn: sqlite3.Connection, vids: list[str], period: str, at: date, tz: 
         "by_place": places,
         "highlights": {"longest": longest, "most_efficient": best, "recup_wh": recup, "gross_wh": gross},
         "per_vehicle": [{"id": v, "name": names(v), "totals": sums(conn, [v], lo, hi, tz, now_ms)} for v in vids] if names else None,
+    }
+
+
+ROUTE_POINTS = {"week": 300, "month": 120, "year": 48}
+
+
+def map_items(conn: sqlite3.Connection, vids: list[str], period: str, at: date, tz: tzinfo) -> dict:
+    """The routes of the closed trips and the positions of the closed charges that started in the period containing `at`."""
+    lo, hi = period_bounds(period, at, tz)
+    return {
+        "trips": [{"vid": v, "start": s, "route": downsample(pts, ROUTE_POINTS[period])} for v, s, pts in store.routes(conn, vids, lo, hi)],
+        "charges": [{"vid": c["vehicle_id"], "start": c["start"], "lat": c["lat"], "lon": c["lon"], "name": c.get("place") or c.get("address")}
+                    for c in store.in_range(conn, CHARGE, vids, lo, hi) if c.get("lat") is not None and c.get("lon") is not None],
     }

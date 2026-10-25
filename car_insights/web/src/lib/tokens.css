@@ -31,6 +31,7 @@
   --shadow-sheet: -8px 0 24px rgba(0, 0, 0, 0.14); /* the detail layer on a phone */
   --shadow-marker: 0 1px 3px rgba(0, 0, 0, 0.18);
   --shadow-menu: 0 8px 28px rgba(0, 0, 0, 0.18);
+  --tile-filter: none; /* map tiles: a light map, inverted into a dark one under the dark scheme */
   --sidebar: 240px;
   --press-scale: 0.97;
   --fade: 150ms;
@@ -59,6 +60,7 @@
     --good-text: #30D158;
     --warn-text: #FF6961;
     --energy-text: #FF9F0A;
+    --tile-filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9);
   }
 }
 

@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 from pytest import approx
 
-from car_insights import prices, stats
+from car_insights import prices, stats, store
 from car_insights.periods import period_bounds
 from car_insights.db import connect
 from conftest import seed_charge, seed_trip
@@ -147,7 +147,8 @@ def test_highlights():
     row(c, "trips", ms(2026, 10, 23), {"distance_m": 0, "net_wh": None, "recup_wh": None, "gross_wh": None})
     row(c, "trips", ms(2026, 10, 23, 1), {"distance_m": None, "net_wh": 50})
     h = stats.stats(c, ["car1"], "week", OCT24, TZ)["highlights"]
-    assert h["longest"] == {"vehicle_id": "car1", "start": ms(2026, 10, 20), "distance_m": 20_000, "from": "Home", "to": "Work"}
+    assert h["longest"] == {"vehicle_id": "car1", "start": ms(2026, 10, 20), "distance_m": 20_000, "from": "Home", "to": "Work",
+                           "from_address": None, "to_address": None}
     assert h["most_efficient"] == {"vehicle_id": "car1", "start": ms(2026, 10, 21), "wh_per_100km": 15_000}
     assert h["recup_wh"] == 510 and h["gross_wh"] == 7540
     empty = stats.stats(c, ["car1"], "week", date(2026, 9, 1), TZ)["highlights"]
@@ -203,3 +204,22 @@ def test_period_cost():
     assert sum(v["totals"]["cost"]["total"] for v in s["per_vehicle"]) == approx(s["totals"]["cost"]["total"])
     one = stats.stats(c, ["car1"], "month", date(2026, 10, 10), TZ, None, now)
     assert one["totals"]["cost"]["fixed"] == approx(10.0) and one["previous"]["cost"]["fixed"] == approx(31.0)
+
+
+def test_longest_carries_addresses():
+    c = connect(":memory:")
+    row(c, "trips", ms(2026, 10, 20), {"distance_m": 20_000, "from": "Home", "to": None, "from_lat": 51.1, "from_lon": 4.1, "to_lat": 51.2, "to_lon": 4.3})
+    store.save_address(c, 512000, 43000, "A 1, B", 1)
+    h = stats.stats(c, ["car1"], "week", OCT24, TZ)["highlights"]["longest"]
+    assert h["to_address"] == "A 1, B" and h["from_address"] is None
+    assert store.unaddressed(c) is None  # the start is named by its zone, the end by its saved address
+
+
+def test_by_place_groups_unnamed_by_address():
+    c = connect(":memory:")
+    row(c, "charges", ms(2026, 10, 20), {"added_wh": 1000, "lat": 51.2, "lon": 4.3})
+    row(c, "charges", ms(2026, 10, 21), {"added_wh": 2000, "lat": 51.2, "lon": 4.3})
+    row(c, "charges", ms(2026, 10, 22), {"added_wh": 500, "lat": 51.4, "lon": 4.5})
+    store.save_address(c, 512000, 43000, "A 1, B", 1)
+    s = stats.stats(c, ["car1"], "week", OCT24, TZ)
+    assert s["by_place"] == [{"place": "A 1, B", "wh": 3000}, {"place": None, "wh": 500}]

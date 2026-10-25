@@ -21,6 +21,10 @@ def _call(path: str, token: str, body: dict | None = None, timeout: float = 10) 
         return r.read()
 
 
+def fetch_tile(token: str, z: int, x: int, y: int) -> bytes:
+    return _call(f"/core/api/map_tiles/raster/{z}/{x}/{y}.png", token)
+
+
 def supervisor_get(path: str, token: str):
     return json.loads(_call(path, token))
 
@@ -39,8 +43,8 @@ def _is_num(v) -> bool:
 
 def fetch_zones(token: str) -> list[Zone]:
     rows = json.loads(_call("/core/api/template", token, {"template": _ZONES_TEMPLATE}))
-    return [Zone(z["name"], z["latitude"], z["longitude"], z["radius"]) for z in rows
-            if isinstance(z, dict) and not z.get("passive") and isinstance(z.get("name"), str)  # passive zones never trigger
+    return [Zone(z["name"], z["latitude"], z["longitude"], z["radius"], bool(z.get("passive"))) for z in rows
+            if isinstance(z, dict) and isinstance(z.get("name"), str)
             and _is_num(z.get("latitude")) and _is_num(z.get("longitude")) and _is_num(z.get("radius"))]
 
 
@@ -56,6 +60,15 @@ def fetch_time_zone(token: str, tries: int = 30, wait_s: float = 10) -> tzinfo:
                 time.sleep(wait_s)
     log.error("could not read the Home Assistant time zone after %d tries, using the local one", tries, exc_info=last)
     return datetime.now().astimezone().tzinfo
+
+
+def fetch_language(token: str) -> str:
+    """HA's configured language ("nl"), "en" when it cannot be read."""
+    try:
+        return supervisor_get("/core/api/config", token).get("language") or "en"
+    except Exception as err:
+        log.warning("could not read the Home Assistant language, using en: %r", err)
+        return "en"
 
 
 def _iso_utc(ms: int) -> str:

@@ -6,12 +6,15 @@
 Two cars and a cost group: 10 days of Home / Work / Shop trips with GPS routes (the same drives repeat, so similar trips exist),
 one trip to a place outside every zone, an open trip, charges timed by the car and by the cloud, and one cloud charge whose
 energy is a state-of-charge estimate. Prices: AC 0.45 and DC 0.69 per kWh, a "Shop" spot at 0.35, a monthly 3.99 "Charge card" per car.
-Everything is samples fed through the real Deriver. All coordinates are invented."""
+Everything is samples fed through the real Deriver. Map tiles are one generated grey grid; points outside every zone get invented street addresses.
+All coordinates are invented."""
 import math
 import os
 import random
+import struct
 import sys
 import time
+import zlib
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -35,6 +38,13 @@ CARS = {  # id -> (name, capacity Wh, has a cloud source, battery at the start)
     "demo-aurora": ("Aurora", 60_000.0, True, 0.8),
     "demo-breeze": ("Breeze", 40_000.0, False, 0.58),
 }
+
+
+def _grid_png() -> bytes:
+    """256x256 PNG: light grey lines every 32 px on a lighter background."""
+    rows = b"".join(b"\0" + bytes(215 if y % 32 == 0 or x % 32 == 0 else 240 for x in range(256)) for y in range(256))
+    chunk = lambda t, b: struct.pack(">I", len(b)) + t + b + struct.pack(">I", zlib.crc32(t + b))
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 256, 256, 8, 0, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
 
 
 def zones(lat: float, lon: float) -> str | None:
@@ -188,6 +198,10 @@ def build(conn, now: int) -> Deriver:
         relabel(conn)
     for vid in CARS:
         prices.add_fixed_cost(conn, vid, "Charge card", 3.99, "month", first, None)
+    n = 0
+    while key := store.unaddressed(conn):  # invented street names for the points no zone names
+        n += 1
+        store.save_address(conn, *key, f"{n} Demo Street, Exampleville", now)
     return deriver
 
 
@@ -213,7 +227,8 @@ def main(web_dir: str) -> None:
         return uid == "u-admin"
 
     capacity = lambda vid: db.capacity_wh(conn, vid, 60_000.0)
-    router = ui_api.router(conn, zones, TZ, capacity, is_admin, relabel=lambda: relabel(conn), ingress_hosts=("127.0.0.1",))
+    png = _grid_png()
+    router = ui_api.router(conn, zones, TZ, capacity, is_admin, relabel=lambda: relabel(conn), tile=lambda z, x, y: png, ingress_hosts=("127.0.0.1",))
     app = create_app(conn, "demo-token", lambda *a: None, ui=router, web_dir=Path(web_dir))
     uvicorn.run(AsUser(app, user), host="127.0.0.1", port=8765)
 

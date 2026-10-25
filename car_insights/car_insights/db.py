@@ -60,6 +60,8 @@ CREATE TABLE trip_routes(vehicle_id TEXT, start INTEGER, points TEXT, PRIMARY KE
 CREATE INDEX trips_ve ON trips(vehicle_id, end);
 CREATE INDEX charges_ve ON charges(vehicle_id, end);
 CREATE INDEX trips_places ON trips(vehicle_id, from_place, to_place)
+""", """
+CREATE TABLE addresses(lat4 INTEGER, lon4 INTEGER, text TEXT, looked_up_ms INTEGER NOT NULL, PRIMARY KEY(lat4, lon4))
 """]
 
 

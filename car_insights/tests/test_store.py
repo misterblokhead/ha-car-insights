@@ -127,10 +127,12 @@ def test_ended_between_is_closed_and_inclusive(conn):
 
 def test_rows_after_and_straddling_find_what_a_window_must_redo(conn):
     seed_trip(conn, "car1", 0, 100)
-    seed_trip(conn, "car1", 200, 300)
+    seed_trip(conn, "car1", 200, 300, from_lat=51.2, from_lon=4.3)
     seed_charge(conn, "car1", 400, None)
     assert sorted(store.rows_after(conn, TRIP, "car1", 100)) == [200] and sorted(store.rows_after(conn, CHARGE, "car1", 100)) == [400]
     assert store.rows_after(conn, TRIP, "car1", 100)[200]["end"] == 300
+    store.save_address(conn, 512000, 43000, "A 1, B", 1)
+    assert "from_address" not in store.rows_after(conn, TRIP, "car1", 100)[200]  # derive compares it to rows without addresses
     assert sorted(store.straddling(conn, "car1", 50)) == [0] and store.straddling(conn, "car1", 100) == []
     assert store.straddling(conn, "car1", 450) == [400]  # an open row straddles any later window start
 
@@ -292,8 +294,8 @@ def test_columns_round_trip(conn):
     trip = seed_trip(conn, "car1", 1000, 2000, **TRIP_FIELDS)
     cloud = {**CHARGE_FIELDS, "lat": None, "lon": None, "zone": None, "place": None, "times_source": "cloud"}
     charges = [seed_charge(conn, "car1", 1000, 2000, **CHARGE_FIELDS), seed_charge(conn, "car1", 3000, None, **cloud)]
-    assert trip == {"start": 1000, "end": 2000, **TRIP_FIELDS} and store.row(conn, TRIP, "car1", 1000) == trip
-    assert charges == [{"start": 1000, "end": 2000, **CHARGE_FIELDS}, {"start": 3000, "end": None, **cloud}]
+    assert trip == {"start": 1000, "end": 2000, **TRIP_FIELDS, "from_address": None, "to_address": None} and store.row(conn, TRIP, "car1", 1000) == trip
+    assert charges == [{"start": 1000, "end": 2000, **CHARGE_FIELDS, "address": None}, {"start": 3000, "end": None, **cloud, "address": None}]
     assert [store.row(conn, CHARGE, "car1", c["start"]) for c in charges] == charges
     assert store.closed(conn, TRIP, "car1") == [trip] and store.closed(conn, CHARGE, "car1") == charges[:1]
     # a field is in a column or in json, never both; the null ones are columns too
@@ -311,3 +313,81 @@ def test_trip_points_are_columns_never_in_a_row(conn):
     assert store.trip_points(conn) == [("car1", 1, *POINTS.values())]
     store.insert(conn, TRIP, "car2", {"start": 5, "end": 6, "from_lat": 1.0, "from_lon": 2.0}, None, None, ALGO)  # only a start fix
     assert ("car2", 5, 1.0, 2.0, None, None) in store.trip_points(conn)
+
+
+def test_unaddressed_skips_named_points(conn):
+    seed_trip(conn, "car1", 10, 20, **{"from": "Home", "from_lat": 51.2, "from_lon": 4.3, "to_lat": 51.3, "to_lon": 4.4})
+    assert store.unaddressed(conn) == (513000, 44000)  # only the unnamed end
+    store.save_address(conn, 513000, 44000, "Teststraat 1, Teststad", 1)
+    assert store.unaddressed(conn) is None
+
+
+def test_unaddressed_waits_for_an_open_trips_end(conn):
+    seed_trip(conn, "car1", 10, None, **{"from": "Home"}, from_lat=51.2, from_lon=4.3, to_lat=51.3, to_lon=4.4)  # driving: the end is the car's position
+    assert store.unaddressed(conn) is None
+    conn.execute("UPDATE trips SET end=20")
+    assert store.unaddressed(conn) == (513000, 44000)
+
+
+def test_unaddressed_sends_an_open_trips_start(conn):
+    seed_trip(conn, "car1", 10, None, from_lat=51.2, from_lon=4.3, to_lat=51.3, to_lon=4.4)
+    assert store.unaddressed(conn) == (512000, 43000)  # the start is fixed
+    store.save_address(conn, 512000, 43000, None, 1)
+    assert store.unaddressed(conn) is None
+
+
+def test_unaddressed_newest_first(conn):
+    seed_charge(conn, "car1", 10, 20, lat=51.2, lon=4.3)
+    seed_charge(conn, "car2", 30, None, lat=51.4, lon=4.5)  # open counts
+    seed_charge(conn, "car1", 50, 60, lat=51.6, lon=4.7, place="Home")
+    seed_charge(conn, "car1", 70, 80)  # no fix
+    assert store.unaddressed(conn) == (514000, 45000)
+    store.save_address(conn, 514000, 45000, None, 1)
+    assert store.unaddressed(conn) == (512000, 43000)
+
+
+def test_address_key_matches_on_edges(conn):
+    seed_charge(conn, "car1", 10, 20, lat=52.00005, lon=-0.00005)
+    key = store.unaddressed(conn)
+    store.save_address(conn, *key, "X 1, Y", 1)
+    assert store.row(conn, CHARGE, "car1", 10)["address"] == "X 1, Y"
+    assert store.unaddressed(conn) is None
+
+
+def test_unaddressed_ignores_a_point_without_a_lon(conn):
+    seed_charge(conn, "car1", 10, 20, lat=51.2)
+    seed_trip(conn, "car1", 30, 40, from_lat=51.2, to_lat=51.3)
+    assert store.unaddressed(conn) is None
+
+
+def test_trip_reads_carry_addresses(conn):
+    seed_trip(conn, "car1", 10, 20, from_lat=51.2, from_lon=4.3, to_lat=51.3, to_lon=4.4)
+    seed_trip(conn, "car1", 30, None, from_lat=51.2, from_lon=4.3)
+    seed_trip(conn, "car1", 50, 60)
+    nones = {"from_address": None, "to_address": None}
+    assert store.row(conn, TRIP, "car1", 50) | nones == store.row(conn, TRIP, "car1", 50)
+    store.save_address(conn, 512000, 43000, "A 1, B", 1)
+    want = {10: ("A 1, B", None), 30: ("A 1, B", None), 50: (None, None)}
+    reads = {"row": [store.row(conn, TRIP, "car1", s) for s in want], "closed": store.closed(conn, TRIP, "car1"),
+             "in_range": store.in_range(conn, TRIP, ["car1"], 0, 100), "current": [store.current_trip(conn, "car1")]}
+    for got in reads.values():
+        assert all((d["from_address"], d["to_address"]) == want[d["start"]] for d in got)
+    assert [len(v) for v in reads.values()] == [3, 2, 2, 1]
+    store.save_address(conn, 513000, 44000, "C 2, D", 1)
+    assert store.row(conn, TRIP, "car1", 10)["to_address"] == "C 2, D"
+
+
+def test_saved_none_is_final(conn):
+    seed_charge(conn, "car1", 10, 20, lat=51.2, lon=4.3)
+    store.save_address(conn, 512000, 43000, None, 1)
+    assert store.unaddressed(conn) is None
+    assert store.row(conn, CHARGE, "car1", 10)["address"] is None
+
+
+def test_addresses_are_read_from_the_table_never_stored_in_a_row(conn):
+    store.insert(conn, TRIP, "car1", {"start": 1, "end": 2, "from_lat": 51.2, "from_lon": 4.3}, None, None, ALGO)
+    store.insert(conn, CHARGE, "car1", {"start": 1, "end": 2, "lat": 51.2, "lon": 4.3}, None, None, ALGO)
+    assert "address" not in "".join(r[0] for k in KINDS for r in conn.execute(f"SELECT json FROM {k.table}"))
+    store.save_address(conn, 512000, 43000, "Real", 1)
+    assert store.row(conn, TRIP, "car1", 1)["from_address"] == "Real" and store.row(conn, CHARGE, "car1", 1)["address"] == "Real"
+    assert store.row(conn, TRIP, "car1", 1)["to_address"] is None

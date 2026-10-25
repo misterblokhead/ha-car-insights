@@ -112,11 +112,11 @@ def _version(c):
 def test_fresh_db_sets_version_and_reopen_keeps_it(tmp_path):
     path = str(tmp_path / "m.db")
     c = connect(path)
-    assert _version(c) == 7
+    assert _version(c) == 8
     assert c.execute("SELECT name FROM sqlite_master WHERE name='trip_routes'").fetchone() == ("trip_routes",)
     c.close()
     c = connect(path)
-    assert _version(c) == 7
+    assert _version(c) == 8
 
 
 def test_newer_schema_refused(tmp_path):
@@ -135,7 +135,7 @@ def test_unversioned_db_with_duplicate_gaps_is_upgraded(tmp_path):
     old.commit()
     old.close()
     c = connect(path)
-    assert c.execute("SELECT COUNT(*) FROM gaps").fetchone()[0] == 1 and _version(c) == 7
+    assert c.execute("SELECT COUNT(*) FROM gaps").fetchone()[0] == 1 and _version(c) == 8
 
 
 def test_failed_migration_rolls_back_and_keeps_version(tmp_path, monkeypatch):
@@ -273,7 +273,7 @@ def test_migration_7_recreates_derived_tables(tmp_path):
     old.close()
     c = connect(path)
     cols = lambda t: {r[1] for r in c.execute(f"PRAGMA table_info({t})")}
-    assert _version(c) == 7
+    assert _version(c) == 8
     assert {"distance_m", "net_wh", "gross_wh", "recup_wh", "duration_s", "from_lat", "from_lon", "to_lat", "to_lon", "from_place",
             "to_place", "algo", "json"} <= cols("trips")
     assert {"added_wh", "energy_source", "start_wh", "lat", "lon", "zone", "place", "algo", "json"} <= cols("charges")
@@ -281,3 +281,8 @@ def test_migration_7_recreates_derived_tables(tmp_path):
     assert [c.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("trips", "charges", "trip_series", "charge_series", "trip_routes")] == [0] * 5
     assert {"trips_ve", "charges_ve", "trips_places"} <= {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='index'")}
     assert {t: c.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in owner} == {t: 1 for t in owner}
+
+
+def test_migration_8_adds_addresses(tmp_path):
+    c = connect(str(tmp_path / "m.db"))
+    assert [(r[1], r[5]) for r in c.execute("PRAGMA table_info(addresses)")] == [("lat4", 1), ("lon4", 2), ("text", 0), ("looked_up_ms", 0)]

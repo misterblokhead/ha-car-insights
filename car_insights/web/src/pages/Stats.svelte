@@ -9,6 +9,7 @@
   import Chart from "../lib/Chart.svelte";
   import Figure from "../lib/ui/Figure.svelte";
   import Segmented from "../lib/ui/Segmented.svelte";
+  import StatsMap from "../lib/ui/StatsMap.svelte";
 
   let { view } = $props();
 
@@ -223,6 +224,7 @@
         </section>
       </div>
     </div>
+    <div class="mapcard"><StatsMap {view} {period} {at} /></div>
   {/if}
 </div>
 
@@ -240,6 +242,7 @@
 
   /* one column on a phone, in reading order; two columns of cards from 768 px */
   .grid { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; transition: opacity var(--fade); }
+  .mapcard { margin-top: 12px; }
   .grid.busy { opacity: 0.5; }
   .col { display: contents; }
   .tiles { order: 1; display: flex; flex-direction: column; gap: 8px; }
