@@ -47,7 +47,8 @@ def stats(conn: sqlite3.Connection, vids: list[str], period: str, at: date, tz: 
         recup += t.get("recup_wh") or 0
         gross += t.get("gross_wh") or 0
         if dist is not None and (longest is None or dist > longest["distance_m"]):
-            longest = {"vehicle_id": vid, "start": start, "distance_m": dist, "from": a, "to": b}
+            longest = {"vehicle_id": vid, "start": start, "distance_m": dist, "from": a, "to": b,
+                       "from_address": t.get("from_address"), "to_address": t.get("to_address")}
         if dist is not None and dist >= 5000 and (w := wh_per_100km(dist, net)) is not None and (best is None or w < best["wh_per_100km"]):
             best = {"vehicle_id": vid, "start": start, "wh_per_100km": w}
     places = [{"place": p, "wh": wh} for p, wh in store.charged_by_place(conn, vids, lo, hi)]
