@@ -368,7 +368,7 @@ def test_cost_read_flow(conn):
     for who in (ADMIN, VIEWER):
         items = [i for d in c.get(f"{URL}/activity?view=v:car1", headers=who).json()["days"] for i in d["items"]]
         assert items[0]["cost"] == {"amount": approx(8.8), "basis": "default"}
-        assert c.get(f"{URL}/charges/car1/1000", headers=who).json()["cost"]["kind"] == "ac"
+        assert c.get(f"{URL}/charges/car1/1000", headers=who).json()["cost"]["current"] == "ac"
 
 
 def test_trip_detail_cost(conn):
@@ -426,3 +426,16 @@ def test_on_costs_targets(conn):
     c.delete(f"{URL}/fixed_costs/{cid}", headers=ADMIN)
     assert calls == [["car1"]] * 5
     assert c.put(f"{URL}/fixed_costs/{cid}", json={"end": None}, headers=ADMIN).status_code == 404 and len(calls) == 5
+
+
+def test_failed_cost_edits_call_on_costs_zero_times(conn):
+    put(conn, "charges", "car1", 1000, 2000, CHARGE)
+    cid = prices.add_fixed_cost(conn, "car1", "Lease", 100, "month", date(2026, 1, 1), None)
+    c, calls = client(conn)
+    assert c.put(f"{URL}/spots/nope", json={"name": "X"}, headers=ADMIN).status_code == 404
+    assert c.delete(f"{URL}/spots/nope", headers=ADMIN).status_code == 404
+    assert c.put(f"{URL}/charges/car1/999/receipt", json={"amount": 5}, headers=ADMIN).status_code == 404
+    assert c.put(f"{URL}/vehicles/nope/card", json={"markup_pct": 5, "start_fee": 1}, headers=ADMIN).status_code == 404
+    assert c.put(f"{URL}/fixed_costs/{cid}", json={"end": "2025-12-31"}, headers=ADMIN).status_code == 400
+    assert c.delete(f"{URL}/fixed_costs/nope", headers=ADMIN).status_code == 404
+    assert not calls

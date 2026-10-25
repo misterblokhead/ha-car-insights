@@ -3,7 +3,7 @@ import dataclasses
 import json
 import time
 from datetime import date, datetime
-from typing import Annotated, Awaitable, Callable, Literal
+from typing import Annotated, Any, Awaitable, Callable, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
@@ -121,10 +121,11 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
         on_settings()
         return {}
 
-    def cost_edit(fn, *args, vids: list[str] | None = None) -> dict:
-        attempt(fn, *args)
-        on_costs(vids)
-        return {}
+    def cost_edit(fn, *args, vids: list[str] | Callable[[Any], list[str]] | None = None) -> Any:
+        """Every admin cost write: run it, then republish the cost sensors of `vids` (a list, None for all, or a function of the result)."""
+        out = attempt(fn, *args)
+        on_costs(vids(out) if callable(vids) else vids)
+        return out
 
     def has_open(table: str, vid: str) -> bool:
         return conn.execute(f"SELECT 1 FROM {table} WHERE vehicle_id=? AND end IS NULL", (vid,)).fetchone() is not None
@@ -167,10 +168,11 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
     async def get_activity(request: Request, view: str = "", before: EpochMs | None = None):
         out = activity.page(conn, vids_of(await who(request), view), before, now_ms(), tz, lambda v: db.device_info(conn, v)[0],
                             deriver.trip_route, capacity)
+        books: dict[str, prices.Book] = {}
         for d in out["days"]:
             for i in d["items"]:
                 if i["kind"] == "charge":
-                    c = costs.charge_cost(conn, i["vehicle_id"], i)
+                    c = costs.charge_cost(books.get(i["vehicle_id"]) or books.setdefault(i["vehicle_id"], prices.book(conn, i["vehicle_id"])), i)
                     i["cost"] = {"amount": c["amount"], "basis": c["basis"]}
         return out
 
@@ -190,7 +192,7 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
     @r.get("/charges/{vid}/{start}")
     async def charge(request: Request, vid: str, start: StartMs):
         row, series = detail("charges", deriver.charge_series, await who(request), vid, start)
-        return {"charge": row, "cost": costs.charge_cost(conn, vid, row), "series": series, "capacity_wh": capacity(vid),
+        return {"charge": row, "cost": costs.charge_cost(prices.book(conn, vid), row), "series": series, "capacity_wh": capacity(vid),
                 "outside_temp_c": num(db.latest_at_or_before(conn, vid, start, ("outside_temp",)).get("outside_temp"))}
 
     @r.get("/settings")
@@ -226,52 +228,53 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
     @r.put("/prices/{target}")
     async def put_price(request: Request, target: str, body: _Tariff):
         await who(request, admin=True)
-        return cost_edit(prices.set_tariff, conn, target, body.valid_from, body.per_kwh, body.start_fee, body.per_min)
+        cost_edit(prices.set_tariff, conn, target, body.valid_from, body.per_kwh, body.start_fee, body.per_min)
+        return {}
 
     @r.post("/spots")
     async def create_spot(request: Request, body: _Spot):
         await who(request, admin=True)
-        sid = attempt(prices.create_spot, conn, body.vehicle_id, body.start, body.name, body.per_kwh, body.start_fee, body.per_min)
-        on_costs(None)
-        return {"id": sid}
+        return {"id": cost_edit(prices.create_spot, conn, body.vehicle_id, body.start, body.name, body.per_kwh, body.start_fee, body.per_min)}
 
     @r.put("/spots/{sid}")
     async def rename_spot(request: Request, sid: str, body: _Name):
         await who(request, admin=True)
-        return cost_edit(prices.rename_spot, conn, sid, body.name)
+        cost_edit(prices.rename_spot, conn, sid, body.name)
+        return {}
 
     @r.delete("/spots/{sid}")
     async def delete_spot(request: Request, sid: str):
         await who(request, admin=True)
-        return cost_edit(prices.delete_spot, conn, sid)
+        cost_edit(prices.delete_spot, conn, sid)
+        return {}
 
     @r.put("/charges/{vid}/{start}/receipt")
     async def put_receipt(request: Request, vid: str, start: StartMs, body: _Receipt):
         await who(request, admin=True)
-        return cost_edit(prices.set_receipt, conn, vid, start, body.amount, vids=[vid])
+        cost_edit(prices.set_receipt, conn, vid, start, body.amount, vids=[vid])
+        return {}
 
     @r.post("/vehicles/{vid}/fixed_costs")
     async def add_fixed_cost(request: Request, vid: str, body: _FixedCost):
         await who(request, admin=True)
-        cid = attempt(prices.add_fixed_cost, conn, vid, body.name, body.amount, body.period, body.start, body.end)
-        on_costs([vid])
-        return {"id": cid}
+        return {"id": cost_edit(prices.add_fixed_cost, conn, vid, body.name, body.amount, body.period, body.start, body.end, vids=[vid])}
 
     @r.put("/fixed_costs/{cid}")
     async def end_fixed_cost(request: Request, cid: str, body: _End):
         await who(request, admin=True)
-        on_costs([attempt(prices.end_fixed_cost, conn, cid, body.end)])
+        cost_edit(prices.end_fixed_cost, conn, cid, body.end, vids=lambda vid: [vid])
         return {}
 
     @r.delete("/fixed_costs/{cid}")
     async def delete_fixed_cost(request: Request, cid: str):
         await who(request, admin=True)
-        on_costs([attempt(prices.delete_fixed_cost, conn, cid)])
+        cost_edit(prices.delete_fixed_cost, conn, cid, vids=lambda vid: [vid])
         return {}
 
     @r.put("/vehicles/{vid}/card")
     async def put_card(request: Request, vid: str, body: _Card):
         await who(request, admin=True)
-        return cost_edit(prices.set_card, conn, vid, body.markup_pct, body.start_fee, vids=[vid])
+        cost_edit(prices.set_card, conn, vid, body.markup_pct, body.start_fee, vids=[vid])
+        return {}
 
     return r

@@ -33,7 +33,7 @@ def test_discovery_once_then_state(env):
 
 def test_cost_sensor_and_event(env):
     conn, mqtt, _ = env
-    ts = TripSensors(conn, mqtt, lambda vid: 57_000.0, cost=lambda kind, vid, row: 1.234)
+    ts = TripSensors(conn, mqtt, lambda vid: 57_000.0, trip_cost=lambda vid, row: 1.234, charge_cost=lambda vid, row: 1.234)
     c = {"start": 1000, "end": 4600, "added_wh": 12000.0}
     ts.publish("car1", trip(1000), c, [trip(1000)], [c])
     for leaf in ("last_trip_cost", "last_charge_cost"):
@@ -46,9 +46,9 @@ def test_cost_sensor_and_event(env):
 def test_failing_cost_gives_null_and_still_publishes(env, caplog):
     conn, mqtt, _ = env
 
-    def boom(kind, vid, row):
+    def boom(vid, row):
         raise RuntimeError("no price")
-    ts = TripSensors(conn, mqtt, lambda vid: 57_000.0, cost=boom)
+    ts = TripSensors(conn, mqtt, lambda vid: 57_000.0, trip_cost=boom, charge_cost=boom)
     with caplog.at_level(logging.ERROR):
         ts.publish("car1", trip(1000), None, [trip(1000)], [])
     assert mqtt.on("car_insights/car1/last_trip")[0][0]["cost"] is None and mqtt.on("car_insights/car1/trip_event")[0][0]["cost"] is None

@@ -46,9 +46,11 @@ class TripSensors:
     """Publishes the last closed trip/charge as retained sensors and each ended one as a non-retained event."""
 
     def __init__(self, conn: sqlite3.Connection, mqtt: Sink, capacity: Callable[[str], float],
-                 cost: Callable[[str, str, dict], float | None] = lambda kind, vid, row: None):
-        """capacity(vid): usable Wh; cost(kind, vid, row): the euros of a "trip" or "charge" or None."""
-        self._conn, self._mqtt, self._capacity, self._cost = conn, mqtt, capacity, cost
+                 trip_cost: Callable[[str, dict], float | None] = lambda vid, row: None,
+                 charge_cost: Callable[[str, dict], float | None] = lambda vid, row: None):
+        """capacity(vid): usable Wh; trip_cost/charge_cost(vid, row): the euros of a trip or charge, or None."""
+        self._conn, self._mqtt, self._capacity = conn, mqtt, capacity
+        self._cost = {"trip": trip_cost, "charge": charge_cost}
         self._announced: set[str] = set()
 
     def _discovery(self, vid: str) -> list[tuple[str, str]]:
@@ -66,7 +68,7 @@ class TripSensors:
 
     def _euros(self, kind: str, vid: str, w: dict) -> float | None:
         try:
-            c = self._cost(kind, vid, w)
+            c = self._cost[kind](vid, w)
         except Exception:  # a cost problem is a null, never a lost state or event
             log.exception("cost of %s %s at %s failed", kind, vid, w.get("start"))
             return None

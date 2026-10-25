@@ -48,7 +48,8 @@ def snapshot() -> dict:
     prices.set_receipt(conn, vid, start, 12.34)  # puts a "receipt" cost basis in the answers
     sink = Sink()
     sensors = TripSensors(conn, sink, capacity,
-                          cost=lambda kind, v, row: costs.trip_cost(conn, v, row, demo.TZ)["total"] if kind == "trip" else costs.charge_cost(conn, v, row)["amount"])
+                          trip_cost=lambda v, row: costs.trip_cost(conn, v, row, demo.TZ)["total"],
+                          charge_cost=lambda v, row: costs.charge_cost(prices.book(conn, v), row)["amount"])
     totals = TotalsSensors(conn, sink, demo.TZ, now_ms=lambda: NOW)
     summarize = lambda v, min_t, received: pipeline.refresh(deriver, sensors, totals, v, min_t, received, demo.TZ)
     c = TestClient(create_app(conn, TOKEN, lambda *a: None, lambda: NOW, summarize=summarize, ui=router))

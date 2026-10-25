@@ -31,55 +31,55 @@ def spot(c, name="Home", start=5000, **tariff):
 
 def test_spot_price(c):
     spot(c, per_kwh=0.50, start_fee=1.00, per_min=0.02)
-    r = costs.charge_cost(c, "car1", ch())
+    r = costs.charge_cost(prices.book(c, "car1"), ch())
     assert r["amount"] == pytest.approx(13.2)
-    assert (r["basis"], r["spot"], r["kind"]) == ("spot", "Home", "ac")
+    assert (r["basis"], r["spot"], r["current"]) == ("spot", "Home", "ac")
 
 
 def test_default_ac(c):
     prices.set_tariff(c, "ac", 0, 0.40)
-    r = costs.charge_cost(c, "car1", ch())
+    r = costs.charge_cost(prices.book(c, "car1"), ch())
     assert r["amount"] == pytest.approx(8.8)
-    assert (r["basis"], r["kind"], r["spot_id"]) == ("default", "ac", None)
+    assert (r["basis"], r["current"], r["spot_id"]) == ("default", "ac", None)
 
 
 def test_dc_above_22kw(c):
     prices.set_tariff(c, "dc", 0, 0.60)
     prices.set_tariff(c, "ac", 0, 0.40)
-    r = costs.charge_cost(c, "car1", ch(avg_w=22_001))
-    assert r["amount"] == pytest.approx(12.6) and r["kind"] == "dc"
-    assert costs.charge_cost(c, "car1", ch(avg_w=22_000))["kind"] == "ac"
+    r = costs.charge_cost(prices.book(c, "car1"), ch(avg_w=22_001))
+    assert r["amount"] == pytest.approx(12.6) and r["current"] == "dc"
+    assert costs.charge_cost(prices.book(c, "car1"), ch(avg_w=22_000))["current"] == "ac"
 
 
 def test_spot_tariff_not_yet_valid(c):
     spot(c, per_kwh=0.50)
     prices.set_tariff(c, "ac", 0, 0.40)
-    r = costs.charge_cost(c, "car1", ch(start=1000, end=4600))
+    r = costs.charge_cost(prices.book(c, "car1"), ch(start=1000, end=4600))
     assert r["basis"] == "default" and r["spot"] == "Home"
 
 
 def test_card(c):
     prices.set_tariff(c, "ac", 0, 0.40)
     prices.set_card(c, "car1", 10, 0.35)
-    assert costs.charge_cost(c, "car1", ch())["amount"] == pytest.approx(10.03)
+    assert costs.charge_cost(prices.book(c, "car1"), ch())["amount"] == pytest.approx(10.03)
 
 
 def test_receipt_wins(c):
     c.execute("INSERT INTO charges VALUES('car1',5000,8600,?,?)", (ALGO, json_dumps({})))
     prices.set_receipt(c, "car1", 5000, 9.99)
-    r = costs.charge_cost(c, "car1", ch())
+    r = costs.charge_cost(prices.book(c, "car1"), ch())
     assert (r["amount"], r["basis"]) == (9.99, "receipt")
 
 
 @pytest.mark.parametrize("kw", [{"added_wh": None}, {"added_wh": -300}, {"end": None}])
 def test_not_available(c, kw):
     prices.set_tariff(c, "ac", 0, 0.40)  # a price exists, so only the charge itself can make the amount unavailable
-    r = costs.charge_cost(c, "car1", ch(**kw))
+    r = costs.charge_cost(prices.book(c, "car1"), ch(**kw))
     assert r["amount"] is None and r["basis"] is None
 
 
 def test_not_available_without_a_price(c):
-    r = costs.charge_cost(c, "car1", ch())
+    r = costs.charge_cost(prices.book(c, "car1"), ch())
     assert r["amount"] is None and r["basis"] is None
 
 
@@ -166,3 +166,20 @@ def test_trip_fixed_gate(c, first_km, fixed_part):
 def test_trip_open(c):
     r = costs.trip_cost(c, "car1", {"start": 5000, "end": None, "distance_m": None, "net_wh": None}, TZ)
     assert r == {"energy": None, "fixed": None, "total": None}
+
+
+def test_charge_cost_needs_no_database():
+    book = prices.Book(tariffs={"ac": [{"valid_from": 0, "per_kwh": 0.30, "start_fee": 0, "per_min": 0}]})
+    r = costs.charge_cost(book, {"start": 0, "end": 3_600_000, "added_wh": 20_000, "avg_w": 11_000, "duration_s": 3600})
+    assert r["amount"] == pytest.approx(20 * 1.10 * 0.30) and r["current"] == "ac" and r["basis"] == "default"
+
+
+def test_period_costs_loads_one_book_per_vehicle(c, monkeypatch):
+    prices.set_tariff(c, "ac", 0, 0.40)
+    for i in range(5):
+        charge(c, 1000 + i * 4_000_000, 10, None)
+    loaded = []
+    real = prices.book
+    monkeypatch.setattr(prices, "book", lambda conn, vid: loaded.append(vid) or real(conn, vid))
+    costs.period_costs(c, ["car1"], 0, 10**9, TZ, 10**9)
+    assert loaded == ["car1"]

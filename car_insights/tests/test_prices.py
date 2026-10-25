@@ -36,17 +36,17 @@ def test_migration_adds_cost_tables(c):
 def test_tariff_boundary(c):
     prices.set_tariff(c, "ac", 1000, 0.40)
     prices.set_tariff(c, "ac", 2000, 0.50)
-    assert prices.tariff_at(c, "ac", 999) is None
-    assert prices.tariff_at(c, "ac", 1000)["per_kwh"] == 0.40
-    assert prices.tariff_at(c, "ac", 1999)["per_kwh"] == 0.40
-    assert prices.tariff_at(c, "ac", 2000) == {"valid_from": 2000, "per_kwh": 0.50, "start_fee": 0, "per_min": 0}
+    assert prices.book(c, "car1").tariff_at("ac", 999) is None
+    assert prices.book(c, "car1").tariff_at("ac", 1000)["per_kwh"] == 0.40
+    assert prices.book(c, "car1").tariff_at("ac", 1999)["per_kwh"] == 0.40
+    assert prices.book(c, "car1").tariff_at("ac", 2000) == {"valid_from": 2000, "per_kwh": 0.50, "start_fee": 0, "per_min": 0}
 
 
 def test_set_tariff_upserts(c):
     prices.set_tariff(c, "ac", 1000, 0.40)
     prices.set_tariff(c, "ac", 1000, 0.45)
     assert count(c, "tariffs") == 1
-    assert prices.tariff_at(c, "ac", 1000)["per_kwh"] == 0.45
+    assert prices.book(c, "car1").tariff_at("ac", 1000)["per_kwh"] == 0.45
 
 
 def test_set_tariff_unknown_spot(c):
@@ -86,7 +86,7 @@ def test_limits(c, call):
 
 def test_limit_bounds_pass(c):
     prices.set_tariff(c, "ac", 0, 5, start_fee=1000)
-    assert prices.tariff_at(c, "ac", 0)["per_kwh"] == 5
+    assert prices.book(c, "car1").tariff_at("ac", 0)["per_kwh"] == 5
 
 
 def test_spot_name_limits(c):
@@ -100,9 +100,9 @@ def test_spot_name_limits(c):
 def test_create_spot_from_charge(c):
     charge(c, 10_000, lat=52.1, lon=5.2)
     sid = prices.create_spot(c, "car1", 10_000, " Plaza ", 0.35)
-    assert prices.spot_at(c, 52.1, 5.2) == (sid, "Plaza")
+    assert prices.book(c, "car1").spot_at(52.1, 5.2) == (sid, "Plaza")
     assert prices.spot_name_at(c, 52.1, 5.2) == "Plaza"
-    assert prices.tariff_at(c, sid, 10_000)["per_kwh"] == 0.35
+    assert prices.book(c, "car1").tariff_at(sid, 10_000)["per_kwh"] == 0.35
     assert place(c, 10_000) == "Plaza"
 
 
@@ -117,9 +117,9 @@ def test_create_spot_needs_point_and_charge(c):
 def test_spot_at_nearest_of_overlapping(c):
     for s, lon in (("a", 5.0), ("b", 5.00088)):
         c.execute("INSERT INTO charge_spots VALUES(?,?,?,?,100)", (s, s.upper(), 52.0, lon))
-    assert prices.spot_at(c, 52.0, 5.0007) == ("b", "B")
-    assert prices.spot_at(c, 52.0, 5.0) == ("a", "A")
-    assert prices.spot_at(c, 52.0, 5.0 - 0.0023) is None  # about 157 m west of both
+    assert prices.book(c, "car1").spot_at(52.0, 5.0007) == ("b", "B")
+    assert prices.book(c, "car1").spot_at(52.0, 5.0) == ("a", "A")
+    assert prices.book(c, "car1").spot_at(52.0, 5.0 - 0.0023) is None  # about 157 m west of both
 
 
 def test_zone_wins_over_spot(c):
@@ -161,14 +161,14 @@ def test_receipt_survives_earlier_start(c):
     prices.set_receipt(c, "car1", 5000, 12.5)
     charge(c, 4000, 9000)
     c.execute("DELETE FROM charges WHERE start=5000")
-    assert prices.receipt_for(c, "car1", 4000, 9000) == 12.5
-    assert prices.receipt_for(c, "car1", 6000, 9000) is None
-    assert prices.receipt_for(c, "car1", 6000, None) is None
-    assert prices.receipt_for(c, "car1", 4000, None) == 12.5
+    assert prices.book(c, "car1").receipt_for(4000, 9000) == 12.5
+    assert prices.book(c, "car1").receipt_for(6000, 9000) is None
+    assert prices.book(c, "car1").receipt_for(6000, None) is None
+    assert prices.book(c, "car1").receipt_for(4000, None) == 12.5
     prices.set_receipt(c, "car1", 4000, 20)  # the old row at 5000 must not shadow the edit
-    assert prices.receipt_for(c, "car1", 4000, 9000) == 20
+    assert prices.book(c, "car1").receipt_for(4000, 9000) == 20
     prices.set_receipt(c, "car1", 4000, None)
-    assert prices.receipt_for(c, "car1", 4000, 9000) is None
+    assert prices.book(c, "car1").receipt_for(4000, 9000) is None
 
 
 def test_receipt_newest_start_wins(c):
@@ -176,7 +176,7 @@ def test_receipt_newest_start_wins(c):
     charge(c, 6000, 9000)
     prices.set_receipt(c, "car1", 5000, 1)
     prices.set_receipt(c, "car1", 6000, 2)
-    assert prices.receipt_for(c, "car1", 4000, 9000) == 2
+    assert prices.book(c, "car1").receipt_for(4000, 9000) == 2
 
 
 def test_receipt_clear_and_unknown(c):
@@ -205,10 +205,10 @@ def test_fixed_cost_lifecycle(c):
 
 
 def test_card(c):
-    assert prices.card(c, "car1") == (0.0, 0.0)
-    assert prices.card(c, "nope") == (0.0, 0.0)
+    assert prices.book(c, "car1").card == (0.0, 0.0)
+    assert prices.book(c, "nope").card == (0.0, 0.0)
     prices.set_card(c, "car1", 10, 0.35)
-    assert prices.card(c, "car1") == (10.0, 0.35)
+    assert prices.book(c, "car1").card == (10.0, 0.35)
     with pytest.raises(KeyError):
         prices.set_card(c, "nope", 1, 1)
 

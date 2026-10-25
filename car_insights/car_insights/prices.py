@@ -1,6 +1,7 @@
 """Charging prices: tariffs per charge target, learned charge spots, receipts, fixed costs and the card surcharge."""
 import math
 import uuid
+from dataclasses import dataclass, field
 from datetime import date
 
 from . import db
@@ -33,12 +34,6 @@ def _tariff_row(r) -> dict:
     return {"valid_from": r[0], "per_kwh": r[1], "start_fee": r[2], "per_min": r[3]}
 
 
-def tariff_at(conn, target: str, t: int) -> dict | None:
-    r = conn.execute("SELECT valid_from, per_kwh, start_fee, per_min FROM tariffs WHERE target=? AND valid_from<=? "
-                     "ORDER BY valid_from DESC LIMIT 1", (target, t)).fetchone()
-    return None if r is None else _tariff_row(r)
-
-
 def set_tariff(conn, target: str, valid_from: int, per_kwh: float, start_fee: float = 0, per_min: float = 0) -> None:
     _num(per_kwh, 5, "per_kwh"), _num(start_fee, 1000, "start_fee"), _num(per_min, 1000, "per_min")
     if target not in ("ac", "dc") and conn.execute("SELECT 1 FROM charge_spots WHERE spot_id=?", (target,)).fetchone() is None:
@@ -48,14 +43,14 @@ def set_tariff(conn, target: str, valid_from: int, per_kwh: float, start_fee: fl
                  (target, valid_from, per_kwh, start_fee, per_min))
 
 
-def spot_at(conn, lat: float, lon: float) -> tuple[str, str] | None:
-    rows = conn.execute("SELECT spot_id, name, lat, lon, radius_m FROM charge_spots").fetchall()
+def _spot_in(rows: list[tuple], lat: float, lon: float) -> tuple[str, str] | None:
+    """rows: (spot_id, name, lat, lon, radius_m); the nearest spot whose radius holds the point."""
     sid = name_at([Zone(s, la, lo, r) for s, _, la, lo, r in rows], lat, lon)  # the zone name is the spot id
     return None if sid is None else next((s, n) for s, n, *_ in rows if s == sid)
 
 
 def spot_name_at(conn, lat: float, lon: float) -> str | None:
-    hit = spot_at(conn, lat, lon)
+    hit = _spot_in(conn.execute("SELECT spot_id, name, lat, lon, radius_m FROM charge_spots").fetchall(), lat, lon)
     return hit and hit[1]
 
 
@@ -114,13 +109,6 @@ def set_receipt(conn, vid: str, start: int, amount: float | None) -> None:
             conn.execute("INSERT INTO charge_receipts VALUES(?,?,?)", (vid, start, amount))
 
 
-def receipt_for(conn, vid: str, start: int, end: int | None) -> float | None:
-    """A receipt keeps the start it was saved with, so a charge re-derived with an earlier start still finds it."""
-    r = conn.execute("SELECT amount FROM charge_receipts WHERE vehicle_id=? AND start>=? AND (? IS NULL OR start<=?) "
-                     "ORDER BY start DESC LIMIT 1", (vid, start, end, end)).fetchone()
-    return r and r[0]
-
-
 def add_fixed_cost(conn, vid: str, name: str, amount: float, period: str, start: date, end: date | None) -> str:
     name = _name(name)
     _num(amount, 100_000, "amount")
@@ -162,9 +150,33 @@ def set_card(conn, vid: str, markup_pct: float, start_fee: float) -> None:
         raise KeyError(vid)
 
 
-def card(conn, vid: str) -> tuple[float, float]:
-    r = conn.execute("SELECT card_markup_pct, card_start_fee FROM vehicles WHERE vehicle_id=?", (vid,)).fetchone()
-    return (float(r[0]), float(r[1])) if r else (0.0, 0.0)
+@dataclass
+class Book:
+    """One vehicle's prices, loaded once: pricing a charge then needs no database."""
+    tariffs: dict[str, list[dict]] = field(default_factory=dict)  # per target (ac, dc, a spot id), newest first
+    spots: list[tuple] = field(default_factory=list)  # (spot_id, name, lat, lon, radius_m)
+    receipts: list[tuple[int, float]] = field(default_factory=list)  # (start, amount), newest start first
+    card: tuple[float, float] = (0.0, 0.0)  # (markup_pct, start_fee)
+
+    def tariff_at(self, target: str, t: int) -> dict | None:
+        return next((r for r in self.tariffs.get(target, ()) if r["valid_from"] <= t), None)
+
+    def spot_at(self, lat: float, lon: float) -> tuple[str, str] | None:
+        return _spot_in(self.spots, lat, lon)
+
+    def receipt_for(self, start: int, end: int | None) -> float | None:
+        """A receipt keeps the start it was saved with, so a charge re-derived with an earlier start still finds it."""
+        return next((a for s, a in self.receipts if s >= start and (end is None or s <= end)), None)
+
+
+def book(conn, vid: str) -> Book:
+    tariffs: dict[str, list[dict]] = {}
+    for target, *row in conn.execute("SELECT target, valid_from, per_kwh, start_fee, per_min FROM tariffs ORDER BY valid_from DESC"):
+        tariffs.setdefault(target, []).append(_tariff_row(row))
+    c = conn.execute("SELECT card_markup_pct, card_start_fee FROM vehicles WHERE vehicle_id=?", (vid,)).fetchone()
+    return Book(tariffs, conn.execute("SELECT spot_id, name, lat, lon, radius_m FROM charge_spots").fetchall(),
+                conn.execute("SELECT start, amount FROM charge_receipts WHERE vehicle_id=? ORDER BY start DESC", (vid,)).fetchall(),
+                (float(c[0]), float(c[1])) if c else (0.0, 0.0))
 
 
 def _tariffs(conn, target: str) -> list[dict]:

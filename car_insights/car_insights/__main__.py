@@ -39,9 +39,10 @@ def main() -> None:
     # a zone added, moved or renamed reaches stored trips and charges through a rebuild at the next start
     deriver = Deriver(conn, zones, capacity, rebuild=zones_changed(lambda: fetch_zones(sup_token), Path("/data/zones.json")),
                       spots=lambda lat, lon: prices.spot_name_at(conn, lat, lon))
-    # tz is assigned below; the cost lambda reads it only when called
+    # tz is assigned below; the cost lambdas read it only when called
     sensors = TripSensors(conn, mqtt, capacity,
-                          cost=lambda kind, vid, row: costs.trip_cost(conn, vid, row, tz)["total"] if kind == "trip" else costs.charge_cost(conn, vid, row)["amount"])
+                          trip_cost=lambda vid, row: costs.trip_cost(conn, vid, row, tz)["total"],
+                          charge_cost=lambda vid, row: costs.charge_cost(prices.book(conn, vid), row)["amount"])
     tz = fetch_time_zone(sup_token)
     totals = TotalsSensors(conn, mqtt, tz)
 

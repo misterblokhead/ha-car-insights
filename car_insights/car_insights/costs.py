@@ -12,25 +12,25 @@ DC_ABOVE_W = 22_000
 LOSS = {"ac": 1.10, "dc": 1.05}  # grid-to-battery losses; the car reports energy added to the battery
 
 
-def charge_cost(conn, vid: str, charge: dict) -> dict:
+def charge_cost(book: prices.Book, charge: dict) -> dict:
     start, end, wh = charge["start"], charge.get("end"), charge.get("added_wh")
-    kind = "dc" if (charge.get("avg_w") or 0) > DC_ABOVE_W else "ac"
+    current = "dc" if (charge.get("avg_w") or 0) > DC_ABOVE_W else "ac"
     # the nearest spot prices the charge even inside an HA zone (the zone only names the place): on purpose
-    spot = prices.spot_at(conn, charge["lat"], charge["lon"]) if charge.get("lat") is not None else None
-    markup, card_fee = prices.card(conn, vid)
-    out = {"amount": None, "basis": None, "kind": kind, "spot_id": spot and spot[0], "spot": spot and spot[1],
-           "tariff": None, "loss": LOSS[kind], "card_markup_pct": markup, "card_start_fee": card_fee}
-    receipt = prices.receipt_for(conn, vid, start, end)
+    spot = book.spot_at(charge["lat"], charge["lon"]) if charge.get("lat") is not None else None
+    markup, card_fee = book.card
+    out = {"amount": None, "basis": None, "current": current, "spot_id": spot and spot[0], "spot": spot and spot[1],
+           "tariff": None, "loss": LOSS[current], "card_markup_pct": markup, "card_start_fee": card_fee}
+    receipt = book.receipt_for(start, end)
     if receipt is not None:
         return out | {"amount": receipt, "basis": "receipt"}
     if end is None or wh is None or wh < 0:  # a negative wh is a SoC estimate that went down
         return out
-    tariff, basis = (spot and prices.tariff_at(conn, spot[0], start)), "spot"
+    tariff, basis = (spot and book.tariff_at(spot[0], start)), "spot"
     if tariff is None:
-        tariff, basis = prices.tariff_at(conn, kind, start), "default"
+        tariff, basis = book.tariff_at(current, start), "default"
     if tariff is None:
         return out
-    amount = (wh / 1000 * LOSS[kind] * tariff["per_kwh"] * (1 + markup / 100)
+    amount = (wh / 1000 * LOSS[current] * tariff["per_kwh"] * (1 + markup / 100)
               + tariff["start_fee"] + card_fee + tariff["per_min"] * (charge.get("duration_s") or 0) / 60)
     return out | {"amount": amount, "basis": basis, "tariff": tariff}
 
@@ -61,17 +61,18 @@ def _energy(conn, vid: str, trip: dict) -> float | None:
     if trip.get("net_wh") is None:
         return None
     end = trip["end"]
+    book = prices.book(conn, vid)
     amount = kwh = 0.0
     for (js,) in conn.execute("SELECT json FROM charges WHERE vehicle_id=? AND end IS NOT NULL AND end BETWEEN ? AND ?",
                               (vid, end - ENERGY_WINDOW_MS, end)):
         ch = json.loads(js)
-        a = charge_cost(conn, vid, ch)["amount"]
+        a = charge_cost(book, ch)["amount"]
         if a is not None and (ch.get("added_wh") or 0) > 0:
             amount, kwh = amount + a, kwh + ch["added_wh"] / 1000
     if kwh > 0:
         per_kwh = amount / kwh
     else:
-        tariff = prices.tariff_at(conn, "ac", end)
+        tariff = book.tariff_at("ac", end)
         if tariff is None:
             return None
         per_kwh = tariff["per_kwh"] * LOSS["ac"]
@@ -104,10 +105,10 @@ def trip_cost(conn, vid: str, trip: dict, tz) -> dict:
 def period_costs(conn, vids: list[str], lo: int, hi: int, tz, now_ms: int) -> dict:
     """Costs of the closed charges starting in [lo, hi) plus the fixed costs of the days up to the period's last day, or today if still running."""
     q = ",".join("?" * len(vids))
-    energy, uncosted = 0.0, 0
+    energy, uncosted, books = 0.0, 0, {}
     for vid, js in conn.execute(
             f"SELECT vehicle_id, json FROM charges WHERE vehicle_id IN ({q}) AND end IS NOT NULL AND start >= ? AND start < ?", (*vids, lo, hi)):
-        a = charge_cost(conn, vid, json.loads(js))["amount"]
+        a = charge_cost(books.get(vid) or books.setdefault(vid, prices.book(conn, vid)), json.loads(js))["amount"]
         energy, uncosted = (energy + a, uncosted) if a is not None else (energy, uncosted + 1)
     day = lambda ms: datetime.fromtimestamp(ms / 1000, tz).date()
     fixed = fixed_between(conn, vids, day(lo), min(day(hi - 1), day(now_ms)) + timedelta(days=1))
