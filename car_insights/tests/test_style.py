@@ -48,7 +48,15 @@ def test_one_hard_brake():
 def test_one_hard_acceleration():
     (kind, _, sev), = events(ordered(brake(v0=10.0, v1=25.0, ramp=3.0)))
     assert kind == "accel"
-    assert sev == pytest.approx(5 / 2.5, abs=0.15)
+    assert sev == pytest.approx(5 / 3.0, abs=0.15)
+
+
+@pytest.mark.parametrize("rate, n", [(2.8, 0), (3.2, 1)])
+def test_acceleration_threshold_is_3(rate, n):
+    samples = ordered(brake(v0=10.0, v1=10.0 + rate * 3, ramp=3.0))
+    assert [e[0] for e in events(samples)] == ["accel"] * n
+    if n:
+        assert events(samples)[0][2] == pytest.approx(rate / 3.0, abs=0.05)
 
 
 def step_up(jump):
@@ -57,7 +65,7 @@ def step_up(jump):
 
 
 def test_short_spike_no_event():
-    # a 3 m/s rise in 0.3 s (10 m/s2) is above 2.5 for only ~0.3 s once smoothed
+    # a 3 m/s rise in 0.3 s (10 m/s2) is above 3.0 for only ~0.3 s once smoothed
     assert events(step_up(3.0)) == []
 
 
@@ -93,16 +101,30 @@ def test_event_km_at_peak():
     assert 2.4 < km < 2.6
 
 
-@pytest.mark.parametrize("speed, acc, n", [(13.9, 5.0, 1), (3.0, 5.0, 0), (13.9, 20.0, 0), (13.9, 15.0, 0)])
+@pytest.mark.parametrize("speed, acc, n", [(13.9, 5.0, 1), (13.9, 20.0, 0), (13.9, 15.0, 0)])
 def test_corner_counts_only_fast_and_accurate(speed, acc, n):
     samples = ordered(turn([0, 0, 30, 60, 90, 90, 90], speed, acc))
     assert [e[0] for e in events(samples)] == ["corner"] * n
 
 
+SHARP = [0, 0, 40, 80, 120, 120, 120]  # 40 deg/s: 4.5 m/s2 at 6.5 m/s, 5.0 at 7.2, 9.7 at 13.9
+
+
+@pytest.mark.parametrize("speed, n", [(13.9, 1), (7.2, 1), (6.5, 0), (5.0, 0)])
+def test_corner_needs_25_kmh(speed, n):
+    assert [e[0] for e in events(ordered(turn(SHARP, speed)))] == ["corner"] * n
+
+
+@pytest.mark.parametrize("bearings, n", [([0, 0, 15, 30, 45, 45, 45], 0), ([0, 0, 20, 40, 60, 60, 60], 1)])
+def test_corner_threshold_is_4(bearings, n):
+    # at 13.9 m/s: 15 deg/s is 3.6 m/s2 (an ordinary turn), 20 deg/s is 4.8
+    assert [e[0] for e in events(ordered(turn(bearings)))] == ["corner"] * n
+
+
 def test_corner_severity_and_km():
     samples = ordered(turn([0, 0, 30, 60, 90, 90, 90]))
     (_, km, sev), = events(samples)
-    assert sev == pytest.approx(13.9 * math.radians(30) / 3.0)
+    assert sev == pytest.approx(13.9 * math.radians(30) / 4.0)
     assert km == pytest.approx(13.9 * 2 / 1000, abs=0.02)  # the speed at the peak pair's later fix (2 s)
 
 
@@ -157,28 +179,46 @@ def band_trip():
 def test_band_energy_sums_to_net():
     samples = band_trip()
     (trip,) = find_trips(samples, {}, True)
-    b = bands(samples, None, 0)
+    b, standing = bands(samples, None, 0)
     assert trip.net_wh == 1800
-    assert abs(sum(wh for _, wh in b.values()) - trip.net_wh) <= 2.5
+    assert standing == 0 and abs(sum(wh for _, wh in b.values()) - trip.net_wh) <= 2.5
     assert b["120+"][1] == 600  # the energy of the 125 km/h stretch's steps (t > 120 s)
     assert (b["50-80"][1], b["80-100"][1], b["0-50"][1], b["100-120"][1]) == (600, 600, 0, 0)
     assert [b[n][0] for n in ("0-50", "50-80", "80-100", "100-120", "120+")] == [0, 1000, 1500, 0, 2083]
 
 
-def test_step_goes_to_mean_speed_band():
-    # 72 km/h for 1 s, then 90 for 2 s: the step ending at 3 s has mean 84 km/h
-    samples = [s(0, "speed", 20.0), s(0, "battery_wh", 50_000.0), s(1000, "speed", 25.0), s(2000, "speed", 25.0), s(3000, "speed", 25.0), s(3000, "battery_wh", 49_900.0)]
-    assert bands(samples, None, 0) == {"0-50": [0, 0], "50-80": [20, 0], "80-100": [50, 100], "100-120": [0, 0], "120+": [0, 0]}
+def test_step_is_split_by_distance():
+    # 72 km/h for 2 s (40 m), then 90 for 1 s (25 m) inside one 130 Wh step: 80 and 50 Wh
+    samples = [s(0, "speed", 20.0), s(0, "battery_wh", 50_000.0), s(1000, "speed", 20.0), s(2000, "speed", 25.0), s(3000, "speed", 25.0), s(3000, "battery_wh", 49_870.0)]
+    assert bands(samples, None, 0) == ({"0-50": [0, 0], "50-80": [40, 80], "80-100": [25, 50], "100-120": [0, 0], "120+": [0, 0]}, 0)
 
 
-def test_step_without_movement_goes_to_the_lowest_band():
-    assert bands([s(1000, "speed", 0.0), s(2000, "speed", 0.0), s(2000, "battery_wh", 49_900.0)], 50_000.0, 0)["0-50"] == [0, 100]
+def test_step_without_movement_is_standing():
+    b, standing = bands([s(1000, "speed", 0.0), s(2000, "speed", 0.0), s(2000, "battery_wh", 49_900.0)], 50_000.0, 0)
+    assert standing == 100 and b["0-50"] == [0, 0]
+
+
+def test_stop_with_the_car_on_is_standing_not_a_band():
+    # 20 m/s for 1 s, braking to a stop by 1.5 s (30 m, a 100 Wh step), then 2 s standing (a 40 Wh step)
+    samples = [s(0, "speed", 20.0), s(0, "battery_wh", 50_000.0), s(1000, "speed", 20.0), s(1500, "speed", 0.0), s(1500, "battery_wh", 49_900.0),
+               s(2500, "speed", 0.0), s(3500, "speed", 0.0), s(3500, "battery_wh", 49_860.0)]
+    assert bands(samples, None, 0) == ({"0-50": [0, 0], "50-80": [30, 100], "80-100": [0, 0], "100-120": [0, 0], "120+": [0, 0]}, 40)
+
+
+def test_bands_and_standing_sum_to_net():
+    # odd distances over three bands, then a stop with the car on and a recuperating step
+    kmh = lambda t: 30 if t < 20_000 else 77 if t < 45_000 else 98 if t < 70_000 else 0
+    wh = {10_000: 49_937, 30_000: 49_810, 50_000: 49_581, 70_000: 49_290, 80_000: 49_270, 90_000: 49_241}
+    samples = ordered([*(s(t, "speed", kmh(t) / 3.6) for t in range(0, 90_001, 1000)), s(0, "battery_wh", 50_000.0), *(s(t, "battery_wh", v) for t, v in wh.items())])
+    m = measure(samples, None, 0, 5000)
+    assert m["standing"] == 49  # the two readings after the stop: 20 Wh and 29 Wh into the battery's net
+    assert abs(sum(wh for _, wh in m["bands"].values()) + m["standing"] - 759) <= 3
 
 
 def test_style_without_energy():
     samples = [s(t, "speed", 25.0) for t in range(0, 11_000, 1000)]
-    assert bands(samples, None, 0) == {"0-50": [0, None], "50-80": [0, None], "80-100": [250, None], "100-120": [0, None], "120+": [0, None]}
-    assert measure(samples, None, 0, 250)["score"] is None
+    assert bands(samples, None, 0) == ({"0-50": [0, None], "50-80": [0, None], "80-100": [250, None], "100-120": [0, None], "120+": [0, None]}, None)
+    assert measure(samples, None, 0, 250)["score"] is None and measure(samples, None, 0, 250)["standing"] is None
 
 
 def test_measure_shape():

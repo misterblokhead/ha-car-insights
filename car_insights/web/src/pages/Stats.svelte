@@ -217,6 +217,7 @@
                 <li><span class="bn">{b.name}</span><span class="track"><i class="meter" style:width="{b.share * 100}%"></i></span><span class="bv">{b.value == null ? NA : b.value.toFixed(1)}</span></li>
               {/each}
             </ul>
+            {#if style.standing_kwh != null}<dl class="d-rows"><div><dt>Standing</dt><dd>{kwh(style.standing_kwh * 1000)}</dd></div></dl>{/if}
           {:else}
             <p class="d-msg">No trips in this {period}.</p>
           {/if}

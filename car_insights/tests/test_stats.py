@@ -225,9 +225,9 @@ def test_by_place_groups_unnamed_by_address():
     assert s["by_place"] == [{"place": "A 1, B", "wh": 3000}, {"place": None, "wh": 500}]
 
 
-def styled(km, score, accel=0, brake=0, corner=0, bands=None):
+def styled(km, score, accel=0, brake=0, corner=0, bands=None, standing=None):
     z = {n: [0, 0] for n in ("0-50", "50-80", "80-100", "100-120", "120+")}
-    return {"distance_m": km * 1000, "style": {"accel": [accel, 0.0], "brake": [brake, 0.0], "corner": [corner, 0.0], "bands": {**z, **(bands or {})}, "score": score}}
+    return {"distance_m": km * 1000, "style": {"accel": [accel, 0.0], "brake": [brake, 0.0], "corner": [corner, 0.0], "bands": {**z, **(bands or {})}, "standing": standing, "score": score}}
 
 
 def test_style_aggregates_period():
@@ -257,6 +257,22 @@ def test_band_with_only_energyless_trips_is_null():
     c = connect(":memory:")
     row(c, "trips", ms(2026, 10, 19), styled(10, 90, bands={"80-100": [10_000, None]}))
     assert stats.stats(c, ["car1"], "week", OCT24, TZ)["style"]["bands"]["80-100"] == {"km": 10.0, "kwh_per_100km": None}
+
+
+def test_standing_energy_is_summed_in_kwh():
+    c = connect(":memory:")
+    row(c, "trips", ms(2026, 10, 19), styled(10, 90, standing=300))
+    row(c, "trips", ms(2026, 10, 20), styled(10, 90, standing=450))
+    row(c, "trips", ms(2026, 10, 21), styled(10, 90))  # no energy: not counted
+    row(c, "trips", ms(2026, 10, 12), styled(10, 90, standing=1000))
+    st = stats.stats(c, ["car1"], "week", OCT24, TZ)
+    assert st["style"]["standing_kwh"] == 0.75 and st["previous_style"]["standing_kwh"] == 1.0
+
+
+def test_standing_energy_is_null_without_energy():
+    c = connect(":memory:")
+    row(c, "trips", ms(2026, 10, 19), styled(10, 90))
+    assert stats.stats(c, ["car1"], "week", OCT24, TZ)["style"]["standing_kwh"] is None
 
 
 def test_previous_style():
