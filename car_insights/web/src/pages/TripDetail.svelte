@@ -72,7 +72,7 @@
           {/each}
         </dl>
         <div class="d-head bandhead"><h2>Speed</h2><span class="d-note">km/h · kWh/100 km · share</span></div>
-        <div class="bar" role="img" aria-label="Distance by speed band: {bands.map((b) => `${b.name} km/h ${Math.round(b.share * 100)} %`).join(', ')}">
+        <div class="share-bar" role="img" aria-label="Distance by speed band: {bands.map((b) => `${b.name} km/h ${Math.round(b.share * 100)} %`).join(', ')}">
           {#each bands as b, i (b.name)}{#if b.share > 0}<i style:flex="{b.share} 1 0" style:background="var(--trip)" style:opacity={BAND_OPACITY[i]}></i>{/if}{/each}
         </div>
         <ul class="bands">

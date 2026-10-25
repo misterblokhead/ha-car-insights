@@ -210,7 +210,7 @@
         <section class="d-card places">
           <div class="d-head"><h2>Charged by place</h2><span class="d-note">{kwh(t.charged_wh)}</span></div>
           {#if segments.length}
-            <div class="bar" role="img" aria-label="Charged by place: {segments.map((s) => `${s.name} ${kwh(s.wh)}`).join(', ')}">
+            <div class="share-bar" role="img" aria-label="Charged by place: {segments.map((s) => `${s.name} ${kwh(s.wh)}`).join(', ')}">
               {#each segments as s, i (s.name)}<i style:flex="{s.wh} 1 0" style:background="var({tint(s, i)})"></i>{/each}
             </div>
             <ul>
