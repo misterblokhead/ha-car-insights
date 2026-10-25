@@ -7,7 +7,7 @@ from . import db, route, series, store, style
 from .charges import KEYS as CHARGE_KEYS, Charge, find_charges
 from .kinds import CHARGE, KINDS, TRIP
 from .odometer import chain
-from .protocol import FUTURE_SLACK_MS
+from .protocol import FUTURE_SLACK_MS, Sample
 from .trips import KEYS as TRIP_KEYS, QUIET_MS, Trip, find_trips
 from .zones import Zones
 
