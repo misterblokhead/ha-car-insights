@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
+from .figures import pct
 from .ha_mqtt import device, discovery, sensor, topic
 from .protocol import FUTURE_SLACK_MS, PARK_GEAR, Sample, num
 
@@ -72,7 +73,7 @@ def snapshot(state: LiveState, capacity_wh: float) -> dict:
     if wh is not None:
         snap["battery_kwh"] = round(wh / 1000, 2)
         if math.isfinite(capacity_wh) and capacity_wh > 0:
-            snap["soc"] = round(min(100.0, max(0.0, wh / capacity_wh * 100)), 1)
+            snap["soc"] = pct(wh, capacity_wh)
     if range_m is not None:
         snap["range_km"] = round(range_m / 1000, 1)
     if power is not None:

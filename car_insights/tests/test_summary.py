@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
-from car_insights.summary import build, week_start_ms
+from car_insights.periods import week_start_ms
+from car_insights.summary import build
 
 TZ = timezone(timedelta(hours=2))
 

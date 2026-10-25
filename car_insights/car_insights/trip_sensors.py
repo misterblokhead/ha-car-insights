@@ -4,11 +4,10 @@ import sqlite3
 from typing import Callable
 
 from . import db, ha_mqtt
+from .figures import wh_per_100km
 from .ha_mqtt import Sink
 
 log = logging.getLogger(__name__)
-
-MIN_CONSUMPTION_M = 100
 
 # field -> (state leaf, value key, name, unit, device_class)
 _SENSORS = {
@@ -31,7 +30,7 @@ def _div(v: float | None, d: float) -> float | None:
 
 def _trip_state(w: dict) -> dict:
     dist, net = w.get("distance_m"), w.get("net_wh")
-    cons = None if net is None or dist is None or dist < MIN_CONSUMPTION_M else round(net / dist * 100, 2)
+    cons = _div(wh_per_100km(dist, net), 1000)
     return {"distance_km": _div(dist, 1000), "net_kwh": _div(net, 1000), "consumption": cons,
             **{k: w.get(k) for k in ("from", "to", "start", "end", "odometer_start_km", "odometer_end_km")}}
 

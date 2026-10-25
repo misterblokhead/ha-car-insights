@@ -1,15 +1,9 @@
 import hashlib
 import json
-from datetime import datetime, time, timedelta, tzinfo
+from datetime import datetime, timedelta, tzinfo
 
 LIST = 20
 _DAYS = 7
-
-
-def week_start_ms(now_ms: int, tz: tzinfo) -> int:
-    """Local midnight of the first of the 7 days that end today: the earliest start the week's totals need."""
-    first = datetime.fromtimestamp(now_ms / 1000, tz).date() - timedelta(days=_DAYS - 1)
-    return int(datetime.combine(first, time.min, tz).timestamp() * 1000)
 
 
 def _sum(rows, day_of, field, days):

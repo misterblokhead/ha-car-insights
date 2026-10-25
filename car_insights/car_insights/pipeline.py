@@ -5,7 +5,7 @@ import time
 from datetime import tzinfo
 from typing import Callable
 
-from . import db, route, summary
+from . import db, periods, route, summary
 from .derive import ESTIMATE_HOLD_MS, Deriver
 from .protocol import FUTURE_SLACK_MS
 from .totals_sensors import TotalsSensors
@@ -30,7 +30,7 @@ def refresh(deriver: Deriver, sensors: TripSensors, totals: TotalsSensors, vid: 
         totals.publish_vehicle(vid)
         if totals.in_group(vid):
             totals.publish_groups()
-    since = summary.week_start_ms(received, tz)
+    since = periods.week_start_ms(received, tz)
     def routed(t: dict) -> dict:  # the card route rides on the wire row only, never in the stored one
         p = deriver.trip_route(vid, t["start"])
         return {**t, "route": None if p is None else route.card(p)}

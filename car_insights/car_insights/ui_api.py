@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from . import access, activity, costs, db, prices, stats
 from .access import Viewer
+from .figures import pct
 from .derive import Deriver, Zones
 from .protocol import fix, num
 
@@ -134,7 +135,7 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
         return {
             "id": vid, "name": db.device_info(conn, vid)[0],
             "status": "driving" if has_open("trips", vid) else "charging" if has_open("charges", vid) else "parked",
-            "battery_wh": wh, "soc_percent": round(wh / cap * 100, 1) if wh is not None and cap else None,
+            "battery_wh": wh, "soc_percent": pct(wh, cap),
             "range_m": got.get("range_m"),
             "position": None if pos is None else {"lat": pos[0], "lon": pos[1], "place": zones(*pos)},
             "updated": conn.execute("SELECT MAX(t) FROM samples WHERE vehicle_id=? AND t<=? AND key NOT IN ('meta','gap')",

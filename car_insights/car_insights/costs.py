@@ -3,7 +3,7 @@ import json
 from datetime import date, datetime, timedelta
 
 from . import prices
-from .totals import _midnight_ms
+from .periods import midnight_ms
 
 ENERGY_WINDOW_MS = 30 * 86_400_000
 FIXED_DAYS = 365
@@ -86,7 +86,7 @@ def _fixed(conn, vid: str, trip: dict, tz) -> float | None:
     lo = max(end_day - timedelta(days=FIXED_DAYS - 1), datetime.fromtimestamp(first / 1000, tz).date())
     km = conn.execute("SELECT COALESCE(SUM(json_extract(json,'$.distance_m')),0) / 1000.0 FROM trips "
                       "WHERE vehicle_id=? AND end IS NOT NULL AND start>=? AND end<=?",
-                      (vid, _midnight_ms(lo, tz), trip["end"])).fetchone()[0]
+                      (vid, midnight_ms(lo, tz), trip["end"])).fetchone()[0]
     if km < MIN_FIXED_KM:
         return None
     return fixed_between(conn, [vid], lo, end_day + timedelta(days=1)) / km * trip["distance_m"] / 1000

@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 from pytest import approx
 
 from car_insights import prices, stats
+from car_insights.periods import period_bounds
 from car_insights.db import connect
 from car_insights.derive import ALGO
 
@@ -60,7 +61,7 @@ def ms(*a):
 
 
 def plain(m):
-    return {k: v for k, v in m.items() if k != "cost"}
+    return {k: v for k, v in m.items() if k not in ("cost", "wh_per_100km")}
 
 
 def row(c, table, start, extra, vid="car1", end=True):
@@ -69,13 +70,13 @@ def row(c, table, start, extra, vid="car1", end=True):
 
 
 def test_period_bounds_week_month_year():
-    assert stats.period_bounds("week", OCT24, TZ) == (ms(2026, 10, 19), ms(2026, 10, 26))
-    lo, hi = stats.period_bounds("week", OCT24, TZ)
+    assert period_bounds("week", OCT24, TZ) == (ms(2026, 10, 19), ms(2026, 10, 26))
+    lo, hi = period_bounds("week", OCT24, TZ)
     assert hi - lo == (7 * 24 + 1) * 3600_000  # the clocks go back on 25 October
-    assert stats.period_bounds("month", OCT24, TZ) == (ms(2026, 10, 1), ms(2026, 11, 1))
-    assert stats.period_bounds("year", OCT24, TZ) == (ms(2026, 1, 1), ms(2027, 1, 1))
-    assert stats.period_bounds("week", date(2026, 10, 19), TZ)[0] == ms(2026, 10, 19)  # Monday is its own week
-    assert stats.period_bounds("week", date(2026, 10, 25), TZ)[0] == ms(2026, 10, 19)  # Sunday belongs to the week before
+    assert period_bounds("month", OCT24, TZ) == (ms(2026, 10, 1), ms(2026, 11, 1))
+    assert period_bounds("year", OCT24, TZ) == (ms(2026, 1, 1), ms(2027, 1, 1))
+    assert period_bounds("week", date(2026, 10, 19), TZ)[0] == ms(2026, 10, 19)  # Monday is its own week
+    assert period_bounds("week", date(2026, 10, 25), TZ)[0] == ms(2026, 10, 19)  # Sunday belongs to the week before
 
 
 def test_buckets_cover_period_with_zeros():
@@ -88,10 +89,10 @@ def test_buckets_cover_period_with_zeros():
     assert len(b) == 31 and b[0]["start"] == ms(2026, 10, 1) and b[30]["start"] == ms(2026, 10, 31)
     assert [(i, x["distance_m"], x["net_wh"]) for i, x in enumerate(b) if x["distance_m"]] == [
         (23, 1000, 100), (24, 6000, 600), (25, 8000, 800)]
-    assert b[3] == {"start": ms(2026, 10, 4), "distance_m": 0, "net_wh": 0}
+    assert b[3] == {"start": ms(2026, 10, 4), "distance_m": 0, "net_wh": 0, "wh_per_100km": None}
     assert len(stats.stats(c, ["car1"], "week", OCT24, TZ)["buckets"]) == 7
     y = stats.stats(c, ["car1"], "year", OCT24, TZ)["buckets"]
-    assert len(y) == 12 and y[9] == {"start": ms(2026, 10, 1), "distance_m": 15000, "net_wh": 1500}
+    assert len(y) == 12 and y[9] == {"start": ms(2026, 10, 1), "distance_m": 15000, "net_wh": 1500, "wh_per_100km": 10_000}
 
 
 def test_previous_period_totals():

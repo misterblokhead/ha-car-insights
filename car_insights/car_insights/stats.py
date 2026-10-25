@@ -1,10 +1,11 @@
 """Statistics over the stored trips and charges."""
 import sqlite3
-from datetime import date, datetime, timedelta, tzinfo
+from datetime import date, timedelta, tzinfo
 from typing import Callable
 
-from .costs import period_costs
-from .totals import _midnight_ms
+from .figures import wh_per_100km
+from .periods import local_date, midnight_ms, period_bounds, span
+from .totals import sums
 
 
 def similar_trips(conn: sqlite3.Connection, vid: str, trip: dict, limit: int = 20) -> dict | None:
@@ -25,39 +26,10 @@ def similar_trips(conn: sqlite3.Connection, vid: str, trip: dict, limit: int = 2
             "avg_wh_per_100km": sum(wh for _, wh in used) / dist * 100_000 if used else None}
 
 
-def _span(period: str, at: date) -> tuple[date, date]:
-    """First day of the period containing `at` (weeks start on Monday) and of the next period."""
-    if period == "week":
-        lo = at - timedelta(days=at.weekday())
-        return lo, lo + timedelta(days=7)
-    if period == "month":
-        lo = at.replace(day=1)
-        return lo, (lo + timedelta(days=31)).replace(day=1)
-    return date(at.year, 1, 1), date(at.year + 1, 1, 1)
-
-
-def period_bounds(period: str, at: date, tz: tzinfo) -> tuple[int, int]:
-    """Local midnight starting the period containing `at` (inclusive) and starting the next one (exclusive), as epoch ms."""
-    lo, hi = _span(period, at)
-    return _midnight_ms(lo, tz), _midnight_ms(hi, tz)
-
-
-def _totals(conn, vids: list[str], lo: int, hi: int, tz: tzinfo, now_ms: int) -> dict:
-    q = ",".join("?" * len(vids))
-    d, n, nt = conn.execute(
-        f"SELECT COALESCE(SUM(json_extract(json,'$.distance_m')),0), COALESCE(SUM(json_extract(json,'$.net_wh')),0), COUNT(*)"
-        f" FROM trips WHERE vehicle_id IN ({q}) AND end IS NOT NULL AND start >= ? AND start < ?", (*vids, lo, hi)).fetchone()
-    a, nc = conn.execute(
-        f"SELECT COALESCE(SUM(json_extract(json,'$.added_wh')),0), COUNT(*)"
-        f" FROM charges WHERE vehicle_id IN ({q}) AND end IS NOT NULL AND start >= ? AND start < ?", (*vids, lo, hi)).fetchone()
-    return {"distance_m": float(d), "net_wh": float(n), "charged_wh": float(a), "trips": nt, "charges": nc,
-            "cost": period_costs(conn, vids, lo, hi, tz, now_ms)}
-
-
 def stats(conn: sqlite3.Connection, vids: list[str], period: str, at: date, tz: tzinfo,
           names: Callable[[str], str] | None = None, now_ms: int | None = None) -> dict:
     """Totals of the closed trips and charges of `vids` in the period containing `at`, against the period before it."""
-    first, after = _span(period, at)
+    first, after = span(period, at)
     lo, hi = period_bounds(period, at, tz)
     plo, phi = period_bounds(period, first - timedelta(days=1), tz)
     q = ",".join("?" * len(vids))
@@ -65,14 +37,14 @@ def stats(conn: sqlite3.Connection, vids: list[str], period: str, at: date, tz: 
     # buckets are days, or months for a year; a trip belongs to the one it started in (local time)
     key = (lambda d: d.replace(day=1)) if period == "year" else (lambda d: d)
     days = [first + timedelta(days=i) for i in range((after - first).days)]
-    sums = {key(d): [0.0, 0.0] for d in days}
+    buckets = {key(d): [0.0, 0.0] for d in days}
     longest = best = None
     recup = gross = 0.0
     for vid, start, dist, net, rec, gr, a, b in conn.execute(
             f"SELECT vehicle_id, start, json_extract(json,'$.distance_m'), json_extract(json,'$.net_wh'), json_extract(json,'$.recup_wh'),"
             f" json_extract(json,'$.gross_wh'), json_extract(json,'$.from'), json_extract(json,'$.to') FROM trips"
             f" WHERE vehicle_id IN ({q}) AND end IS NOT NULL AND start >= ? AND start < ? ORDER BY start", (*vids, lo, hi)):
-        s = sums[key(datetime.fromtimestamp(start / 1000, tz).date())]
+        s = buckets[key(local_date(start, tz))]
         s[0] += dist or 0
         s[1] += net or 0
         recup += rec or 0
@@ -87,10 +59,10 @@ def stats(conn: sqlite3.Connection, vids: list[str], period: str, at: date, tz: 
     places.sort(key=lambda p: (-p["wh"], p["place"] is None, p["place"] or ""))
     return {
         "period": {"start": lo, "end": hi},
-        "totals": _totals(conn, vids, lo, hi, tz, now_ms),
-        "previous": _totals(conn, vids, plo, phi, tz, now_ms),
-        "buckets": [{"start": _midnight_ms(d, tz), "distance_m": m, "net_wh": wh} for d, (m, wh) in sums.items()],
+        "totals": sums(conn, vids, lo, hi, tz, now_ms),
+        "previous": sums(conn, vids, plo, phi, tz, now_ms),
+        "buckets": [{"start": midnight_ms(d, tz), "distance_m": m, "net_wh": wh, "wh_per_100km": wh_per_100km(m, wh)} for d, (m, wh) in buckets.items()],
         "by_place": places,
         "highlights": {"longest": longest, "most_efficient": best[1] if best else None, "recup_wh": recup, "gross_wh": gross},
-        "per_vehicle": [{"id": v, "name": names(v), "totals": _totals(conn, [v], lo, hi, tz, now_ms)} for v in vids] if names else None,
+        "per_vehicle": [{"id": v, "name": names(v), "totals": sums(conn, [v], lo, hi, tz, now_ms)} for v in vids] if names else None,
     }

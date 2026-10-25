@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Callable
 
 from . import route as route_mod
-from .totals import _midnight_ms
+from .periods import midnight_ms
 
 
 def page(conn, vids: list[str], before: int | None, now_ms: int, tz, name: Callable[[str], str],
@@ -24,7 +24,7 @@ def page(conn, vids: list[str], before: int | None, now_ms: int, tz, name: Calla
         # the cut also reaches back to the oldest open row: it belongs on the page whatever the other cars did since
         # shortcut: a long-stuck open row makes the first page long, cap it if that ever happens
         open_starts = [r[0] for _, t in tables for r in conn.execute(f"SELECT start FROM {t} WHERE vehicle_id IN ({marks}) AND end IS NULL", vids)]
-        cut = _midnight_ms(datetime.fromtimestamp(min([newest[:min_items][-1], *open_starts]) / 1000, tz).date(), tz)
+        cut = midnight_ms(datetime.fromtimestamp(min([newest[:min_items][-1], *open_starts]) / 1000, tz).date(), tz)
         cond, args = "start>=?", (cut,)
     else:
         cond, args = "start<? AND end IS NOT NULL", (before,)
@@ -38,7 +38,7 @@ def page(conn, vids: list[str], before: int | None, now_ms: int, tz, name: Calla
         if any(conn.execute(f"SELECT 1 FROM {t} WHERE vehicle_id IN ({marks}) AND start<? LIMIT 1", (*vids, cut)).fetchone() for _, t in tables):
             out["next"] = cut
     else:
-        cut = _midnight_ms(datetime.fromtimestamp(rows[:min_items][-1][0] / 1000, tz).date(), tz)
+        cut = midnight_ms(datetime.fromtimestamp(rows[:min_items][-1][0] / 1000, tz).date(), tz)
     days: dict[str, dict] = {}
     for start, v, kind, row in rows:
         if start < cut:
