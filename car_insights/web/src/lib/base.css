@@ -31,7 +31,7 @@ button, select, input[type="checkbox"] { cursor: pointer; }
 .d-msg { margin: 0; padding: 16px 0; }
 
 /* a labelled input of an edit form */
-.field { display: flex; flex: 1 1 6.5em; flex-direction: column; min-width: 0; }
+.field { display: flex; flex: 1 1 6.5em; flex-direction: column; gap: 4px; min-width: 0; }
 .field.wide { flex-basis: 12em; }
 
 /* detail pages and Statistics */

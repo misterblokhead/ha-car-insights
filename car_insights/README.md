@@ -32,7 +32,7 @@ Costs are computed when shown, so nothing needs recomputing after a price change
 - **Charge locations** (Settings, admins): spots saved from a charge, 100 m radius, renameable and deletable. Each carries its own price (€/kWh, start fee, €/min), used before the default price for its kind. Deleting one sends its charges back to the default price.
 - **Card** (Settings, per vehicle): a markup in % and a start fee per charge.
 - **Fixed costs** (Settings, per vehicle): an amount per month, quarter, year or once, with a start and an optional end.
-- **Charge detail**: shows the cost and what it is based on. Admins can **Set actual amount** (a receipt that replaces the computed cost; it can be cleared again) and **Save as charge location** for a charge at an unsaved spot. A cost from a default price shows as "≈ €...".
+- **Charge detail**: shows the cost and what it is based on. Admins can enter **Total paid** (what the whole charge cost on the receipt, in euros; it replaces the computed cost and can be cleared again) and **Save as charge location** for a charge at an unsaved spot. A cost from a default price shows as "≈ €...".
 - **Trip detail** has a cost row; **Statistics** has a Cost row (total, charging, fixed, EUR/100 km).
 
 Rules: a charge is DC when its average power is above 22 kW, else AC. Charging loss is 1.10 for AC and 1.05 for DC. A trip costs an energy part (net kWh times the kWh-weighted price of the last 30 days' charges, default AC price times 1.10 when there are none; EUR 0 for a downhill trip) plus a fixed part (the last 365 days' fixed costs per km times the distance, shown after 100 km).

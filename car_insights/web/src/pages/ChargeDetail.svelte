@@ -112,7 +112,7 @@
       {#if c.end != null || data.cost.amount != null}<p class="d-note">{chargeBasis(data.cost)}</p>{/if}
       {#if isAdmin}
         <form class="edit" onsubmit={(e) => { e.preventDefault(); setReceipt(Number(receipt), reload); }}>
-          <label class="field">Actual amount (€)<input type="number" min="0" step="0.01" inputmode="decimal" required bind:value={receipt} /></label>
+          <label class="field">Total paid (€)<input type="number" min="0" step="0.01" inputmode="decimal" required bind:value={receipt} /></label>
           <button class="d-btn" type="submit" disabled={saving}>Save</button>
           {#if data.cost.basis === "receipt"}<button class="d-btn" type="button" disabled={saving} onclick={() => setReceipt(null, reload)}>Clear</button>{/if}
         </form>
@@ -127,7 +127,7 @@
               <button class="d-btn" type="button" onclick={() => (spot = null)}>Cancel</button>
             </form>
           {:else}
-            <button class="d-btn" type="button" onclick={() => (spot = { name: "", per_kwh: "", start_fee: "", per_min: "" })}>Save as charge location</button>
+            <div class="edit"><button class="d-btn" type="button" onclick={() => (spot = { name: "", per_kwh: "", start_fee: "", per_min: "" })}>Save as charge location</button></div>
           {/if}
         {/if}
         {#if note}<p class="note" role="alert">{note}</p>{/if}
