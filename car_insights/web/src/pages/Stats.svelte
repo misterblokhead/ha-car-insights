@@ -22,7 +22,7 @@
   let loading = $state(true);
   let seq = 0;
 
-  // switching the period starts at the present again
+  // switching the period starts at the present again; the arrows wait for its data, so a step uses the dates of the period on screen
   const setPeriod = (p) => ((period = p), (at = null));
 
   // the newest request wins; the data on screen stays (dimmed) until the next arrives
@@ -103,11 +103,11 @@
   <div class="seg"><Segmented options={PERIODS} bind:value={() => period, setPeriod} label="Period" /></div>
 
   <div class="nav">
-    <button onclick={() => (at = data.period.prev_at)} disabled={!data} aria-label="Previous {period}">
+    <button onclick={() => (at = data.period.prev_at)} disabled={!data || loading} aria-label="Previous {period}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
     </button>
     <h2 aria-live="polite">{data ? periodLabel(period, data.period.start, data.period.end) : ""}</h2>
-    <button onclick={() => (at = data.period.next_at)} disabled={!data?.period.next_at} aria-label="Next {period}">
+    <button onclick={() => (at = data.period.next_at)} disabled={loading || !data?.period.next_at} aria-label="Next {period}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
     </button>
   </div>
