@@ -33,7 +33,7 @@ Costs are computed when shown, so nothing needs recomputing after a price change
 
 Rules: a charge is DC when its average power is above 22 kW, else AC. Charging loss is 1.10 for AC and 1.05 for DC. A trip costs an energy part (net kWh times the kWh-weighted price of the last 30 days' charges, default AC price times 1.10 when there are none; EUR 0 for a downhill trip) plus a fixed part (the last 365 days' fixed costs per km times the distance, shown after 100 km).
 
-The first start of 0.7.0 rebuilds all trips and charges once (charges gain their GPS point); the log shows `rebuild of N vehicles took ... s`.
+The first start of 0.8.0 migrates the database and rebuilds all trips and charges once; the log shows `rebuild of N vehicles took ... s`. Take a Home Assistant backup before updating: 0.7.0 cannot open the migrated database.
 
 ## Sensors and dashboard
 
