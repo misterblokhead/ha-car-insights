@@ -19,3 +19,6 @@ export function neighbours(days, filter, kind, vid, start) {
 // A fresh first page replaces the loaded days of the same dates; older loaded days stay.
 export const replaceDays = (have, fresh) =>
   [...fresh, ...have.filter((d) => !fresh.some((f) => f.date === d.date))].sort((a, b) => (a.date < b.date ? 1 : -1));
+
+// What a click on a card does: with a detail open the card replaces it (closing stays one step back to the list); from the list it opens normally.
+export const linkAction = ({ detailOpen }) => (detailOpen ? "replace" : "push");

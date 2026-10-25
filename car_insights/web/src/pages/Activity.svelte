@@ -5,7 +5,7 @@
 <script>
   import { untrack } from "svelte";
   import { get } from "../lib/api.js";
-  import { feed, hashOf, load, more, neighbours, refresh, visible } from "../lib/activity.svelte.js";
+  import { feed, hashOf, linkAction, load, more, neighbours, refresh, visible } from "../lib/activity.svelte.js";
   import { dayLabel, daySummary } from "../lib/format.js";
   import { screen } from "../lib/media.svelte.js";
   import ChargeCard from "../lib/ui/ChargeCard.svelte";
@@ -33,14 +33,12 @@
   const around = $derived(detail ? neighbours(feed.days, feed.filter, detail.kind, detail.vid, detail.start) : { prev: null, next: null });
   const isOpen = (item) => detail?.kind === item.kind && detail.vid === item.vehicle_id && detail.start === item.start;
 
-  const followed = (e) => e.button === 0 && !e.defaultPrevented && !(e.metaKey || e.ctrlKey || e.shiftKey);
   // a card clicked while a detail is open replaces it, so closing is still one step back to the list
   const picked = (e) => {
-    const a = followed(e) && listEl?.contains(e.target) && e.target.closest("a[href^='#/']");
-    if (!a) return;
-    if (detail) {
+    if (e.button !== 0 || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    if (linkAction({ detailOpen: !!detail }) === "replace") {
       e.preventDefault();
-      location.replace(a.getAttribute("href"));
+      location.replace(e.currentTarget.getAttribute("href"));
     } else fromList = true;
   };
   // back to the list: one step back when it is the entry before, else replace the detail (a link opened cold)
@@ -106,8 +104,6 @@
   });
 </script>
 
-<svelte:window onclick={picked} />
-
 <div class="split" class:two={screen.split && detail}>
 <div class="page" class:wide={screen.wide}>
   <h1 class="page-title">Activity</h1>
@@ -123,9 +119,9 @@
           {#each day.items as item (`${item.kind}/${item.vehicle_id}/${item.start}`)}
             <li>
               {#if item.kind === "trip"}
-                <TripCard {item} current={isOpen(item)} />
+                <TripCard {item} current={isOpen(item)} onclick={picked} />
               {:else}
-                <ChargeCard {item} current={isOpen(item)} />
+                <ChargeCard {item} current={isOpen(item)} onclick={picked} />
               {/if}
             </li>
           {/each}

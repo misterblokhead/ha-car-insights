@@ -2,7 +2,7 @@
   import { get } from "../lib/api.js";
   import { hashOf } from "../lib/activity.js";
   import { NA, km, kwh, kwhPer100, consumption, delta, dayKey, dayLabel } from "../lib/format.js";
-  import { split } from "../lib/detail.js";
+  import { place, split } from "../lib/detail.js";
   import { eur, per100 as costPer100, uncostedText } from "../lib/costs.js";
   import { bucketLabel, change, periodLabel, places, statsUrl } from "../lib/stats.js";
   import Chart from "../lib/Chart.svelte";
@@ -158,7 +158,7 @@
               {#if hl.longest}
                 <a class="press" href={trip(hl.longest)}>
                   <span class="k">Longest trip</span><span class="v">{km(hl.longest.distance_m)}</span>
-                  <span class="d-note">{hl.longest.from ?? "Unknown"} → {hl.longest.to ?? "Unknown"} · {when(hl.longest.start)}</span>
+                  <span class="d-note">{place(hl.longest.from)} → {place(hl.longest.to)} · {when(hl.longest.start)}</span>
                 </a>
               {:else}
                 <div><span class="k">Longest trip</span><span class="v">{NA}</span></div>

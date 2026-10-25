@@ -1,5 +1,5 @@
 // Pure helpers of the trip and charge detail pages (no runes, so node --test can import them).
-import { NA, kwhPer100, delta, dayKey, dayLabel, time } from "./format.js";
+import { NA, km, duration, kwhPer100, delta, dayKey, dayLabel, time } from "./format.js";
 
 // "12.3 km" -> ["12.3", "km"]; a value without a unit (the missing "–") keeps an empty unit
 export function split(text) {
@@ -39,3 +39,15 @@ export const arrow = (a, b, unit) => (a == null && b == null ? NA : `${a ?? NA} 
 
 // "Today · 14:05 – 14:35", "Thu 22 Oct · 14:05 – now"
 export const rangeLine = (start, end, now = Date.now()) => `${dayLabel(dayKey(start), dayKey(now))} · ${time(start)} – ${end == null ? "now" : time(end)}`;
+
+// a place outside every zone
+export const place = (name) => name ?? "Unknown";
+
+// "Charged at Home"; a charge outside every zone is just "Charged"
+export const chargedAt = (name) => (name ? `Charged at ${name}` : "Charged");
+
+// "~24.1 kWh" for a figure the car did not measure
+export const estimate = (text, estimated) => (estimated ? "~" : "") + text;
+
+// the aria-label of a trip's route outline
+export const routeLabel = (t) => `Route from ${place(t.from)} to ${place(t.to)}, ${km(t.distance_m)}, ${t.end == null ? "still driving" : duration(t.duration_s)}`;

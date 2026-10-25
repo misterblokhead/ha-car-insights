@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { split, durationParts, compare, markerAt, deltaText, kwLabel, arrow, rangeLine } from "./detail.js";
+import { split, durationParts, compare, markerAt, deltaText, kwLabel, arrow, rangeLine, place, chargedAt, estimate, routeLabel } from "./detail.js";
 
 test("split separates the value from its unit", () => {
   assert.deepEqual(split("12.3 km"), ["12.3", "km"]);
@@ -63,4 +63,28 @@ test("rangeLine names the day and says now for an open end", () => {
   const at = new Date(2026, 9, 22, 14, 5).getTime();
   assert.match(rangeLine(at, null, at + 1000), /^Today · .+ – now$/);
   assert.match(rangeLine(at, at + 600000, at + 86400000 * 3), /^Thu 22 Oct · .+ – .+$/);
+});
+
+test("place names an unknown place", () => {
+  assert.equal(place(null), "Unknown");
+  assert.equal(place(undefined), "Unknown");
+  assert.equal(place("Home"), "Home");
+});
+
+test("chargedAt keeps the card and detail title as they were", () => {
+  assert.equal(chargedAt("Work"), "Charged at Work");
+  assert.equal(chargedAt(null), "Charged");
+  assert.equal(chargedAt(""), "Charged");
+});
+
+test("estimate marks a figure that was estimated", () => {
+  assert.equal(estimate("24.1 kWh", true), "~24.1 kWh");
+  assert.equal(estimate("24.1 kWh", false), "24.1 kWh");
+});
+
+test("routeLabel describes the outline for a screen reader", () => {
+  const trip = { from: "Home", to: "Work", distance_m: 26000, end: 5000, duration_s: 2700 };
+  assert.equal(routeLabel(trip), "Route from Home to Work, 26.0 km, 45 min");
+  assert.equal(routeLabel({ ...trip, from: null, to: null }), "Route from Unknown to Unknown, 26.0 km, 45 min");
+  assert.equal(routeLabel({ ...trip, end: null }), "Route from Home to Work, 26.0 km, still driving");
 });

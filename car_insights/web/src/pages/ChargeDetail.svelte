@@ -3,7 +3,7 @@
   import { get, send } from "../lib/api.js";
   import { refresh } from "../lib/activity.svelte.js";
   import { NA, km, kwh, kw } from "../lib/format.js";
-  import { durationParts, kwLabel, rangeLine, split } from "../lib/detail.js";
+  import { chargedAt, durationParts, estimate, kwLabel, rangeLine, split } from "../lib/detail.js";
   import { chargeBasis, costLabel } from "../lib/costs.js";
   import { chargeCharts, chargeSpeed } from "../lib/series.js";
   import Chart from "../lib/Chart.svelte";
@@ -31,7 +31,7 @@
     const at = speed.x.map((_, i) => i).sort((a, b) => speed.x[a] - speed.x[b]);
     return { x: at.map((i) => speed.x[i]), kw: at.map((i) => speed.kw[i]) };
   });
-  const added = $derived(c ? split(`${estimated && c.added_wh != null ? "~" : ""}${kwh(c.added_wh)}`) : [NA, ""]);
+  const added = $derived(c ? split(estimate(kwh(c.added_wh), estimated && c.added_wh != null)) : [NA, ""]);
   const fig = (label, [value, unit]) => ({ label, value, unit });
   const figures = $derived(
     c
@@ -92,7 +92,7 @@
 <article class="d-stack" style="--accent: var(--charge-text)">
   <header>
     <h1 class="d-title" tabindex="-1" bind:this={title}>
-      {#if c}{c.place ? `Charged at ${c.place}` : "Charged"}{:else if error?.status === 404}Not available{:else if error}Couldn't load this charge{:else}Charge{/if}
+      {#if c}{chargedAt(c.place)}{:else if error?.status === 404}Not available{:else if error}Couldn't load this charge{:else}Charge{/if}
     </h1>
     {#if c}
       <p class="d-sub">{rangeLine(c.start, c.end)}</p>

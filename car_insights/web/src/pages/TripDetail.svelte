@@ -1,9 +1,9 @@
 <script>
   import { onMount, tick } from "svelte";
   import { get } from "../lib/api.js";
-  import { NA, km, kwh, kwhPer100, duration } from "../lib/format.js";
+  import { NA, km, kwh, kwhPer100 } from "../lib/format.js";
   import { eur, tripCostLine } from "../lib/costs.js";
-  import { arrow, compare, deltaText, durationParts, markerAt, rangeLine, split } from "../lib/detail.js";
+  import { arrow, compare, deltaText, durationParts, markerAt, place, rangeLine, routeLabel, split } from "../lib/detail.js";
   import { consumptionBuckets, tripCharts } from "../lib/series.js";
   import Chart from "../lib/Chart.svelte";
   import Figure from "../lib/ui/Figure.svelte";
@@ -16,7 +16,7 @@
   let routeWidth = $state(0);
 
   const t = $derived(data?.trip);
-  const from = $derived(t?.from ?? "Unknown"), to = $derived(t?.to ?? "Unknown");
+  const from = $derived(place(t?.from)), to = $derived(place(t?.to));
   const buckets = $derived(data ? consumptionBuckets(data.series, 0.5) : null);
   const speed = $derived(data ? tripCharts(data.series)?.speed : null);
   const avg = $derived(t && t.avg_speed_mps != null ? t.avg_speed_mps * 3.6 : null);
@@ -85,7 +85,7 @@
       <div class="d-card route" bind:clientWidth={routeWidth}>
         {#if routeWidth}
           <RouteOutline points={data.route} width={routeWidth - 28} height={120}
-            label="Route from {from} to {to}, {km(t.distance_m)}, {t.end == null ? "still driving" : duration(t.duration_s)}" />
+            label={routeLabel(t)} />
         {/if}
       </div>
     {/if}
