@@ -16,7 +16,8 @@ export function backdrop(points, width, height, pad = 8) {
     xy = points.map(([lat, lon]) => project(lat, lon, z));
     const xs = xy.map((p) => p[0]), ys = xy.map((p) => p[1]);
     if (z === 0 || (Math.max(...xs) - Math.min(...xs) <= w && Math.max(...ys) - Math.min(...ys) <= h)) {
-      const ox = (Math.max(...xs) + Math.min(...xs)) / 2 - width / 2, oy = (Math.max(...ys) + Math.min(...ys)) / 2 - height / 2;
+      // whole pixels, so the tiles meet without hairline seams (the points share the origin, so they stay aligned)
+      const ox = Math.round((Math.max(...xs) + Math.min(...xs)) / 2 - width / 2), oy = Math.round((Math.max(...ys) + Math.min(...ys)) / 2 - height / 2);
       const tiles = [];
       for (let x = Math.floor(ox / TILE); x <= Math.floor((ox + width - 1) / TILE); x++)
         for (let y = Math.floor(oy / TILE); y <= Math.floor((oy + height - 1) / TILE); y++)

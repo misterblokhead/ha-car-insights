@@ -1,15 +1,14 @@
 <script>
   import { NA, km, kwh, kwhPer100 } from "../lib/format.js";
   import { eur, tripCostLine } from "../lib/costs.js";
-  import { arrow, compare, deltaText, durationParts, fig, markerAt, rangeLine, routeLabel, split, temp, tripTitle } from "../lib/detail.js";
+  import { arrow, compare, deltaText, durationParts, fig, markerAt, rangeLine, split, temp, tripTitle } from "../lib/detail.js";
   import { consumptionBuckets, tripCharts } from "../lib/series.js";
   import Chart from "../lib/Chart.svelte";
   import DetailPage from "../lib/ui/DetailPage.svelte";
   import Figure from "../lib/ui/Figure.svelte";
-  import RouteOutline from "../lib/ui/RouteOutline.svelte";
+  import MapView from "../lib/ui/MapView.svelte";
 
   let { vid, start } = $props();
-  let routeWidth = $state(0);
 
   // numbers for the "a → b" lines; null when unknown
   const wh = (v) => (v == null ? null : (v / 1000).toFixed(2));
@@ -43,13 +42,11 @@
         ].filter((r) => r.m)
       : []}
     {#if data.route?.length >= 2}
-      <!-- the box is measured, then the outline is fitted to it -->
-      <div class="d-card route" bind:clientWidth={routeWidth}>
-        {#if routeWidth}
-          <RouteOutline points={data.route} width={routeWidth - 28} height={120}
-            label={routeLabel(t)} />
-        {/if}
-      </div>
+      {@const [a, z] = [data.route[0], data.route.at(-1)]}
+      <MapView
+        lines={[{ points: data.route, kind: "trip" }]}
+        dots={[{ lat: a[0], lon: a[1], kind: "trip", role: "start" }, { lat: z[0], lon: z[1], kind: "trip", role: "end" }]}
+        height={240} />
     {/if}
 
     <div class="d-figs">
@@ -124,7 +121,6 @@
 </DetailPage>
 
 <style>
-  .route { display: grid; place-items: center; min-height: 148px; }
   .cmp { margin-top: 14px; }
   .line { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 12px; margin-bottom: 10px; }
   .line b { font-weight: 600; color: var(--muted); white-space: nowrap; }

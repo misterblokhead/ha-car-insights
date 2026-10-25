@@ -30,8 +30,8 @@ test("backdrop fits the route inside the padded box at the largest zoom that fit
 test("backdrop keeps north up and the route centred", () => {
   const b = backdrop([[52, 5], [52.01, 5]], 120, 84);
   assert.ok(b.points[1][1] < b.points[0][1]);
-  near((b.points[0][0] + b.points[1][0]) / 2, 60, 1e-6);
-  near((b.points[0][1] + b.points[1][1]) / 2, 42, 1e-6);
+  near((b.points[0][0] + b.points[1][0]) / 2, 60, 0.5); // the origin is rounded to a whole pixel
+  near((b.points[0][1] + b.points[1][1]) / 2, 42, 0.5);
 });
 
 test("backdrop tiles cover the box with offsets in box pixels", () => {
@@ -40,6 +40,7 @@ test("backdrop tiles cover the box with offsets in box pixels", () => {
   assert.ok(Math.min(...xs) <= 0 && Math.max(...xs) + 256 >= 120);
   assert.ok(Math.min(...ys) <= 0 && Math.max(...ys) + 256 >= 84);
   assert.ok(b.tiles.every((t) => t.z === b.z));
+  assert.ok(b.tiles.every((t) => Number.isInteger(t.left) && Number.isInteger(t.top))); // whole pixels, so no hairline seams
 });
 
 test("a route across a tile boundary needs two tiles side by side", () => {
@@ -56,10 +57,11 @@ test("a route across a tile boundary needs two tiles side by side", () => {
 test("a one-point route sits at the centre of the deepest zoom", () => {
   const b = backdrop([[52, 5]], 120, 84);
   assert.equal(b.z, 17);
-  assert.deepEqual(b.points, [[60, 42]]);
+  near(b.points[0][0], 60, 0.5); near(b.points[0][1], 42, 0.5);
   const same = backdrop([[52, 5], [52, 5]], 120, 84);
   assert.equal(same.z, 17);
-  assert.deepEqual(same.points, [[60, 42], [60, 42]]);
+  assert.deepEqual(same.points[0], same.points[1]);
+  near(same.points[0][0], 60, 0.5); near(same.points[0][1], 42, 0.5);
 });
 
 test("no tiles above or below the world", () => {
