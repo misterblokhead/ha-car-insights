@@ -60,13 +60,9 @@ def put(conn, table, vid, start, end, extra=None):
     conn.execute(f"INSERT INTO {table} VALUES(?,?,?,?,?)", (vid, start, end, ALGO, json.dumps({"start": start, "end": end, **(extra or {})})))
 
 
-def starts(r):
-    return [(i["vehicle_id"], i["start"]) for i in r.json()["items"]]
-
-
 def test_non_ingress_address_forbidden(conn):
     c, _ = client(conn, host="172.30.33.5")
-    for path in ("/api/ui/me", "/api/ui/views", "/api/ui/overview?view=v:car1", "/api/ui/trips?view=v:car1", "/api/ui/settings"):
+    for path in ("/api/ui/me", "/api/ui/views", "/api/ui/overview?view=v:car1", "/api/ui/activity?view=v:car1", "/api/ui/settings"):
         assert c.get(path, headers=ADMIN).status_code == 403
     assert c.post("/api/ui/groups", json={"name": "x"}, headers=ADMIN).status_code == 403
     assert conn.execute("SELECT COUNT(*) FROM seen_users").fetchone()[0] == 0  # a rejected request is not recorded
@@ -100,7 +96,7 @@ def test_hidden_vehicle_trip_is_404_like_missing(conn):
     # the same for charges, lists and views
     put(conn, "charges", "car3", 1000, 2000)
     assert c.get("/api/ui/charges/car3/1000", headers=VIEWER).content == hidden.content
-    for path in ("/api/ui/trips?view=v:car3", "/api/ui/overview?view=v:car3", "/api/ui/charges?view=v:nope", "/api/ui/trips?view=x"):
+    for path in ("/api/ui/activity?view=v:car3", "/api/ui/overview?view=v:car3", "/api/ui/activity?view=v:nope", "/api/ui/activity?view=x"):
         r = c.get(path, headers=VIEWER)
         assert (r.status_code, r.content) == (404, hidden.content)
 
@@ -149,50 +145,6 @@ def test_charge_outside_temp_non_number_is_null(conn):
     assert c.get("/api/ui/charges/car1/1000", headers=VIEWER).json()["outside_temp_c"] is None
 
 
-def test_group_view_merges_lists_newest_first(conn):
-    gid = access.create_group(conn, "Fleet")
-    access.set_vehicle(conn, "car1", gid, ["u-viewer"])
-    access.set_vehicle(conn, "car2", gid, ["u-viewer"])
-    put(conn, "trips", "car1", 1000, 1500, {"distance_m": 5.0})
-    put(conn, "trips", "car2", 3000, 3500)
-    put(conn, "trips", "car1", 2000, 2500)
-    put(conn, "trips", "car3", 9000, 9500)
-    c, _ = client(conn)
-    r = c.get(f"/api/ui/trips?view=g:{gid}", headers=VIEWER)
-    assert starts(r) == [("car2", 3000), ("car1", 2000), ("car1", 1000)]
-    assert r.json()["items"][0]["vehicle_name"] == "Car Two" and r.json()["items"][2]["distance_m"] == 5.0
-    assert r.json()["next"] is None
-    assert starts(c.get("/api/ui/trips?view=v:car2", headers=VIEWER)) == [("car2", 3000)]
-
-
-def test_open_trip_first_on_first_page_only(conn):
-    put(conn, "trips", "car1", 1000, 2000)
-    put(conn, "trips", "car1", 3000, 4000)
-    put(conn, "trips", "car2", 500, None)  # open and older than the closed ones
-    put(conn, "charges", "car1", 100, None)
-    gid = access.create_group(conn, "Fleet")
-    access.set_vehicle(conn, "car1", gid, ["u-viewer"])
-    access.set_vehicle(conn, "car2", gid, ["u-viewer"])
-    c, _ = client(conn)
-    first = c.get(f"/api/ui/trips?view=g:{gid}&limit=2", headers=VIEWER)
-    assert starts(first) == [("car2", 500), ("car1", 3000), ("car1", 1000)] and first.json()["next"] == 1000
-    assert starts(c.get(f"/api/ui/trips?view=g:{gid}&before=3001", headers=VIEWER)) == [("car1", 3000), ("car1", 1000)]
-    assert starts(c.get("/api/ui/charges?view=v:car1", headers=VIEWER)) == [("car1", 100)]
-
-
-def test_paging_next_and_before(conn):
-    for i in range(1, 6):
-        put(conn, "trips", "car1", i * 1000, i * 1000 + 10)
-    c, _ = client(conn)
-    p1 = c.get("/api/ui/trips?view=v:car1&limit=2", headers=VIEWER).json()
-    assert [i["start"] for i in p1["items"]] == [5000, 4000] and p1["next"] == 4000
-    p2 = c.get(f"/api/ui/trips?view=v:car1&limit=2&before={p1['next']}", headers=VIEWER).json()
-    assert [i["start"] for i in p2["items"]] == [3000, 2000] and p2["next"] == 2000
-    p3 = c.get(f"/api/ui/trips?view=v:car1&limit=2&before={p2['next']}", headers=VIEWER).json()
-    assert [i["start"] for i in p3["items"]] == [1000] and p3["next"] is None
-    assert len(c.get("/api/ui/trips?view=v:car1&limit=0", headers=VIEWER).json()["items"]) == 1  # clamped to 1..200
-
-
 def test_overview_status_and_soc(conn):
     db.ingest(conn, "car1", "src", [s(NOW - 5000, "battery_wh", 46_550), s(NOW - 4000, "range_m", 250_000.0),
                                     s(NOW - 3000, "gps", [52.0, 5.0, 3.0]), s(NOW + 99_000, "battery_wh", 1.0)], NOW)
@@ -204,7 +156,6 @@ def test_overview_status_and_soc(conn):
     r = c.get("/api/ui/overview?view=v:car1", headers=VIEWER).json()
     assert r["vehicles"] == [{"id": "car1", "name": "Car One", "status": "driving", "battery_wh": 46_550, "soc_percent": 81.7,
                               "range_m": 250_000.0, "position": {"lat": 52.0, "lon": 5.0, "place": "Home"}, "updated": NOW - 3000}]
-    assert r["totals"]["year"]["trips"] == 0  # the closed trip is long before this year
     two = c.get("/api/ui/overview?view=v:car2", headers=VIEWER).json()["vehicles"][0]
     assert (two["status"], two["soc_percent"], two["position"]) == ("charging", 50.0, None)
 
@@ -276,20 +227,19 @@ def test_static_index_served_and_ingest_still_works(conn, tmp_path):
 def test_guard_runs_before_validation(conn):
     other, _ = client(conn, host="172.30.33.5")
     for r in (other.post("/api/ui/groups", json={}, headers=ADMIN), other.post("/api/ui/groups", content=b"not json", headers=ADMIN),
-              other.get("/api/ui/trips?view=v:car1&before=abc", headers=ADMIN), other.get("/api/ui/trips/car1/abc", headers=ADMIN),
+              other.get("/api/ui/activity?view=v:car1&before=abc", headers=ADMIN), other.get("/api/ui/trips/car1/abc", headers=ADMIN),
               other.put("/api/ui/vehicles/car1", json={"viewers": 5}, headers=ADMIN)):
         assert r.status_code == 403
     c, _ = client(conn)  # ingress address but no user
-    for r in (c.get("/api/ui/trips?view=v:car1&before=abc"), c.post("/api/ui/groups", json={}), c.get("/api/ui/trips/car1/abc")):
+    for r in (c.get("/api/ui/activity?view=v:car1&before=abc"), c.post("/api/ui/groups", json={}), c.get("/api/ui/trips/car1/abc")):
         assert r.status_code == 403
 
 
 def test_huge_integers_are_422_not_500(conn):
     c, _ = client(conn)
-    for path in ("/api/ui/trips?view=v:car1&before=99999999999999999999", "/api/ui/charges?view=v:car1&before=-1",
+    for path in ("/api/ui/activity?view=v:car1&before=99999999999999999999", "/api/ui/activity?view=v:car1&before=-1",
                  "/api/ui/trips/car1/99999999999999999999", "/api/ui/charges/car1/-1"):
         assert c.get(path, headers=VIEWER).status_code == 422
-    assert c.get("/api/ui/trips?view=v:car1&limit=99999999999999999999", headers=VIEWER).status_code == 200  # clamped
 
 
 def test_forged_groups_header_grants_nothing(conn):

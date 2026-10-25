@@ -183,9 +183,9 @@ def ingest(conn, vehicle_id: str, source_id: str, samples: Sequence[Sample], rec
         if metas:
             m = max(metas, key=lambda s: s.t)
             conn.execute(
-                "INSERT INTO vehicles(vehicle_id, name, meta_json) VALUES(?,?,?) "
-                "ON CONFLICT(vehicle_id) DO UPDATE SET name=excluded.name, meta_json=excluded.meta_json",
-                (vid, m.v.get("vehicle_name"), json_dumps(m.v)),
+                "INSERT INTO vehicles(vehicle_id, meta_json) VALUES(?,?) "
+                "ON CONFLICT(vehicle_id) DO UPDATE SET meta_json=excluded.meta_json",
+                (vid, json_dumps(m.v)),
             )
         acked = acked_seq(conn, vid, sid)
         # the sender never sends a seq while holding a lower unacked one, so everything below the batch is resolved

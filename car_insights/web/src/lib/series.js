@@ -12,7 +12,6 @@ export function tripCharts(s) {
     return series.every((x) => empty(x.values)) ? null : { x: col("km"), series };
   };
   return {
-    consumption: chart([["Net kWh", "net_kwh"], ["Gross kWh", "gross_kwh"], ["Recuperated kWh", "recup_kwh"]]),
     speed: chart([["Speed km/h", "speed_kmh"]]),
   };
 }

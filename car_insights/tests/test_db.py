@@ -54,13 +54,13 @@ def test_new_source_starts_fresh(conn):
 def test_meta_updates_vehicle(conn):
     ingest(conn, "car1", S, [Sample(1, 0, "meta", {"vehicle_name": "Test car", "props": [{"id": 1}]})], 0)
     v = vehicle(conn, "car1")
-    assert v["name"] == "Test car" and v["meta"]["props"] == [{"id": 1}]
+    assert v["meta"]["vehicle_name"] == "Test car" and v["meta"]["props"] == [{"id": 1}]
     assert vehicle(conn, "nope") is None
 
 
 def test_newest_meta_wins(conn):
     ingest(conn, "car1", S, [Sample(1, 9, "meta", {"vehicle_name": "New"}), Sample(2, 3, "meta", {"vehicle_name": "Old"})], 0)
-    assert vehicle(conn, "car1")["name"] == "New"
+    assert vehicle(conn, "car1")["meta"]["vehicle_name"] == "New"
 
 
 def test_ack_persists(tmp_path):

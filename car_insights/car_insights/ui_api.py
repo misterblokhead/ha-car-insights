@@ -12,9 +12,7 @@ from . import access, activity, costs, db, prices, stats
 from .access import Viewer
 from .derive import Deriver, Zones
 from .protocol import fix, num
-from .totals import totals
 
-MAX_LIMIT = 200
 EpochMs = Annotated[int, Query(ge=0, lt=2**62)]  # sqlite integers are 64-bit: anything larger would be a 500, not a 422
 StartMs = Annotated[int, Path(ge=0, lt=2**62)]
 
@@ -143,18 +141,6 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
                                     (vid, now)).fetchone()[0],
         }
 
-    def page(table: str, vids: list[str], before: int | None, limit: int) -> dict:
-        """Newest first; open rows lead the first page only and do not count against the limit."""
-        marks, limit = ",".join("?" * len(vids)), max(1, min(limit, MAX_LIMIT))
-        def rows(cond: str, args: tuple, n: int = -1) -> list[dict]:
-            return [{**json.loads(j), "vehicle_id": v, "vehicle_name": db.device_info(conn, v)[0]} for v, j in conn.execute(
-                f"SELECT vehicle_id, json FROM {table} WHERE vehicle_id IN ({marks}) AND {cond} ORDER BY start DESC, vehicle_id LIMIT ?",
-                (*vids, *args, n))]
-        # shortcut: two vehicles starting in the same millisecond may straddle a page boundary and one is skipped, add a tiebreak cursor if that shows
-        closed = rows("end IS NOT NULL AND start<?", (2 ** 62 if before is None else before,), limit)
-        return {"items": ([] if before is not None else rows("end IS NULL", ())) + closed,
-                "next": closed[-1]["start"] if len(closed) == limit else None}
-
     def detail(table: str, series: Callable[[str, int], dict | None], viewer: Viewer, vid: str, start: int) -> tuple[dict, dict | None]:
         visible(viewer, vid)
         row = conn.execute(f"SELECT json FROM {table} WHERE vehicle_id=? AND start=?", (vid, start)).fetchone()
@@ -174,15 +160,7 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
     @r.get("/overview")
     async def overview(request: Request, view: str = ""):
         vids, now = vids_of(await who(request), view), now_ms()
-        return {"vehicles": [vehicle_card(v, now) for v in vids], "totals": totals(conn, vids, now, tz)}
-
-    @r.get("/trips")
-    async def trips(request: Request, view: str = "", before: EpochMs | None = None, limit: int = 50):
-        return page("trips", vids_of(await who(request), view), before, limit)
-
-    @r.get("/charges")
-    async def charges(request: Request, view: str = "", before: EpochMs | None = None, limit: int = 50):
-        return page("charges", vids_of(await who(request), view), before, limit)
+        return {"vehicles": [vehicle_card(v, now) for v in vids]}
 
     @r.get("/activity")
     async def get_activity(request: Request, view: str = "", before: EpochMs | None = None):

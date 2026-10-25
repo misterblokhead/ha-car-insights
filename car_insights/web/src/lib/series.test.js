@@ -11,15 +11,12 @@ test("tripCharts null on empty", () => {
 
 test("tripCharts maps cols", () => {
   const c = tripCharts({ cols, rows: [[0, 0, 0, 0, 0, 10], [1000, 1.5, 0.2, 0.3, 0.1, 50]] });
-  assert.deepEqual(c.consumption.x, [0, 1.5]);
-  assert.deepEqual(c.consumption.series.map((s) => s.values), [[0, 0.2], [0, 0.3], [0, 0.1]]);
   assert.deepEqual(c.speed.series[0].values, [10, 50]);
 });
 
 test("tripCharts all-null chart is null", () => {
   const c = tripCharts({ cols, rows: [[0, 0, 0, 0, 0, null], [1000, 1, 0.1, 0.1, 0, null]] });
   assert.equal(c.speed, null);
-  assert.ok(c.consumption);
 });
 
 test("chargeCharts cloud-only gives car null", () => {
