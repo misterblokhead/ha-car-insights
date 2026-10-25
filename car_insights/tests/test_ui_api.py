@@ -9,9 +9,8 @@ from fastapi.testclient import TestClient
 from car_insights import access, db, prices, ui_api
 from car_insights.api import create_app
 from car_insights.db import connect, json_dumps
-from car_insights.derive import ALGO, Deriver
 from car_insights.ha_users import AdminCache
-from conftest import s
+from conftest import s, seed_charge, seed_trip
 
 TZ = ZoneInfo("Europe/Amsterdam")
 NOW = int(datetime(2026, 10, 23, 12, tzinfo=TZ).timestamp() * 1000)
@@ -39,7 +38,7 @@ def build(conn, **kw):
     zones = lambda lat, lon: "Home"
     cap = lambda vid: CAP.get(vid, 60_000.0)
     calls = []
-    router = ui_api.router(conn, Deriver(conn, zones, cap), zones, TZ, cap, is_admin, lambda: calls.append(1), now_ms=lambda: NOW,
+    router = ui_api.router(conn, zones, TZ, cap, is_admin, lambda: calls.append(1), now_ms=lambda: NOW,
                            on_costs=lambda vids: calls.append(vids), **kw)  # on_settings appends 1, on_costs its argument
     return create_app(conn, "t" * 64, lambda *a: None, lambda: NOW, ui=router), calls
 
@@ -47,7 +46,7 @@ def build(conn, **kw):
 def build_with(conn, admins):
     zones = lambda lat, lon: "Home"
     cap = lambda vid: 60_000.0
-    router = ui_api.router(conn, Deriver(conn, zones, cap), zones, TZ, cap, admins.is_admin, now_ms=lambda: NOW)
+    router = ui_api.router(conn, zones, TZ, cap, admins.is_admin, now_ms=lambda: NOW)
     return create_app(conn, "t" * 64, lambda *a: None, lambda: NOW, ui=router), None
 
 
@@ -57,16 +56,12 @@ def client(conn, host="172.30.32.2", **kw):
 
 
 def put(conn, table, vid, start, end, extra=None):
-    conn.execute(f"INSERT INTO {table} VALUES(?,?,?,?,?)", (vid, start, end, ALGO, json.dumps({"start": start, "end": end, **(extra or {})})))
-
-
-def starts(r):
-    return [(i["vehicle_id"], i["start"]) for i in r.json()["items"]]
+    (seed_trip if table == "trips" else seed_charge)(conn, vid, start, end, **(extra or {}))
 
 
 def test_non_ingress_address_forbidden(conn):
     c, _ = client(conn, host="172.30.33.5")
-    for path in ("/api/ui/me", "/api/ui/views", "/api/ui/overview?view=v:car1", "/api/ui/trips?view=v:car1", "/api/ui/settings"):
+    for path in ("/api/ui/me", "/api/ui/views", "/api/ui/overview?view=v:car1", "/api/ui/activity?view=v:car1", "/api/ui/settings"):
         assert c.get(path, headers=ADMIN).status_code == 403
     assert c.post("/api/ui/groups", json={"name": "x"}, headers=ADMIN).status_code == 403
     assert conn.execute("SELECT COUNT(*) FROM seen_users").fetchone()[0] == 0  # a rejected request is not recorded
@@ -100,29 +95,27 @@ def test_hidden_vehicle_trip_is_404_like_missing(conn):
     # the same for charges, lists and views
     put(conn, "charges", "car3", 1000, 2000)
     assert c.get("/api/ui/charges/car3/1000", headers=VIEWER).content == hidden.content
-    for path in ("/api/ui/trips?view=v:car3", "/api/ui/overview?view=v:car3", "/api/ui/charges?view=v:nope", "/api/ui/trips?view=x"):
+    for path in ("/api/ui/activity?view=v:car3", "/api/ui/overview?view=v:car3", "/api/ui/activity?view=v:nope", "/api/ui/activity?view=x"):
         r = c.get(path, headers=VIEWER)
         assert (r.status_code, r.content) == (404, hidden.content)
 
 
 def test_detail_has_series_and_capacity(conn):
-    put(conn, "trips", "car1", 1000, 2000)
-    put(conn, "charges", "car1", 1000, 2000)
-    conn.execute("INSERT INTO charge_series VALUES('car1',1000,?)", (json.dumps({"t": [1, 2]}),))
+    row = seed_trip(conn, "car1", 1000, 2000)
+    charge = seed_charge(conn, "car1", 1000, 2000, series={"t": [1, 2]})
     c, _ = client(conn)
     t = c.get("/api/ui/trips/car1/1000", headers=VIEWER).json()
-    assert t == {"trip": {"start": 1000, "end": 2000}, "cost": {"energy": None, "fixed": None, "total": None}, "series": None, "route": None, "similar": None, "capacity_wh": CAP["car1"]}
+    assert t == {"trip": row | {"start_pct": None, "end_pct": None, "wh_per_100km": None}, "cost": {"energy": None, "fixed": None, "total": None}, "series": None, "route": None, "similar": None}
     ch = c.get("/api/ui/charges/car1/1000", headers=VIEWER).json()
     cost = ch.pop("cost")
     assert cost["amount"] is None and cost["basis"] is None  # no tariff set: not computable, never 0
-    assert ch == {"charge": {"start": 1000, "end": 2000}, "series": {"t": [1, 2]}, "capacity_wh": CAP["car1"], "outside_temp_c": None}
+    assert ch == {"charge": charge | {"start_pct": None, "end_pct": None}, "series": {"t": [1, 2]}, "capacity_wh": CAP["car1"], "outside_temp_c": None}
 
 
 def test_trip_detail_route_and_similar(conn):
     put(conn, "trips", "car1", 500, 900, {"from": "Home", "to": "Work", "duration_s": 60, "distance_m": 1000, "net_wh": 100})
-    put(conn, "trips", "car1", 1000, 2000, {"from": "Home", "to": "Work"})
     pts = [[52.0 + i / 1000, 5.0] for i in range(300)]
-    conn.execute("INSERT INTO trip_routes VALUES('car1',1000,?,?)", (ALGO, json.dumps(pts)))
+    seed_trip(conn, "car1", 1000, 2000, route=pts, **{"from": "Home", "to": "Work"})
     c, _ = client(conn)
     t = c.get("/api/ui/trips/car1/1000", headers=VIEWER).json()
     assert t["route"] == pts and len(t["route"]) == 300
@@ -149,50 +142,6 @@ def test_charge_outside_temp_non_number_is_null(conn):
     assert c.get("/api/ui/charges/car1/1000", headers=VIEWER).json()["outside_temp_c"] is None
 
 
-def test_group_view_merges_lists_newest_first(conn):
-    gid = access.create_group(conn, "Fleet")
-    access.set_vehicle(conn, "car1", gid, ["u-viewer"])
-    access.set_vehicle(conn, "car2", gid, ["u-viewer"])
-    put(conn, "trips", "car1", 1000, 1500, {"distance_m": 5.0})
-    put(conn, "trips", "car2", 3000, 3500)
-    put(conn, "trips", "car1", 2000, 2500)
-    put(conn, "trips", "car3", 9000, 9500)
-    c, _ = client(conn)
-    r = c.get(f"/api/ui/trips?view=g:{gid}", headers=VIEWER)
-    assert starts(r) == [("car2", 3000), ("car1", 2000), ("car1", 1000)]
-    assert r.json()["items"][0]["vehicle_name"] == "Car Two" and r.json()["items"][2]["distance_m"] == 5.0
-    assert r.json()["next"] is None
-    assert starts(c.get("/api/ui/trips?view=v:car2", headers=VIEWER)) == [("car2", 3000)]
-
-
-def test_open_trip_first_on_first_page_only(conn):
-    put(conn, "trips", "car1", 1000, 2000)
-    put(conn, "trips", "car1", 3000, 4000)
-    put(conn, "trips", "car2", 500, None)  # open and older than the closed ones
-    put(conn, "charges", "car1", 100, None)
-    gid = access.create_group(conn, "Fleet")
-    access.set_vehicle(conn, "car1", gid, ["u-viewer"])
-    access.set_vehicle(conn, "car2", gid, ["u-viewer"])
-    c, _ = client(conn)
-    first = c.get(f"/api/ui/trips?view=g:{gid}&limit=2", headers=VIEWER)
-    assert starts(first) == [("car2", 500), ("car1", 3000), ("car1", 1000)] and first.json()["next"] == 1000
-    assert starts(c.get(f"/api/ui/trips?view=g:{gid}&before=3001", headers=VIEWER)) == [("car1", 3000), ("car1", 1000)]
-    assert starts(c.get("/api/ui/charges?view=v:car1", headers=VIEWER)) == [("car1", 100)]
-
-
-def test_paging_next_and_before(conn):
-    for i in range(1, 6):
-        put(conn, "trips", "car1", i * 1000, i * 1000 + 10)
-    c, _ = client(conn)
-    p1 = c.get("/api/ui/trips?view=v:car1&limit=2", headers=VIEWER).json()
-    assert [i["start"] for i in p1["items"]] == [5000, 4000] and p1["next"] == 4000
-    p2 = c.get(f"/api/ui/trips?view=v:car1&limit=2&before={p1['next']}", headers=VIEWER).json()
-    assert [i["start"] for i in p2["items"]] == [3000, 2000] and p2["next"] == 2000
-    p3 = c.get(f"/api/ui/trips?view=v:car1&limit=2&before={p2['next']}", headers=VIEWER).json()
-    assert [i["start"] for i in p3["items"]] == [1000] and p3["next"] is None
-    assert len(c.get("/api/ui/trips?view=v:car1&limit=0", headers=VIEWER).json()["items"]) == 1  # clamped to 1..200
-
-
 def test_overview_status_and_soc(conn):
     db.ingest(conn, "car1", "src", [s(NOW - 5000, "battery_wh", 46_550), s(NOW - 4000, "range_m", 250_000.0),
                                     s(NOW - 3000, "gps", [52.0, 5.0, 3.0]), s(NOW + 99_000, "battery_wh", 1.0)], NOW)
@@ -204,7 +153,6 @@ def test_overview_status_and_soc(conn):
     r = c.get("/api/ui/overview?view=v:car1", headers=VIEWER).json()
     assert r["vehicles"] == [{"id": "car1", "name": "Car One", "status": "driving", "battery_wh": 46_550, "soc_percent": 81.7,
                               "range_m": 250_000.0, "position": {"lat": 52.0, "lon": 5.0, "place": "Home"}, "updated": NOW - 3000}]
-    assert r["totals"]["year"]["trips"] == 0  # the closed trip is long before this year
     two = c.get("/api/ui/overview?view=v:car2", headers=VIEWER).json()["vehicles"][0]
     assert (two["status"], two["soc_percent"], two["position"]) == ("charging", 50.0, None)
 
@@ -260,7 +208,7 @@ def test_bad_group_name_400(conn):
 
 def test_static_index_served_and_ingest_still_works(conn, tmp_path):
     (tmp_path / "index.html").write_text("<h1>cars</h1>")
-    router = ui_api.router(conn, Deriver(conn, lambda a, b: None), lambda a, b: None, TZ, lambda v: 1.0, is_admin, now_ms=lambda: NOW)
+    router = ui_api.router(conn, lambda a, b: None, TZ, lambda v: 1.0, is_admin, now_ms=lambda: NOW)
     c = TestClient(create_app(conn, "t" * 64, lambda *a: None, lambda: NOW, ui=router, web_dir=tmp_path), client=("172.30.32.2", 50000))
     assert c.get("/").text == "<h1>cars</h1>"
     assert c.get("/health").json() == {"ok": True}
@@ -276,20 +224,19 @@ def test_static_index_served_and_ingest_still_works(conn, tmp_path):
 def test_guard_runs_before_validation(conn):
     other, _ = client(conn, host="172.30.33.5")
     for r in (other.post("/api/ui/groups", json={}, headers=ADMIN), other.post("/api/ui/groups", content=b"not json", headers=ADMIN),
-              other.get("/api/ui/trips?view=v:car1&before=abc", headers=ADMIN), other.get("/api/ui/trips/car1/abc", headers=ADMIN),
+              other.get("/api/ui/activity?view=v:car1&before=abc", headers=ADMIN), other.get("/api/ui/trips/car1/abc", headers=ADMIN),
               other.put("/api/ui/vehicles/car1", json={"viewers": 5}, headers=ADMIN)):
         assert r.status_code == 403
     c, _ = client(conn)  # ingress address but no user
-    for r in (c.get("/api/ui/trips?view=v:car1&before=abc"), c.post("/api/ui/groups", json={}), c.get("/api/ui/trips/car1/abc")):
+    for r in (c.get("/api/ui/activity?view=v:car1&before=abc"), c.post("/api/ui/groups", json={}), c.get("/api/ui/trips/car1/abc")):
         assert r.status_code == 403
 
 
 def test_huge_integers_are_422_not_500(conn):
     c, _ = client(conn)
-    for path in ("/api/ui/trips?view=v:car1&before=99999999999999999999", "/api/ui/charges?view=v:car1&before=-1",
+    for path in ("/api/ui/activity?view=v:car1&before=99999999999999999999", "/api/ui/activity?view=v:car1&before=-1",
                  "/api/ui/trips/car1/99999999999999999999", "/api/ui/charges/car1/-1"):
         assert c.get(path, headers=VIEWER).status_code == 422
-    assert c.get("/api/ui/trips?view=v:car1&limit=99999999999999999999", headers=VIEWER).status_code == 200  # clamped
 
 
 def test_forged_groups_header_grants_nothing(conn):
@@ -337,7 +284,7 @@ def test_activity_visibility(conn):
     assert c.get("/api/ui/activity?view=v:car3", headers=VIEWER).status_code == 404
     assert c.get(f"/api/ui/activity?view=g:{gid}", headers=VIEWER).status_code == 404  # a partly hidden group is not listed
     r = c.get("/api/ui/activity?view=v:car1", headers=VIEWER).json()
-    assert [i["vehicle_id"] for d in r["days"] for i in d["items"]] == ["car1"] and list(r["capacity_wh"]) == ["car1"]
+    assert [i["vehicle_id"] for d in r["days"] for i in d["items"]] == ["car1"] and "capacity_wh" not in r
 
 
 def test_activity_before_validated(conn):
@@ -380,8 +327,19 @@ def test_stats_defaults_to_today(conn):
     put(conn, "trips", "car1", ms(2026, 10, 18), ms(2026, 10, 18, 1), {"distance_m": 5000})
     c, _ = client(conn)
     r = c.get("/api/ui/stats?view=v:car1&period=week", headers=VIEWER).json()
-    assert r["period"] == {"start": ms(2026, 10, 19), "end": ms(2026, 10, 26)}
+    assert (r["period"]["start"], r["period"]["end"]) == (ms(2026, 10, 19), ms(2026, 10, 26))
     assert r["totals"]["distance_m"] == 1000 and r["previous"]["distance_m"] == 5000
+
+
+def test_stats_without_at(conn):
+    c, _ = client(conn)
+    r = c.get("/api/ui/stats?view=v:car1&period=week", headers=VIEWER).json()  # NOW is Friday 2026-10-23
+    assert r["period"] == {"start": ms(2026, 10, 19), "end": ms(2026, 10, 26), "first": "2026-10-19", "prev_at": "2026-10-18", "next_at": None}
+    r = c.get("/api/ui/stats?view=v:car1&period=month&at=2026-09-15", headers=VIEWER).json()
+    assert (r["period"]["first"], r["period"]["prev_at"], r["period"]["next_at"]) == ("2026-09-01", "2026-08-31", "2026-10-01")
+    r = c.get("/api/ui/stats?view=v:car1&period=month", headers=VIEWER).json()
+    assert (r["period"]["first"], r["period"]["next_at"]) == ("2026-10-01", None)
+    assert c.get("/api/ui/stats?view=v:car1&period=week&at=2026-10-24", headers=VIEWER).status_code == 422
 
 
 CHARGE = {"added_wh": 20_000, "lat": 52.0, "lon": 5.0}
@@ -418,7 +376,7 @@ def test_cost_read_flow(conn):
     for who in (ADMIN, VIEWER):
         items = [i for d in c.get(f"{URL}/activity?view=v:car1", headers=who).json()["days"] for i in d["items"]]
         assert items[0]["cost"] == {"amount": approx(8.8), "basis": "default"}
-        assert c.get(f"{URL}/charges/car1/1000", headers=who).json()["cost"]["kind"] == "ac"
+        assert c.get(f"{URL}/charges/car1/1000", headers=who).json()["cost"]["current"] == "ac"
 
 
 def test_trip_detail_cost(conn):
@@ -459,6 +417,38 @@ def test_spot_from_charge_without_point(conn):
     assert prices.settings(conn)["spots"] == [] and not calls
 
 
+def test_spot_routes_relabel_after_the_write_and_before_on_costs(conn):
+    put(conn, "charges", "car1", 1000, 2000, CHARGE)
+    order = []
+    router = ui_api.router(conn, lambda a, b: None, TZ, lambda v: 1.0, is_admin, now_ms=lambda: NOW,
+                           relabel=lambda: order.append(("relabel", conn.execute("SELECT COUNT(*) FROM charge_spots").fetchone()[0])),
+                           on_costs=lambda vids: order.append("costs"))
+    c = TestClient(create_app(conn, "t" * 64, lambda *a: None, lambda: NOW, ui=router), client=("172.30.32.2", 50000))
+    sid = c.post(f"{URL}/spots", json={"vehicle_id": "car1", "start": 1000, "name": "Shop", "per_kwh": 0.3}, headers=ADMIN).json()["id"]
+    assert order == [("relabel", 1), "costs"]  # the spot is written when relabel runs
+    order.clear()
+    assert c.put(f"{URL}/spots/{sid}", json={"name": "Shop 2"}, headers=ADMIN).status_code == 200
+    assert order == [("relabel", 1), "costs"]
+    order.clear()
+    assert c.delete(f"{URL}/spots/{sid}", headers=ADMIN).status_code == 200
+    assert order == [("relabel", 0), "costs"]
+    order.clear()
+    assert c.put(f"{URL}/spots/nope", json={"name": "X"}, headers=ADMIN).status_code == 404
+    assert c.delete(f"{URL}/spots/nope", headers=ADMIN).status_code == 404
+    assert order == []  # a failed write relabels nothing
+
+
+def test_a_failing_relabel_after_a_spot_write_still_answers(conn, caplog):
+    put(conn, "charges", "car1", 1000, 2000, CHARGE)
+    def boom():
+        raise RuntimeError("boom")
+    c, calls = client(conn, relabel=boom)
+    r = c.post(f"{URL}/spots", json={"vehicle_id": "car1", "start": 1000, "name": "Shop", "per_kwh": 0.3}, headers=ADMIN)
+    assert r.status_code == 200 and len(prices.settings(conn)["spots"]) == 1  # the spot is saved and answered
+    assert calls == [None]  # the cost sensors still follow
+    assert "renaming places after a spot change failed" in caplog.text
+
+
 def test_on_costs_targets(conn):
     put(conn, "charges", "car1", 1000, 2000, CHARGE)
     c, calls = client(conn)
@@ -476,3 +466,16 @@ def test_on_costs_targets(conn):
     c.delete(f"{URL}/fixed_costs/{cid}", headers=ADMIN)
     assert calls == [["car1"]] * 5
     assert c.put(f"{URL}/fixed_costs/{cid}", json={"end": None}, headers=ADMIN).status_code == 404 and len(calls) == 5
+
+
+def test_failed_cost_edits_call_on_costs_zero_times(conn):
+    put(conn, "charges", "car1", 1000, 2000, CHARGE)
+    cid = prices.add_fixed_cost(conn, "car1", "Lease", 100, "month", date(2026, 1, 1), None)
+    c, calls = client(conn)
+    assert c.put(f"{URL}/spots/nope", json={"name": "X"}, headers=ADMIN).status_code == 404
+    assert c.delete(f"{URL}/spots/nope", headers=ADMIN).status_code == 404
+    assert c.put(f"{URL}/charges/car1/999/receipt", json={"amount": 5}, headers=ADMIN).status_code == 404
+    assert c.put(f"{URL}/vehicles/nope/card", json={"markup_pct": 5, "start_fee": 1}, headers=ADMIN).status_code == 404
+    assert c.put(f"{URL}/fixed_costs/{cid}", json={"end": "2025-12-31"}, headers=ADMIN).status_code == 400
+    assert c.delete(f"{URL}/fixed_costs/nope", headers=ADMIN).status_code == 404
+    assert not calls

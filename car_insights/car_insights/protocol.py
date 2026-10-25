@@ -6,6 +6,7 @@ from typing import Any
 
 MAX_SAMPLES = 5000
 PARK_GEAR = 4
+FUTURE_SLACK_MS = 86_400_000  # a sample this far ahead of its arrival is a clock error
 _VEHICLE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 _SOURCE = re.compile(r"[a-z_]+-[0-9a-f]{8}")
 

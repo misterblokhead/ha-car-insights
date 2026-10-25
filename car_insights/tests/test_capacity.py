@@ -1,4 +1,8 @@
-from car_insights import db
+import asyncio
+
+import pytest
+
+from car_insights import capacity, db
 from car_insights.capacity import MIN_PAIRS, PAIR_MS, WINDOW_MS, learn
 from car_insights.db import connect
 from car_insights.protocol import Sample
@@ -6,13 +10,13 @@ from car_insights.protocol import Sample
 NOW = 100 * 86_400_000
 
 
-def put(conn, pairs, soc_dt=0):
+def put(conn, pairs, soc_dt=0, vid="car1"):
     """pairs: (t, soc, wh); the soc sample is stamped soc_dt after its battery_wh sample"""
     samples, seq = [], 0
     for t, soc, wh in pairs:
         samples += [Sample(seq + 1, t, "battery_wh", wh), Sample(seq + 2, t + soc_dt, "soc_percent", soc)]
         seq += 2
-    db.ingest(conn, "car1", "s", samples, NOW)
+    db.ingest(conn, vid, "s", samples, NOW)
 
 
 def ten(ratio=57_000, **kw):
@@ -57,3 +61,60 @@ def test_capacity_wh_default_until_set():
     assert db.capacity_wh(conn, "car1", 60_000.0) == 60_000.0
     db.set_capacity_wh(conn, "car1", 57_000.0)
     assert db.capacity_wh(conn, "car1", 60_000.0) == 57_000.0
+
+
+def test_update_stores_learned_capacity():
+    conn = connect(":memory:")
+    put(conn, ten())
+    capacity.update(conn, "car1", NOW, set())
+    assert db.capacity_wh(conn, "car1", 1.0) == 57_000.0
+
+
+@pytest.mark.parametrize("wh", [2_000.0, 150_000.0])  # 4 kWh and 300 kWh learned: outside 10-200 kWh
+def test_implausible_learned_capacity_keeps_the_previous_value_and_logs_once(wh, caplog):
+    conn = connect(":memory:")
+    put(conn, [(t, 50, wh) for t, _, _ in ten()])
+    db.set_capacity_wh(conn, "car1", 57_000.0)
+    logged: set[str] = set()
+    capacity.update(conn, "car1", NOW, logged)
+    capacity.update(conn, "car1", NOW, logged)
+    assert db.capacity_wh(conn, "car1", 0.0) == 57_000.0
+    assert len([r for r in caplog.records if "outside" in r.getMessage()]) == 1
+
+
+def test_run_learns_every_vehicle(monkeypatch):
+    conn = connect(":memory:")
+    put(conn, ten(), vid="car1")
+    put(conn, ten(ratio=40_000), vid="car2")
+    sleeps, learned = [], []
+
+    async def stop(s):
+        sleeps.append(s)
+        learned.append(db.capacity_wh(conn, "car1", 1.0))
+        if len(sleeps) == 2:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(asyncio, "sleep", stop)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(capacity.run(conn, now_ms=lambda: NOW))
+    assert db.capacity_wh(conn, "car1", 1.0) == 57_000.0 and db.capacity_wh(conn, "car2", 1.0) == 40_000.0
+    assert sleeps == [600, 86_400]  # a first wait lets the poller's backfill land; then a pass a day
+    assert learned == [1.0, 57_000.0]  # nothing learned before the first wait ended
+
+
+def test_run_survives_a_failing_pass_and_sleeps(monkeypatch, caplog):
+    class Broken:
+        def execute(self, *a):
+            raise RuntimeError("db down")
+
+    sleeps = []
+
+    async def stop(s):
+        sleeps.append(s)
+        if len(sleeps) == 2:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(asyncio, "sleep", stop)
+    with pytest.raises(asyncio.CancelledError):  # reached the sleep after the pass: the error did not end the loop
+        asyncio.run(capacity.run(Broken(), now_ms=lambda: NOW))
+    assert "learning the capacities failed" in caplog.text

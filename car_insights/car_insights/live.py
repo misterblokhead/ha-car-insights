@@ -4,18 +4,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
-from .protocol import PARK_GEAR, Sample, num
+from .figures import pct
+from .ha_mqtt import device, discovery, sensor, topic
+from .protocol import FUTURE_SLACK_MS, PARK_GEAR, Sample, num
 
-FUTURE_SLACK_MS = 86_400_000
 MODES = ("driving", "charging", "parked")
-
-
-def sensor(name: str, unit: str | None = None, device_class: str | None = None, measurement: bool = True, **extra) -> tuple[str, dict]:
-    cfg = {"name": name, "state_topic": "state", **extra}
-    for k, v in (("unit_of_measurement", unit), ("device_class", device_class), ("state_class", "measurement" if measurement else None)):
-        if v:
-            cfg[k] = v
-    return "sensor", cfg
 
 
 # field -> (component, extra discovery config); keys ending in _topic hold a leaf under car_insights/<vehicle>/
@@ -80,7 +73,7 @@ def snapshot(state: LiveState, capacity_wh: float) -> dict:
     if wh is not None:
         snap["battery_kwh"] = round(wh / 1000, 2)
         if math.isfinite(capacity_wh) and capacity_wh > 0:
-            snap["soc"] = round(min(100.0, max(0.0, wh / capacity_wh * 100)), 1)
+            snap["soc"] = pct(wh, capacity_wh)
     if range_m is not None:
         snap["range_km"] = round(range_m / 1000, 1)
     if power is not None:
@@ -104,33 +97,10 @@ def location(state: LiveState) -> dict | None:
     return {"latitude": g[0], "longitude": g[1], "gps_accuracy": g[2]}
 
 
-def topic(vehicle_id: str, leaf: str) -> str:
-    return f"car_insights/{vehicle_id}/{leaf}"
-
-
-def device(vehicle_id: str, name: str, make: str | None, model: str | None) -> dict:
-    d = {"identifiers": [f"car_insights_{vehicle_id}"], "name": name, "manufacturer": make, "model": model}
-    return {k: v for k, v in d.items() if v is not None}  # HA rejects null strings
-
-
-def config(vehicle_id: str, unique: str, extra: dict, dev: dict) -> dict:
-    """Discovery config shared with the trip sensors: keys ending in _topic hold a leaf, expanded to the full topic."""
-    cfg: dict[str, Any] = {"unique_id": f"car_insights_{vehicle_id}_{unique}", "device": dev}
-    cfg.update({k: topic(vehicle_id, v) if k.endswith("_topic") else v for k, v in extra.items()})
-    return cfg
-
-
 def discovery_messages(vehicle_id: str, name: str, make: str | None, model: str | None, fields: set[str]) -> list[tuple[str, str]]:
-    dev = device(vehicle_id, name, make, model)
-    out = []
-    for f, (comp, extra) in FIELDS.items():
-        if f not in fields:
-            continue
-        cfg = config(vehicle_id, f, extra, dev)
-        if "state_topic" in cfg:
-            cfg["value_template"] = "{{ value_json.%s if '%s' in value_json else None }}" % (f, f)
-        out.append((f"homeassistant/{comp}/{vehicle_id}_{f}/config", json.dumps(cfg)))
-    return out
+    specs = {f: (comp, {**extra, "value_template": "{{ value_json.%s if '%s' in value_json else None }}" % (f, f)} if "state_topic" in extra else extra)
+             for f, (comp, extra) in FIELDS.items() if f in fields}
+    return discovery(vehicle_id, device(vehicle_id, name, make, model), specs)
 
 
 def state_message(vehicle_id: str, snap: dict) -> tuple[str, str]:

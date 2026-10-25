@@ -1,16 +1,13 @@
 import logging
 import sqlite3
-from typing import Callable, Protocol
+from typing import Callable
 
 from . import live
 from . import db
-from .protocol import Sample
+from .ha_mqtt import Sink
+from .protocol import FUTURE_SLACK_MS, Sample
 
 log = logging.getLogger(__name__)
-
-
-class Sink(Protocol):
-    def publish(self, messages: list[tuple[str, str]], retain: bool = True) -> None: ...
 
 
 class Publisher:
@@ -28,7 +25,7 @@ class Publisher:
         if first:
             # After a restart, on-change keys (gear, plugged, range...) are only re-sent when they change, so seed from storage.
             # The current batch is already stored; seeding includes it and apply below is a no-op for those rows, hence `first` forces a publish.
-            live.apply(state, db.latest_per_key(self._conn, vid, received_ms + live.FUTURE_SLACK_MS), received_ms)
+            live.apply(state, db.latest_per_key(self._conn, vid, received_ms + FUTURE_SLACK_MS), received_ms)
         changed, future = live.apply(state, samples, received_ms)
         changed = changed or (first and bool(state.values))
         if future:

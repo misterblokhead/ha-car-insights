@@ -1,7 +1,8 @@
-import io
-import json
+import asyncio
 
-from car_insights.zones import Zone, ZoneCache, fetch_history, fetch_zones, name_at, zones_changed
+import pytest
+
+from car_insights.zones import Zone, ZoneCache, name_at
 
 HOME = Zone("Home", 52.0, 5.0, 100)
 DLAT = 1 / 111_195  # degrees of latitude per metre
@@ -18,109 +19,108 @@ def test_name_at_nearest_centre_wins():
     assert name_at([HOME, big], 52.0 + 50 * DLAT, 5.0) == "Town"
 
 
-def test_cache_keeps_last_list_on_error():
-    now, results = [0], [[HOME]]
+def _source(*lists):
+    """a fetch that answers the given lists in turn (an Exception is raised), and counts its calls"""
+    calls, it = [], iter(lists)
     def fetch():
-        r = results[0]
+        calls.append(1)
+        r = next(it)
         if isinstance(r, Exception):
             raise r
         return r
-    cache = ZoneCache(fetch, ttl_ms=1000, now_ms=lambda: now[0])
-    assert cache(52.0, 5.0) == "Home"
-    results[0], now[0] = RuntimeError("down"), 5000
-    assert cache(52.0, 5.0) == "Home"  # stale but the fetch failed: last list stays
-    results[0] = []
-    now[0] = 5500  # a failed fetch still counts as an attempt, so no retry before the ttl
-    assert cache(52.0, 5.0) == "Home"
-    now[0] = 6100
+    return fetch, calls
+
+
+def test_a_lookup_never_fetches_and_never_announces():
+    fetch, calls = _source([HOME])
+    changes = []
+    cache = ZoneCache(fetch, on_change=lambda: changes.append(1))
+    assert cache(52.0, 5.0) is None and not cache.loaded  # nothing fetched yet: no zones
+    assert calls == [] and changes == []
+    cache.refresh()
+    assert cache(52.0, 5.0) == "Home" and cache(52.0, 5.0) == "Home"
+    assert calls == [1] and changes == [1]
+
+
+def test_refresh_keeps_the_last_list_on_error():
+    fetch, calls = _source([HOME], RuntimeError("down"), [])
+    cache = ZoneCache(fetch)
+    cache.refresh()
+    cache.refresh()
+    assert cache(52.0, 5.0) == "Home" and cache.loaded  # the fetch failed: the last list stays
+    cache.refresh()
     assert cache(52.0, 5.0) is None
 
 
-def _template_server(monkeypatch, rendered):
-    seen = {}
-
-    def urlopen(req, timeout):
-        seen.update(url=req.full_url, method=req.get_method(), auth=req.get_header("Authorization"), body=json.loads(req.data))
-        return io.BytesIO(rendered.encode())
-
-    monkeypatch.setattr("car_insights.zones.urllib.request.urlopen", urlopen)
-    return seen
-
-
-def test_fetch_zones_renders_only_the_zones_through_a_template(monkeypatch):
-    seen = _template_server(monkeypatch, json.dumps([{"name": "Home", "latitude": 52.0, "longitude": 5.0, "radius": 100, "passive": False}]))
-    assert fetch_zones("tok") == [HOME]
-    assert seen["url"] == "http://supervisor/core/api/template" and seen["method"] == "POST" and seen["auth"] == "Bearer tok"
-    assert "states.zone" in seen["body"]["template"] and "tojson" in seen["body"]["template"]
+def test_a_failed_first_fetch_is_not_loaded():
+    fetch, _ = _source(RuntimeError("down"), [HOME])
+    changes = []
+    cache = ZoneCache(fetch, on_change=lambda: changes.append(1))
+    cache.refresh()
+    assert not cache.loaded and changes == []
+    cache.refresh()
+    assert cache.loaded and changes == [1]
 
 
-def test_fetch_zones_skips_passive_and_unusable_entries(monkeypatch):
-    good = {"name": "Home", "latitude": 52.0, "longitude": 5.0, "radius": 100, "passive": False}
-    rows = [good, {**good, "name": "Hidden", "passive": True}, {**good, "name": "NoRadius", "radius": None},
-            {**good, "name": "Text", "latitude": "52.0"}, {**good, "name": "Bool", "longitude": True}, {**good, "name": 5},
-            {**good, "name": "NoPassive", "passive": None}, "junk"]
-    _template_server(monkeypatch, json.dumps(rows))
-    assert fetch_zones("tok") == [HOME, Zone("NoPassive", 52.0, 5.0, 100)]
+def test_on_change_only_for_a_new_list():
+    work = Zone("Work", 52.1, 5.1, 150)
+    fetch, _ = _source([HOME], [HOME], [HOME, work], RuntimeError("down"), [HOME, work])
+    changes = []
+    cache = ZoneCache(fetch, on_change=lambda: changes.append(1))
+    cache.refresh()
+    assert changes == [1]  # the first list counts
+    cache.refresh()
+    assert changes == [1]  # fetched again, the same
+    cache.refresh()
+    assert changes == [1, 1]
+    cache.refresh()
+    assert cache(52.0, 5.0) == "Home" and changes == [1, 1]  # a failed fetch keeps the list and relabels nothing
+    cache.refresh()
+    assert changes == [1, 1]  # back up with the list it had
 
 
-def test_fetch_time_zone_falls_back_to_local(monkeypatch, caplog):
-    import car_insights.zones as z
-    def down(*a):
-        raise OSError("down")
-    monkeypatch.setattr(z, "supervisor_get", down)
-    assert z.fetch_time_zone("tok", tries=2, wait_s=0) is not None
-    assert caplog.records[-1].exc_info[0] is OSError
-
-
-def test_fetch_history_asks_for_every_change_of_the_entities_in_the_window(monkeypatch):
-    seen = {}
-
-    def urlopen(req, timeout):
-        seen.update(url=req.full_url, auth=req.get_header("Authorization"))
-        return io.BytesIO(b'[[{"entity_id": "sensor.a", "state": "1", "last_changed": "2026-10-23T12:00:00+00:00"}]]')
-
-    monkeypatch.setattr("car_insights.zones.urllib.request.urlopen", urlopen)
-    assert fetch_history("tok", ["sensor.a", "sensor.b"], 1_792_756_800_000, 1_792_756_900_500)[0][0]["state"] == "1"
-    assert seen["url"] == ("http://supervisor/core/api/history/period/2026-10-23T12:00:00.000Z?filter_entity_id=sensor.a,sensor.b"
-                           "&end_time=2026-10-23T12:01:40.500Z&minimal_response&no_attributes&significant_changes_only=0")
-    assert seen["auth"] == "Bearer tok"
-
-
-def test_fetch_history_waits_longer_than_the_default_call_timeout(monkeypatch):
+def test_on_change_runs_with_the_new_list_in_place():
     seen = []
-
-    def urlopen(req, timeout):
-        seen.append((req.full_url.split("/core/api/")[1].split("/")[0], timeout))
-        return io.BytesIO(b"[]" if "history" in req.full_url else b'{"time_zone": "UTC"}')
-
-    monkeypatch.setattr("car_insights.zones.urllib.request.urlopen", urlopen)
-    fetch_history("tok", ["sensor.a"], 1_792_756_800_000, 1_792_756_900_500)
-    from car_insights.zones import supervisor_get
-    supervisor_get("/core/api/config", "tok")
-    assert seen == [("history", 60), ("config", 10)]
+    cache = ZoneCache(lambda: [HOME], on_change=lambda: seen.append(cache(52.0, 5.0)))
+    cache.refresh()
+    assert seen == ["Home"]  # a relabel asks the cache itself, and gets the list that changed
 
 
-def test_zones_changed_compares_with_the_last_start(tmp_path):
-    saved = tmp_path / "zones.json"
-    assert zones_changed(lambda: [HOME], saved) is False  # first start: nothing to compare with
-    assert zones_changed(lambda: [HOME], saved) is False
-    assert zones_changed(lambda: [HOME, Zone("Work", 52.1, 5.1, 150)], saved) is True
-    assert zones_changed(lambda: [Zone("Work", 52.1, 5.1, 150), HOME], saved) is False  # order does not matter
-    def down():
-        raise OSError("down")
-    assert zones_changed(down, saved) is False and zones_changed(lambda: [HOME], saved) is True  # a failed read keeps the saved list
+def test_on_change_can_be_set_after_construction():
+    seen = []
+    cache = ZoneCache(lambda: [HOME])
+    cache.on_change = lambda: seen.append(1)
+    cache.refresh()
+    assert seen == [1]
 
 
-def test_fetch_time_zone_retries(monkeypatch):
-    import car_insights.zones as z
-    from zoneinfo import ZoneInfo
+def test_a_failing_on_change_is_retried_at_the_next_fetch():
     calls = []
-
-    def flaky(*a):
+    def on_change():
         calls.append(1)
-        if len(calls) < 3:
-            raise OSError("not ready")
-        return {"time_zone": "Europe/Amsterdam"}
-    monkeypatch.setattr(z, "supervisor_get", flaky)
-    assert z.fetch_time_zone("tok", wait_s=0) == ZoneInfo("Europe/Amsterdam")
-    assert len(calls) == 3
+        if len(calls) == 1:
+            raise RuntimeError("busy")
+    cache = ZoneCache(lambda: [HOME], on_change=on_change)
+    cache.refresh()
+    assert cache(52.0, 5.0) == "Home"  # the list is in place whatever on_change did
+    cache.refresh()
+    cache.refresh()
+    assert calls == [1, 1]
+
+
+def test_run_refreshes_once_per_interval(monkeypatch):
+    fetch, calls = _source([HOME], [HOME], [HOME])
+    sleeps = []
+    async def sleep(s):
+        sleeps.append(s)
+        if len(sleeps) == 3:
+            raise asyncio.CancelledError
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(ZoneCache(fetch, ttl_ms=5000).run())
+    assert len(calls) == 3 and sleeps == [5, 5, 5]  # the default interval is the ttl
+    sleeps.clear()
+    fetch, _ = _source([HOME], [HOME], [HOME])
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(ZoneCache(fetch).run(interval_s=7))
+    assert sleeps == [7, 7, 7]

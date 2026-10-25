@@ -18,13 +18,13 @@ test("costLabel marks a default-priced amount as approximate", () => {
 });
 
 const tariff = { valid_from: 0, per_kwh: 0.35, start_fee: 0, per_min: 0 };
-const base = { amount: 9.5, kind: "ac", spot: null, tariff, loss: 1.1, card_markup_pct: 0, card_start_fee: 0 };
+const base = { amount: 9.5, current: "ac", spot: null, tariff, loss: 1.1, card_markup_pct: 0, card_start_fee: 0 };
 
 test("chargeBasis names the receipt, the spot or the default price", () => {
   assert.equal(chargeBasis({ ...base, basis: "receipt" }), "Receipt");
   assert.equal(chargeBasis({ ...base, basis: "spot", spot: "Plaza" }), "Plaza · €0.35/kWh · 10 % charging loss");
   assert.equal(chargeBasis({ ...base, basis: "default", tariff: { ...tariff, per_kwh: 0.4 } }), "Default AC price · €0.40/kWh · 10 % charging loss");
-  assert.equal(chargeBasis({ ...base, basis: "default", kind: "dc", loss: 1.05 }), "Default DC price · €0.35/kWh · 5 % charging loss");
+  assert.equal(chargeBasis({ ...base, basis: "default", current: "dc", loss: 1.05 }), "Default DC price · €0.35/kWh · 5 % charging loss");
 });
 
 test("chargeBasis adds the optional parts only when nonzero, in order", () => {

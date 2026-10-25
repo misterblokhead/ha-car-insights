@@ -1,20 +1,22 @@
 """The sidebar page's API: answers only Supervisor ingress requests, and only with what the viewer may see."""
 import dataclasses
-import json
+import logging
 import time
-from datetime import date, datetime
-from typing import Annotated, Awaitable, Callable, Literal
+from datetime import date
+from typing import Annotated, Any, Awaitable, Callable, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
 
-from . import access, activity, costs, db, prices, stats
+from . import access, activity, costs, db, prices, stats, store
 from .access import Viewer
-from .derive import Deriver, Zones
+from .figures import pct, with_figures
+from .periods import local_date
+from .zones import Zones
+from .kinds import CHARGE, TRIP, Kind
 from .protocol import fix, num
-from .totals import totals
 
-MAX_LIMIT = 200
+log = logging.getLogger(__name__)
 EpochMs = Annotated[int, Query(ge=0, lt=2**62)]  # sqlite integers are 64-bit: anything larger would be a 500, not a 422
 StartMs = Annotated[int, Path(ge=0, lt=2**62)]
 
@@ -74,9 +76,9 @@ class _Card(BaseModel):
     start_fee: Num
 
 
-def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], float],
+def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
            is_admin: Callable[[str], Awaitable[bool]], on_settings: Callable[[], None] = lambda: None,
-           on_costs: Callable[[list[str] | None], None] = lambda vids: None,
+           on_costs: Callable[[list[str] | None], None] = lambda vids: None, relabel: Callable[[], None] = lambda: None,
            ingress_hosts: tuple[str, ...] = ("172.30.32.2",), now_ms: Callable[[], int] = lambda: int(time.time() * 1000)) -> APIRouter:
     # handlers are async def with no awaits around the DB work (like /ingest): the event loop serializes access to the connection
     async def ingress_guard(request: Request) -> None:
@@ -122,45 +124,37 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
         on_settings()
         return {}
 
-    def cost_edit(fn, *args, vids: list[str] | None = None) -> dict:
-        attempt(fn, *args)
-        on_costs(vids)
-        return {}
-
-    def has_open(table: str, vid: str) -> bool:
-        return conn.execute(f"SELECT 1 FROM {table} WHERE vehicle_id=? AND end IS NULL", (vid,)).fetchone() is not None
+    def cost_edit(fn, *args, vids: list[str] | Callable[[Any], list[str]] | None = None, spot: bool = False) -> Any:
+        """Every admin cost write: run it, rename the places when it changed a charge spot, then republish the cost sensors of `vids`
+        (a list, None for all, or a function of the result)."""
+        out = attempt(fn, *args)
+        if spot:
+            try:
+                relabel()
+            except Exception:  # the write is committed: the answer stays, the names follow at the next zone or spot change
+                log.exception("renaming places after a spot change failed")
+        on_costs(vids(out) if callable(vids) else vids)
+        return out
 
     def vehicle_card(vid: str, now: int) -> dict:
         got = db.latest_at_or_before(conn, vid, now, ("battery_wh", "range_m", "gps"))
         wh, cap, pos = got.get("battery_wh"), capacity(vid), fix(got.get("gps"))
         return {
             "id": vid, "name": db.device_info(conn, vid)[0],
-            "status": "driving" if has_open("trips", vid) else "charging" if has_open("charges", vid) else "parked",
-            "battery_wh": wh, "soc_percent": round(wh / cap * 100, 1) if wh is not None and cap else None,
+            "status": "driving" if store.has_open(conn, TRIP, vid) else "charging" if store.has_open(conn, CHARGE, vid) else "parked",
+            "battery_wh": wh, "soc_percent": pct(wh, cap),
             "range_m": got.get("range_m"),
             "position": None if pos is None else {"lat": pos[0], "lon": pos[1], "place": zones(*pos)},
             "updated": conn.execute("SELECT MAX(t) FROM samples WHERE vehicle_id=? AND t<=? AND key NOT IN ('meta','gap')",
                                     (vid, now)).fetchone()[0],
         }
 
-    def page(table: str, vids: list[str], before: int | None, limit: int) -> dict:
-        """Newest first; open rows lead the first page only and do not count against the limit."""
-        marks, limit = ",".join("?" * len(vids)), max(1, min(limit, MAX_LIMIT))
-        def rows(cond: str, args: tuple, n: int = -1) -> list[dict]:
-            return [{**json.loads(j), "vehicle_id": v, "vehicle_name": db.device_info(conn, v)[0]} for v, j in conn.execute(
-                f"SELECT vehicle_id, json FROM {table} WHERE vehicle_id IN ({marks}) AND {cond} ORDER BY start DESC, vehicle_id LIMIT ?",
-                (*vids, *args, n))]
-        # shortcut: two vehicles starting in the same millisecond may straddle a page boundary and one is skipped, add a tiebreak cursor if that shows
-        closed = rows("end IS NOT NULL AND start<?", (2 ** 62 if before is None else before,), limit)
-        return {"items": ([] if before is not None else rows("end IS NULL", ())) + closed,
-                "next": closed[-1]["start"] if len(closed) == limit else None}
-
-    def detail(table: str, series: Callable[[str, int], dict | None], viewer: Viewer, vid: str, start: int) -> tuple[dict, dict | None]:
+    def detail(kind: Kind, viewer: Viewer, vid: str, start: int) -> tuple[dict, dict | None]:
         visible(viewer, vid)
-        row = conn.execute(f"SELECT json FROM {table} WHERE vehicle_id=? AND start=?", (vid, start)).fetchone()
+        row = store.row(conn, kind, vid, start)
         if row is None:
             raise _not_found()
-        return json.loads(row[0]), series(vid, start)
+        return row, store.series(conn, kind, vid, start)
 
     @r.get("/me")
     async def me(request: Request):
@@ -174,44 +168,30 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
     @r.get("/overview")
     async def overview(request: Request, view: str = ""):
         vids, now = vids_of(await who(request), view), now_ms()
-        return {"vehicles": [vehicle_card(v, now) for v in vids], "totals": totals(conn, vids, now, tz)}
-
-    @r.get("/trips")
-    async def trips(request: Request, view: str = "", before: EpochMs | None = None, limit: int = 50):
-        return page("trips", vids_of(await who(request), view), before, limit)
-
-    @r.get("/charges")
-    async def charges(request: Request, view: str = "", before: EpochMs | None = None, limit: int = 50):
-        return page("charges", vids_of(await who(request), view), before, limit)
+        return {"vehicles": [vehicle_card(v, now) for v in vids]}
 
     @r.get("/activity")
     async def get_activity(request: Request, view: str = "", before: EpochMs | None = None):
-        out = activity.page(conn, vids_of(await who(request), view), before, now_ms(), tz, lambda v: db.device_info(conn, v)[0],
-                            deriver.trip_route, capacity)
-        for d in out["days"]:
-            for i in d["items"]:
-                if i["kind"] == "charge":
-                    c = costs.charge_cost(conn, i["vehicle_id"], i)
-                    i["cost"] = {"amount": c["amount"], "basis": c["basis"]}
-        return out
+        return activity.page(conn, vids_of(await who(request), view), before, now_ms(), tz, lambda v: db.device_info(conn, v)[0], capacity)
 
     @r.get("/stats")
     async def get_stats(request: Request, view: str = "", period: Literal["week", "month", "year"] = "week", at: date | None = None):
-        vids, today = vids_of(await who(request), view), datetime.fromtimestamp(now_ms() / 1000, tz).date()
+        vids, today = vids_of(await who(request), view), local_date(now_ms(), tz)
         if at is not None and at > today:
             raise HTTPException(422, "at is in the future")
         return stats.stats(conn, vids, period, at or today, tz, (lambda v: db.device_info(conn, v)[0]) if view.startswith("g:") else None, now_ms())
 
     @r.get("/trips/{vid}/{start}")
     async def trip(request: Request, vid: str, start: StartMs):
-        row, series = detail("trips", deriver.trip_series, await who(request), vid, start)
-        return {"trip": row, "cost": costs.trip_cost(conn, vid, row, tz), "series": series, "route": deriver.trip_route(vid, start),
-                "similar": stats.similar_trips(conn, vid, row), "capacity_wh": capacity(vid)}
+        row, series = detail(TRIP, await who(request), vid, start)
+        return {"trip": with_figures(TRIP, row, capacity(vid)), "cost": costs.trip_cost(conn, vid, row, tz), "series": series,
+                "route": store.route(conn, vid, start), "similar": stats.similar_trips(conn, vid, row)}
 
     @r.get("/charges/{vid}/{start}")
     async def charge(request: Request, vid: str, start: StartMs):
-        row, series = detail("charges", deriver.charge_series, await who(request), vid, start)
-        return {"charge": row, "cost": costs.charge_cost(conn, vid, row), "series": series, "capacity_wh": capacity(vid),
+        row, series = detail(CHARGE, await who(request), vid, start)
+        return {"charge": with_figures(CHARGE, row, capacity(vid)), "cost": costs.charge_cost(prices.book(conn, vid), row),
+                "series": series, "capacity_wh": capacity(vid),
                 "outside_temp_c": num(db.latest_at_or_before(conn, vid, start, ("outside_temp",)).get("outside_temp"))}
 
     @r.get("/settings")
@@ -247,52 +227,53 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
     @r.put("/prices/{target}")
     async def put_price(request: Request, target: str, body: _Tariff):
         await who(request, admin=True)
-        return cost_edit(prices.set_tariff, conn, target, body.valid_from, body.per_kwh, body.start_fee, body.per_min)
+        cost_edit(prices.set_tariff, conn, target, body.valid_from, body.per_kwh, body.start_fee, body.per_min)
+        return {}
 
     @r.post("/spots")
     async def create_spot(request: Request, body: _Spot):
         await who(request, admin=True)
-        sid = attempt(prices.create_spot, conn, body.vehicle_id, body.start, body.name, body.per_kwh, body.start_fee, body.per_min)
-        on_costs(None)
-        return {"id": sid}
+        return {"id": cost_edit(prices.create_spot, conn, body.vehicle_id, body.start, body.name, body.per_kwh, body.start_fee, body.per_min, spot=True)}
 
     @r.put("/spots/{sid}")
     async def rename_spot(request: Request, sid: str, body: _Name):
         await who(request, admin=True)
-        return cost_edit(prices.rename_spot, conn, sid, body.name)
+        cost_edit(prices.rename_spot, conn, sid, body.name, spot=True)
+        return {}
 
     @r.delete("/spots/{sid}")
     async def delete_spot(request: Request, sid: str):
         await who(request, admin=True)
-        return cost_edit(prices.delete_spot, conn, sid)
+        cost_edit(prices.delete_spot, conn, sid, spot=True)
+        return {}
 
     @r.put("/charges/{vid}/{start}/receipt")
     async def put_receipt(request: Request, vid: str, start: StartMs, body: _Receipt):
         await who(request, admin=True)
-        return cost_edit(prices.set_receipt, conn, vid, start, body.amount, vids=[vid])
+        cost_edit(prices.set_receipt, conn, vid, start, body.amount, vids=[vid])
+        return {}
 
     @r.post("/vehicles/{vid}/fixed_costs")
     async def add_fixed_cost(request: Request, vid: str, body: _FixedCost):
         await who(request, admin=True)
-        cid = attempt(prices.add_fixed_cost, conn, vid, body.name, body.amount, body.period, body.start, body.end)
-        on_costs([vid])
-        return {"id": cid}
+        return {"id": cost_edit(prices.add_fixed_cost, conn, vid, body.name, body.amount, body.period, body.start, body.end, vids=[vid])}
 
     @r.put("/fixed_costs/{cid}")
     async def end_fixed_cost(request: Request, cid: str, body: _End):
         await who(request, admin=True)
-        on_costs([attempt(prices.end_fixed_cost, conn, cid, body.end)])
+        cost_edit(prices.end_fixed_cost, conn, cid, body.end, vids=lambda vid: [vid])
         return {}
 
     @r.delete("/fixed_costs/{cid}")
     async def delete_fixed_cost(request: Request, cid: str):
         await who(request, admin=True)
-        on_costs([attempt(prices.delete_fixed_cost, conn, cid)])
+        cost_edit(prices.delete_fixed_cost, conn, cid, vids=lambda vid: [vid])
         return {}
 
     @r.put("/vehicles/{vid}/card")
     async def put_card(request: Request, vid: str, body: _Card):
         await who(request, admin=True)
-        return cost_edit(prices.set_card, conn, vid, body.markup_pct, body.start_fee, vids=[vid])
+        cost_edit(prices.set_card, conn, vid, body.markup_pct, body.start_fee, vids=[vid])
+        return {}
 
     return r

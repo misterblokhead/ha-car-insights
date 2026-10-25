@@ -12,7 +12,7 @@ export function chargeBasis(cost) {
   if (cost.basis === "receipt") return "Receipt";
   const t = cost.tariff;
   const parts = [
-    cost.basis === "spot" ? (cost.spot ?? "Spot") : `Default ${cost.kind.toUpperCase()} price`,
+    cost.basis === "spot" ? (cost.spot ?? "Spot") : `Default ${cost.current.toUpperCase()} price`,
     `${eur(t.per_kwh)}/kWh`,
     `${Math.round((cost.loss - 1) * 100)} % charging loss`,
   ];

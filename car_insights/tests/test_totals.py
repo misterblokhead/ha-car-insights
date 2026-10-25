@@ -1,11 +1,12 @@
-import json
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from pytest import approx
 
-from car_insights import db, prices
-from car_insights.totals import period_starts, totals
+from car_insights import costs, db, prices, stats
+from car_insights.periods import period_starts
+from car_insights.totals import totals
+from conftest import seed_charge, seed_trip
 
 TZ = ZoneInfo("Europe/Amsterdam")
 
@@ -20,14 +21,14 @@ NOW = ms(2026, 10, 23, 12)
 def conn_with(trips=(), charges=()):
     c = db.connect(":memory:")
     for vid, start, end, dist, net in trips:
-        c.execute("INSERT INTO trips VALUES(?,?,?,?,?)", (vid, start, end, 1, json.dumps({"distance_m": dist, "net_wh": net})))
+        seed_trip(c, vid, start, end, distance_m=dist, net_wh=net)
     for vid, start, end, added in charges:
-        c.execute("INSERT INTO charges VALUES(?,?,?,?,?)", (vid, start, end, 1, json.dumps({"start": start, "end": end, "added_wh": added})))
+        seed_charge(c, vid, start, end, added_wh=added)
     return c
 
 
 def plain(m):
-    return {k: v for k, v in m.items() if k != "cost"}
+    return {k: v for k, v in m.items() if k not in ("cost", "wh_per_100km")}
 
 
 def test_period_starts_local_midnight():
@@ -72,6 +73,29 @@ def test_month_cost():
     c.execute("INSERT INTO vehicles(vehicle_id) VALUES('a')")
     prices.set_tariff(c, "ac", 0, 0.40)
     for st, wh in ((s, 20_000), (s + 86_400_000, None)):
-        c.execute("INSERT INTO charges VALUES(?,?,?,?,?)", ("a", st, st + 3_600_000, 1, json.dumps({"start": st, "end": st + 3_600_000, "added_wh": wh})))
+        seed_charge(c, "a", st, st + 3_600_000, added_wh=wh)
     prices.add_fixed_cost(c, "a", "Insurance", 31.0, "month", date(2026, 10, 1), None)
     assert totals(c, ["a"], now, TZ)["month"]["cost"] == {"energy": approx(8.8), "fixed": approx(10.0), "total": approx(18.8), "uncosted": 1}
+
+
+def test_sums_is_both_sensors_and_stats():
+    s = ms(2026, 10, 5, 8)
+    c = conn_with(trips=[("a", s, s + 1000, 12_000.0, 2400.0), ("a", s + 9000, s + 9500, 3000.0, None)], charges=[("a", s, s + 1000, 500.0)])
+    c.execute("INSERT INTO vehicles(vehicle_id) VALUES('a')")
+    prices.set_tariff(c, "ac", 0, 0.40)
+    now = ms(2026, 10, 31, 12)
+    assert totals(c, ["a"], now, TZ)["month"] == stats.stats(c, ["a"], "month", date(2026, 10, 31), TZ, now_ms=now)["totals"]
+
+
+def test_a_cost_failure_leaves_the_distance(monkeypatch):
+    c = conn_with(trips=[("a", ms(2026, 10, 5, 8), ms(2026, 10, 5, 9), 12_000.0, 2400.0)])
+    monkeypatch.setattr(costs, "period_costs", lambda *a: 1 / 0)
+    t = stats.stats(c, ["a"], "month", date(2026, 10, 20), TZ)["totals"]
+    assert t["cost"] == {"energy": None, "fixed": None, "total": None, "uncosted": None} and t["distance_m"] == 12_000
+
+
+def test_null_distance_counts_as_zero():
+    s = ms(2026, 10, 5, 8)
+    c = conn_with(trips=[("a", s, s + 1000, 10_000.0, 2000.0), ("a", s + 5000, s + 6000, None, None)])
+    m = totals(c, ["a"], NOW, TZ)["month"]
+    assert (m["distance_m"], m["net_wh"], m["trips"], m["wh_per_100km"]) == (10_000, 2000, 2, 20_000)

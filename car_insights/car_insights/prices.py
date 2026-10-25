@@ -1,10 +1,13 @@
 """Charging prices: tariffs per charge target, learned charge spots, receipts, fixed costs and the card surcharge."""
 import math
 import uuid
+from dataclasses import dataclass, field
 from datetime import date
+from typing import Callable
 
-from . import db
-from .zones import Zone, name_at
+from . import db, store
+from .kinds import CHARGE
+from .zones import Zone, Zones, name_at
 
 SPOT_RADIUS_M = 100
 _PERIODS = ("month", "quarter", "year", "once")
@@ -33,12 +36,6 @@ def _tariff_row(r) -> dict:
     return {"valid_from": r[0], "per_kwh": r[1], "start_fee": r[2], "per_min": r[3]}
 
 
-def tariff_at(conn, target: str, t: int) -> dict | None:
-    r = conn.execute("SELECT valid_from, per_kwh, start_fee, per_min FROM tariffs WHERE target=? AND valid_from<=? "
-                     "ORDER BY valid_from DESC LIMIT 1", (target, t)).fetchone()
-    return None if r is None else _tariff_row(r)
-
-
 def set_tariff(conn, target: str, valid_from: int, per_kwh: float, start_fee: float = 0, per_min: float = 0) -> None:
     _num(per_kwh, 5, "per_kwh"), _num(start_fee, 1000, "start_fee"), _num(per_min, 1000, "per_min")
     if target not in ("ac", "dc") and conn.execute("SELECT 1 FROM charge_spots WHERE spot_id=?", (target,)).fetchone() is None:
@@ -48,41 +45,37 @@ def set_tariff(conn, target: str, valid_from: int, per_kwh: float, start_fee: fl
                  (target, valid_from, per_kwh, start_fee, per_min))
 
 
-def spot_at(conn, lat: float, lon: float) -> tuple[str, str] | None:
-    rows = conn.execute("SELECT spot_id, name, lat, lon, radius_m FROM charge_spots").fetchall()
+def _spot_in(rows: list[tuple], lat: float, lon: float) -> tuple[str, str] | None:
+    """rows: (spot_id, name, lat, lon, radius_m); the nearest spot whose radius holds the point."""
     sid = name_at([Zone(s, la, lo, r) for s, _, la, lo, r in rows], lat, lon)  # the zone name is the spot id
     return None if sid is None else next((s, n) for s, n, *_ in rows if s == sid)
 
 
+def _spot_rows(conn) -> list[tuple]:
+    return conn.execute("SELECT spot_id, name, lat, lon, radius_m FROM charge_spots").fetchall()
+
+
+def spot_namer(conn) -> Zones:
+    """(lat, lon) -> the name of the spot holding the point, over the spots as they are now: one query however often it is asked."""
+    rows = _spot_rows(conn)
+    return lambda lat, lon: (hit := _spot_in(rows, lat, lon)) and hit[1]
+
+
 def spot_name_at(conn, lat: float, lon: float) -> str | None:
-    hit = spot_at(conn, lat, lon)
-    return hit and hit[1]
-
-
-def relabel(conn) -> None:
-    """A charge shows its zone, else the spot it lies in, else nothing."""
-    rows = conn.execute("SELECT vehicle_id, start, json_extract(json,'$.lat'), json_extract(json,'$.lon'), "
-                        "json_extract(json,'$.zone'), json_extract(json,'$.place') FROM charges "
-                        "WHERE json_extract(json,'$.lat') IS NOT NULL").fetchall()
-    for vid, start, lat, lon, zone, old in rows:
-        new = zone or spot_name_at(conn, lat, lon)
-        if new != old:
-            conn.execute("UPDATE charges SET json=json_set(json,'$.place',?) WHERE vehicle_id=? AND start=?", (new, vid, start))
+    return spot_namer(conn)(lat, lon)
 
 
 def create_spot(conn, vid: str, start: int, name: str, per_kwh: float, start_fee: float = 0, per_min: float = 0) -> str:
     name = _name(name)
-    r = conn.execute("SELECT json_extract(json,'$.lat'), json_extract(json,'$.lon') FROM charges WHERE vehicle_id=? AND start=?",
-                     (vid, start)).fetchone()
-    if r is None:
+    c = store.row(conn, CHARGE, vid, start)
+    if c is None:
         raise KeyError(start)
-    if r[0] is None:
+    if c.get("lat") is None:
         raise ValueError("this charge has no GPS point")
     sid = uuid.uuid4().hex[:8]
     with db.tx(conn):
-        conn.execute("INSERT INTO charge_spots VALUES(?,?,?,?,?)", (sid, name, r[0], r[1], SPOT_RADIUS_M))
+        conn.execute("INSERT INTO charge_spots VALUES(?,?,?,?,?)", (sid, name, c["lat"], c["lon"], SPOT_RADIUS_M))
         set_tariff(conn, sid, start, per_kwh, start_fee, per_min)  # a bad price rolls the spot back
-        relabel(conn)
     return sid
 
 
@@ -91,7 +84,6 @@ def rename_spot(conn, spot_id: str, name: str) -> None:
     with db.tx(conn):
         if conn.execute("UPDATE charge_spots SET name=? WHERE spot_id=?", (name, spot_id)).rowcount == 0:
             raise KeyError(spot_id)
-        relabel(conn)
 
 
 def delete_spot(conn, spot_id: str) -> None:
@@ -99,26 +91,18 @@ def delete_spot(conn, spot_id: str) -> None:
         if conn.execute("DELETE FROM charge_spots WHERE spot_id=?", (spot_id,)).rowcount == 0:
             raise KeyError(spot_id)
         conn.execute("DELETE FROM tariffs WHERE target=?", (spot_id,))
-        relabel(conn)
 
 
 def set_receipt(conn, vid: str, start: int, amount: float | None) -> None:
     if amount is not None:
         _num(amount, 1000, "amount")
-    r = conn.execute("SELECT end FROM charges WHERE vehicle_id=? AND start=?", (vid, start)).fetchone()
-    if r is None:
+    c = store.row(conn, CHARGE, vid, start)
+    if c is None:
         raise KeyError(start)
     with db.tx(conn):  # every receipt in the span goes: receipt_for reads the newest one, a charge re-derived earlier may hold an old one
-        conn.execute("DELETE FROM charge_receipts WHERE vehicle_id=? AND start>=? AND (? IS NULL OR start<=?)", (vid, start, r[0], r[0]))
+        conn.execute("DELETE FROM charge_receipts WHERE vehicle_id=? AND start>=? AND (? IS NULL OR start<=?)", (vid, start, c["end"], c["end"]))
         if amount is not None:
             conn.execute("INSERT INTO charge_receipts VALUES(?,?,?)", (vid, start, amount))
-
-
-def receipt_for(conn, vid: str, start: int, end: int | None) -> float | None:
-    """A receipt keeps the start it was saved with, so a charge re-derived with an earlier start still finds it."""
-    r = conn.execute("SELECT amount FROM charge_receipts WHERE vehicle_id=? AND start>=? AND (? IS NULL OR start<=?) "
-                     "ORDER BY start DESC LIMIT 1", (vid, start, end, end)).fetchone()
-    return r and r[0]
 
 
 def add_fixed_cost(conn, vid: str, name: str, amount: float, period: str, start: date, end: date | None) -> str:
@@ -162,9 +146,39 @@ def set_card(conn, vid: str, markup_pct: float, start_fee: float) -> None:
         raise KeyError(vid)
 
 
-def card(conn, vid: str) -> tuple[float, float]:
-    r = conn.execute("SELECT card_markup_pct, card_start_fee FROM vehicles WHERE vehicle_id=?", (vid,)).fetchone()
-    return (float(r[0]), float(r[1])) if r else (0.0, 0.0)
+@dataclass
+class Book:
+    """One vehicle's prices, loaded once: pricing a charge then needs no database."""
+    tariffs: dict[str, list[dict]] = field(default_factory=dict)  # per target (ac, dc, a spot id), newest first
+    spots: list[tuple] = field(default_factory=list)  # (spot_id, name, lat, lon, radius_m)
+    receipts: list[tuple[int, float]] = field(default_factory=list)  # (start, amount), newest start first
+    card: tuple[float, float] = (0.0, 0.0)  # (markup_pct, start_fee)
+
+    def tariff_at(self, target: str, t: int) -> dict | None:
+        return next((r for r in self.tariffs.get(target, ()) if r["valid_from"] <= t), None)
+
+    def spot_at(self, lat: float, lon: float) -> tuple[str, str] | None:
+        return _spot_in(self.spots, lat, lon)
+
+    def receipt_for(self, start: int, end: int | None) -> float | None:
+        """A receipt keeps the start it was saved with, so a charge re-derived with an earlier start still finds it."""
+        return next((a for s, a in self.receipts if s >= start and (end is None or s <= end)), None)
+
+
+def book(conn, vid: str) -> Book:
+    tariffs: dict[str, list[dict]] = {}
+    for target, *row in conn.execute("SELECT target, valid_from, per_kwh, start_fee, per_min FROM tariffs ORDER BY valid_from DESC"):
+        tariffs.setdefault(target, []).append(_tariff_row(row))
+    c = conn.execute("SELECT card_markup_pct, card_start_fee FROM vehicles WHERE vehicle_id=?", (vid,)).fetchone()
+    return Book(tariffs, _spot_rows(conn),
+                conn.execute("SELECT start, amount FROM charge_receipts WHERE vehicle_id=? ORDER BY start DESC", (vid,)).fetchall(),
+                (float(c[0]), float(c[1])) if c else (0.0, 0.0))
+
+
+def books(conn) -> Callable[[str], Book]:
+    """A vehicle's book, loaded on its first ask: one pass over many charges loads each vehicle's prices once."""
+    cache: dict[str, Book] = {}
+    return lambda vid: cache.get(vid) or cache.setdefault(vid, book(conn, vid))
 
 
 def _tariffs(conn, target: str) -> list[dict]:

@@ -1,4 +1,4 @@
-"""source B: maps an HA car integration's entities to samples (history rows -> (t, key, value))"""
+"""the HA entities source: maps an HA car integration's entities to samples (history rows -> (t, key, value))"""
 import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone

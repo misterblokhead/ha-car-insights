@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { split, durationParts, per100, compare, markerAt, deltaText, kwLabel, arrow, rangeLine } from "./detail.js";
+import { split, durationParts, compare, markerAt, deltaText, kwLabel, arrow, rangeLine } from "./detail.js";
 
 test("split separates the value from its unit", () => {
   assert.deepEqual(split("12.3 km"), ["12.3", "km"]);
@@ -15,14 +15,8 @@ test("durationParts keeps hours and minutes together", () => {
   assert.deepEqual(durationParts(null), ["–", ""]);
 });
 
-test("per100 needs 100 m of distance and a net energy", () => {
-  assert.ok(Math.abs(per100({ net_wh: 3000, distance_m: 20000 }) - 15) < 1e-9);
-  assert.equal(per100({ net_wh: 3000, distance_m: 50 }), null);
-  assert.equal(per100({ net_wh: null, distance_m: 20000 }), null);
-});
-
 test("compare gives each measure the trip, the usual value and the difference", () => {
-  const c = compare({ duration_s: 1500, net_wh: 3000, distance_m: 20000 }, { n: 6, avg_duration_s: 1680, avg_wh_per_100km: 14000 });
+  const c = compare({ duration_s: 1500, wh_per_100km: 15_000 }, { n: 6, avg_duration_s: 1680, avg_wh_per_100km: 14000 });
   assert.equal(c.duration.delta, -3);
   assert.equal(c.duration.usual, 28);
   assert.ok(Math.abs(c.consumption.mine - 15) < 1e-9);
@@ -31,10 +25,10 @@ test("compare gives each measure the trip, the usual value and the difference", 
 
 test("compare is null without similar trips and per measure without data", () => {
   assert.equal(compare({ duration_s: 60 }, null), null);
-  const c = compare({ duration_s: 600, net_wh: null, distance_m: 5000 }, { n: 1, avg_duration_s: null, avg_wh_per_100km: 14000 });
+  const c = compare({ duration_s: 600, wh_per_100km: null }, { n: 1, avg_duration_s: null, avg_wh_per_100km: 14000 });
   assert.equal(c.duration, null);
   assert.equal(c.consumption, null);
-  assert.equal(compare({ duration_s: 600, net_wh: 3000, distance_m: 50 }, { n: 1, avg_duration_s: 600, avg_wh_per_100km: 14000 }).consumption, null);
+  assert.equal(compare({ duration_s: 600, wh_per_100km: null }, { n: 1, avg_duration_s: 600, avg_wh_per_100km: 14000 }).consumption, null);
 });
 
 test("markerAt puts the usual value in the middle and clamps", () => {

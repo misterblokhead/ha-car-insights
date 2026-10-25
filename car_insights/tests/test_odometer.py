@@ -1,9 +1,9 @@
-import json
-
-from car_insights import db
+from car_insights import db, store
 from car_insights.db import connect
+from car_insights.kinds import TRIP
 from car_insights.odometer import chain
 from car_insights.protocol import Sample
+from conftest import seed_trip
 
 H = 3_600_000
 M = 60_000
@@ -16,8 +16,7 @@ def reading(conn, t, km, seq=[0]):
 
 
 def trip(conn, start, end, distance_m):
-    js = json.dumps({"start": start, "end": end, "distance_m": distance_m})
-    conn.execute("INSERT INTO trips VALUES(?,?,?,?,?)", ("car1", start, end, 2, js))
+    seed_trip(conn, "car1", start, end, distance_m=distance_m)
 
 
 def test_chain_from_cloud_reading():
@@ -40,7 +39,7 @@ def test_later_reading_reanchors_next_trip_not_distance():
     trip(conn, start, start + 20 * M, 25_930)
     reading(conn, D + 16 * H + 56 * M, 37005)
     assert chain(conn, "car1", D + 17 * H, 1_000)[0] == 37005.0
-    assert json.loads(conn.execute("SELECT json FROM trips").fetchone()[0])["distance_m"] == 25_930
+    assert store.row(conn, TRIP, "car1", start)["distance_m"] == 25_930
 
 
 def test_no_reading_none():

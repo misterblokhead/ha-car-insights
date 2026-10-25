@@ -12,7 +12,7 @@ stores them in SQLite (`/data/car_insights.db`) and publishes live sensors over 
 
 The add-on adds a **Car Insights** entry to the Home Assistant sidebar (ingress, no port to open). It has three pages; every user sees only the vehicles and cost groups they may see.
 
-- **Activity**: a live strip (state, place, battery, range) above one timeline of trips and charges, newest first, grouped by day with the day's totals. A filter shows all, only trips or only charges. A trip card shows From → To, the time, the distance and a route outline; a charge card shows the place, average power, the energy added and a charge bar. Places are your Home Assistant zones ("Unknown" outside every zone); after adding, moving or renaming a zone, restart the add-on and it renames past trips and charges too. A day's totals include the trip or charge still in progress. A card opens its detail page: a trip with its consumption per 0.5 km, speed curve and a comparison with earlier similar trips, a charge with its charging speed against charge level and the battery energy (from the car) and charge level (from the cloud) in separate charts.
+- **Activity**: a live strip (state, place, battery, range) above one timeline of trips and charges, newest first, grouped by day with the day's totals. A filter shows all, only trips or only charges. A trip card shows From → To, the time, the distance and a route outline; a charge card shows the place, average power, the energy added and a charge bar. Places are your Home Assistant zones ("Unknown" outside every zone); a zone added, moved or renamed renames past trips and charges within 10 minutes. A day's totals include the trip or charge still in progress. A card opens its detail page: a trip with its consumption per 0.5 km, speed curve and a comparison with earlier similar trips, a charge with its charging speed against charge level and the battery energy (from the car) and charge level (from the cloud) in separate charts.
 - **Statistics**: week, month or year (weeks start on Monday) with the change against the previous period, distance per day or month with consumption, kWh charged per place, and highlights (longest and most efficient trip, recuperated energy). A cost group adds a split per car.
 - **Settings** (HA admins only): cost groups, the vehicle group, viewers, prices, charge locations and fixed costs (see Costs).
 
@@ -33,20 +33,12 @@ Costs are computed when shown, so nothing needs recomputing after a price change
 
 Rules: a charge is DC when its average power is above 22 kW, else AC. Charging loss is 1.10 for AC and 1.05 for DC. A trip costs an energy part (net kWh times the kWh-weighted price of the last 30 days' charges, default AC price times 1.10 when there are none; EUR 0 for a downhill trip) plus a fixed part (the last 365 days' fixed costs per km times the distance, shown after 100 km).
 
-The first start of 0.7.0 rebuilds all trips and charges once (charges gain their GPS point); the log shows `rebuild of N vehicles took ... s`.
+The first start of 0.8.0 migrates the database and rebuilds all trips and charges once; the log shows `rebuild of N vehicles took ... s`. Take a Home Assistant backup before updating: 0.7.0 cannot open the migrated database.
 
-## Sensors, dashboard and recorder
+## Sensors and dashboard
 
-Per vehicle: live sensors, last trip and last charge, month and year totals, and `sensor.<vehicle>_last_trip_curve` / `sensor.<vehicle>_last_charge_curve` (the state is the segment start, the attributes carry the series for your own cards). Per cost group: month and year totals on a device of its own.
+Per vehicle: live sensors, last trip and last charge, month and year totals. Per cost group: month and year totals on a device of its own.
 
 Cost sensors (0.7.0): `last_trip_cost` and `last_charge_cost` (EUR); per vehicle and per cost group `month_` and `year_` `energy_cost`, `fixed_cost` and `total_cost` (EUR) and `cost_per_km` (EUR/km). The ended trip and charge events carry `cost`.
 
 A ready-made Lovelace sections view is in [dashboard/car-insights.yaml](../dashboard/car-insights.yaml) (Now, Last trip, Last charge, This month, This year, Last 24 hours, and a shortcut to the sidebar page): replace `VEHICLE` with the device's entity prefix and its title with your car's name. Its two charts need `apexcharts-card` from HACS. Per-trip curves are on the sidebar page, not on the dashboard: `apexcharts-card` only draws a time axis ending at a span relative to now, so a past trip's km-based curve cannot be shown faithfully.
-
-The curve attributes can be large and change on every trip, so keep them out of the recorder:
-
-```yaml
-recorder:
-  exclude:
-    entity_globs: ["sensor.*_last_trip_curve", "sensor.*_last_charge_curve"]
-```

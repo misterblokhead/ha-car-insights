@@ -1,12 +1,11 @@
 <script>
   import { hashOf } from "../activity.js";
-  import { km, kwh, kwh100, duration, time, NA } from "../format.js";
+  import { km, kwh, consumption, duration, time } from "../format.js";
   import RouteOutline from "./RouteOutline.svelte";
 
   let { item, current = false } = $props();
   const from = $derived(item.from ?? "Unknown"), to = $derived(item.to ?? "Unknown");
   const [dist, unit] = $derived(km(item.distance_m).split(" "));
-  const per100 = $derived(kwh100(item.net_wh, item.distance_m));
   const when = $derived(`${time(item.start)} · ${item.end == null ? "now" : duration(item.duration_s)}`);
 </script>
 
@@ -22,7 +21,7 @@
     <RouteOutline points={item.route} width={120} height={84}
       label="Route from {from} to {to}, {km(item.distance_m)}, {item.end == null ? "still driving" : duration(item.duration_s)}" />
   </span>
-  <span class="sub stats">{per100 == null ? NA : `${per100.toFixed(1)} kWh/100 km`}<br />{kwh(item.net_wh)}</span>
+  <span class="sub stats">{consumption(item.wh_per_100km)}<br />{kwh(item.net_wh)}</span>
 </a>
 
 <style>

@@ -125,7 +125,7 @@
               {#if item.kind === "trip"}
                 <TripCard {item} current={isOpen(item)} />
               {:else}
-                <ChargeCard {item} capacity={feed.capacity_wh[item.vehicle_id]} current={isOpen(item)} />
+                <ChargeCard {item} current={isOpen(item)} />
               {/if}
             </li>
           {/each}

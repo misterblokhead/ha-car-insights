@@ -6,6 +6,8 @@ from typing import Callable, Iterator, Sequence
 from .protocol import Sample
 
 # Ordered migrations: index i upgrades user_version i -> i+1. Never edit a released entry, append instead.
+# The derived tables (trips, charges, their series and routes) are a cache: they change by drop, create and an ALGO bump (the start-up
+# rebuild fills them again). Tables holding the owner's data are never dropped and never lose a column.
 _MIGRATIONS = ["""
 CREATE TABLE IF NOT EXISTS samples(vehicle_id TEXT, source_id TEXT, seq INTEGER, t INTEGER, key TEXT, value_json TEXT,
   PRIMARY KEY(vehicle_id, source_id, seq));
@@ -41,6 +43,23 @@ CREATE TABLE fixed_costs(cost_id TEXT PRIMARY KEY, vehicle_id TEXT NOT NULL, nam
 CREATE TABLE charge_receipts(vehicle_id TEXT, start INTEGER, amount REAL NOT NULL, PRIMARY KEY(vehicle_id, start));
 ALTER TABLE vehicles ADD COLUMN card_markup_pct REAL NOT NULL DEFAULT 0;
 ALTER TABLE vehicles ADD COLUMN card_start_fee REAL NOT NULL DEFAULT 0
+""", """
+DROP TABLE trips;
+DROP TABLE charges;
+DROP TABLE trip_series;
+DROP TABLE charge_series;
+DROP TABLE trip_routes;
+CREATE TABLE trips(vehicle_id TEXT, start INTEGER, end INTEGER, algo INTEGER, distance_m REAL, net_wh REAL, gross_wh REAL, recup_wh REAL,
+  duration_s INTEGER, from_lat REAL, from_lon REAL, to_lat REAL, to_lon REAL, from_place TEXT, to_place TEXT, json TEXT,
+  PRIMARY KEY(vehicle_id, start));
+CREATE TABLE charges(vehicle_id TEXT, start INTEGER, end INTEGER, algo INTEGER, added_wh REAL, energy_source TEXT, start_wh REAL,
+  lat REAL, lon REAL, zone TEXT, place TEXT, json TEXT, PRIMARY KEY(vehicle_id, start));
+CREATE TABLE trip_series(vehicle_id TEXT, start INTEGER, json TEXT, PRIMARY KEY(vehicle_id, start));
+CREATE TABLE charge_series(vehicle_id TEXT, start INTEGER, json TEXT, PRIMARY KEY(vehicle_id, start));
+CREATE TABLE trip_routes(vehicle_id TEXT, start INTEGER, points TEXT, PRIMARY KEY(vehicle_id, start));
+CREATE INDEX trips_ve ON trips(vehicle_id, end);
+CREATE INDEX charges_ve ON charges(vehicle_id, end);
+CREATE INDEX trips_places ON trips(vehicle_id, from_place, to_place)
 """]
 
 
@@ -87,8 +106,8 @@ def acked_seq(conn, vehicle_id: str, source_id: str) -> int:
 
 
 def vehicle(conn, vehicle_id: str) -> dict | None:
-    r = conn.execute("SELECT name, meta_json FROM vehicles WHERE vehicle_id=?", (vehicle_id,)).fetchone()
-    return None if r is None else {"name": r[0], "meta": json.loads(r[1]) if r[1] else None}
+    r = conn.execute("SELECT meta_json FROM vehicles WHERE vehicle_id=?", (vehicle_id,)).fetchone()
+    return None if r is None else {"meta": json.loads(r[0]) if r[0] else None}
 
 
 def capacity_wh(conn, vehicle_id: str, default_wh: float) -> float:
@@ -183,9 +202,9 @@ def ingest(conn, vehicle_id: str, source_id: str, samples: Sequence[Sample], rec
         if metas:
             m = max(metas, key=lambda s: s.t)
             conn.execute(
-                "INSERT INTO vehicles(vehicle_id, name, meta_json) VALUES(?,?,?) "
-                "ON CONFLICT(vehicle_id) DO UPDATE SET name=excluded.name, meta_json=excluded.meta_json",
-                (vid, m.v.get("vehicle_name"), json_dumps(m.v)),
+                "INSERT INTO vehicles(vehicle_id, meta_json) VALUES(?,?) "
+                "ON CONFLICT(vehicle_id) DO UPDATE SET meta_json=excluded.meta_json",
+                (vid, json_dumps(m.v)),
             )
         acked = acked_seq(conn, vid, sid)
         # the sender never sends a seq while holding a lower unacked one, so everything below the batch is resolved

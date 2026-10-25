@@ -2,12 +2,13 @@ import json
 import logging
 import os
 import time
+from functools import partial
 from pathlib import Path
 
 import uvicorn
 
 from .api import create_app
-from . import db
+from . import capacity as capacity_learning, db
 from .db import connect
 from .mqtt_out import MqttOut
 from .poller import Poller, SourceConf
@@ -18,7 +19,8 @@ from .publisher import Publisher
 from .token_file import load_or_create
 from .totals_sensors import TotalsSensors
 from .trip_sensors import TripSensors
-from .zones import ZoneCache, fetch_history, fetch_time_zone, fetch_zones, supervisor_get, zones_changed
+from .ha_api import fetch_history, fetch_time_zone, fetch_zones, supervisor_get
+from .zones import ZoneCache
 
 
 def main() -> None:
@@ -34,25 +36,25 @@ def main() -> None:
     def capacity(vid: str) -> float:
         return db.capacity_wh(conn, vid, default_wh)
 
-    zones = ZoneCache(lambda: fetch_zones(sup_token))
-    # a zone added, moved or renamed reaches stored trips and charges through a rebuild at the next start
-    deriver = Deriver(conn, zones, capacity, rebuild=zones_changed(lambda: fetch_zones(sup_token), Path("/data/zones.json")),
-                      spots=lambda lat, lon: prices.spot_name_at(conn, lat, lon))
-    # tz is assigned below; the cost lambda reads it only when called
-    sensors = TripSensors(conn, mqtt, capacity, lambda kind, vid, start: getattr(deriver, f"{kind}_series")(vid, start),
-                          cost=lambda kind, vid, row: costs.trip_cost(conn, vid, row, tz)["total"] if kind == "trip" else costs.charge_cost(conn, vid, row)["amount"])
+    Path("/data/zones.json").unlink(missing_ok=True)  # an earlier version's cache of the zone list
     tz = fetch_time_zone(sup_token)
-    totals = TotalsSensors(conn, mqtt, tz)
-
-    def summarize(vid: str, min_t: int | None, received: int) -> tuple[dict | None, dict]:
-        return pipeline.refresh(deriver, sensors, totals, vid, min_t, received, tz)
+    zones = ZoneCache(lambda: fetch_zones(sup_token))
+    deriver = Deriver(conn, zones, capacity, spots=lambda lat, lon: prices.spot_name_at(conn, lat, lon))
+    sensors = TripSensors(conn, mqtt, capacity,
+                          trip_cost=lambda vid, row: costs.trip_cost(conn, vid, row, tz)["total"],
+                          charge_cost=lambda vid, row: costs.charge_cost(prices.book(conn, vid), row)["amount"])
+    app = pipeline.App(conn, deriver, sensors, TotalsSensors(conn, mqtt, tz), tz, capacity, zones, lambda: zones.loaded)
+    zones.on_change = partial(pipeline.relabel, app)  # the cache and the app need each other: only now can a fetch rename places
 
     poller = Poller(conn, [SourceConf(**c) for c in opts.get("sources", [])], lambda ids, a, b: fetch_history(sup_token, ids, a, b),
-                    lambda vid, min_t, received: summarize(vid, min_t, received))  # the open trip and summary only matter to the webhook ack
-    pipeline.rebuild(deriver, sensors, conn, int(time.time() * 1000))  # before the server and run_daily's first publish: an ALGO bump emptied the rows
-    uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity).on_ingested, summarize=summarize, background=[poller.run, totals.run_daily, lambda: pipeline.run_close_quiet(conn, summarize)],
-                           ui=ui_api.router(conn, deriver, zones, tz, capacity, AdminCache(lambda: ha_users.fetch_users(sup_token)).is_admin, on_settings=totals.publish_groups,
-                           on_costs=lambda vids: pipeline.republish(deriver, sensors, totals, conn, vids)),
+                    partial(pipeline.ingested, app))
+    # before the server and run_daily's first publish: an ALGO bump emptied the rows
+    zones.refresh()  # a success renames the stored rows through on_change; a failure changes nothing and zones.run retries
+    pipeline.rebuild(app, int(time.time() * 1000))
+    uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity).on_ingested, ingested=partial(pipeline.ingested, app), reply=partial(pipeline.reply, app),
+                           background=[poller.run, app.totals.run_daily, lambda: capacity_learning.run(conn), zones.run, partial(pipeline.run_close_quiet, app)],
+                           ui=ui_api.router(conn, zones, tz, capacity, AdminCache(lambda: ha_users.fetch_users(sup_token)).is_admin, on_settings=app.totals.publish_groups,
+                           relabel=partial(pipeline.relabel, app), on_costs=partial(pipeline.republish, app)),
                            web_dir=Path("/app/web")),
                 host="0.0.0.0", port=8099)
 

@@ -12,13 +12,12 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import ingest
-from .live import FUTURE_SLACK_MS
+from .pipeline import late_min_t
 from .protocol import ProtocolError, Sample, parse_batch
 
 log = logging.getLogger(__name__)
 # Layered limits: car batches <= 256 KB, receiver accepts 300 KB, this add-on 1 MiB (deliberately the largest so it never rejects what the receiver forwarded).
 MAX_BODY = 1024 * 1024
-LATE_WINDOW_MS = 31 * 86_400_000  # older samples are stored but never trigger a re-derive of the history
 
 
 def create_app(
@@ -27,7 +26,8 @@ def create_app(
     on_ingested: Callable[[str, list[Sample], int], None],
     now_ms: Callable[[], int] = lambda: int(time.time() * 1000),
     *,
-    summarize: Callable[[str, int | None, int], tuple[dict | None, dict] | None] | None = None,  # -> (open trip, summary)
+    ingested: Callable[[str, int | None, int], None] | None = None,  # (vehicle, oldest sample worth a re-derive, received): derive and publish
+    reply: Callable[[str, int], tuple] | None = None,  # (vehicle, received) -> (open trip, summary), the car's answer
     background: Sequence[Callable[[], Awaitable[None]]] = (),  # long-running coroutines (the cloud poller), run on this loop
     ui: APIRouter | None = None,  # the sidebar page's API (ui_api.router)
     web_dir: Path | None = None,  # the built sidebar page, served at / when the directory exists
@@ -76,17 +76,19 @@ def create_app(
         except Exception:
             log.exception("on_ingested failed")
         out = {"acked_seq": acked}
-        if summarize:
+        if ingested:
             try:
-                late = [x.t for x in batch.samples if received - LATE_WINDOW_MS <= x.t <= received + FUTURE_SLACK_MS]
-                result = summarize(batch.vehicle_id, min(late, default=None), received)
-                if result is not None:
-                    current_trip, s = result
-                    out["current_trip"] = current_trip  # every ack: it changes every few seconds, the summary does not
-                    if s["rev"] != batch.summary_rev:
-                        out["summary"] = s
+                ingested(batch.vehicle_id, late_min_t(batch.samples, received), received)
             except Exception:
-                log.exception("summarize failed")
+                log.exception("ingested failed")  # the reply still answers from the stored rows
+        if reply:
+            try:
+                current_trip, s = reply(batch.vehicle_id, received)
+                out["current_trip"] = current_trip  # every ack: it changes every few seconds, the summary does not
+                if s["rev"] != batch.summary_rev:
+                    out["summary"] = s
+            except Exception:
+                log.exception("reply failed")
         return out
 
     if ui is not None:

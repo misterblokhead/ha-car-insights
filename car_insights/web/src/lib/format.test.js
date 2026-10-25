@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { km, kwh, kw, pct, duration, dayKey, when, time, dayLabel, daySummary, delta, kwh100 } from "./format.js";
+import { km, kwh, kw, pct, duration, dayKey, when, time, dayLabel, daySummary, delta, kwhPer100, consumption } from "./format.js";
 
 test("units", () => {
   assert.equal(km(26000), "26.0 km");
@@ -51,8 +51,9 @@ test("delta", () => {
   assert.equal(delta(1.14, "kWh/100", 1), "+1.1 kWh/100");
 });
 
-test("kwh100", () => {
-  assert.ok(Math.abs(kwh100(4050, 26000) - 15.58) < 0.01);
-  assert.equal(kwh100(100, 0), null);
-  assert.equal(kwh100(null, 1000), null);
+test("consumption shows the server's Wh per 100 km as kWh, or a dash", () => {
+  assert.equal(consumption(27_300), "27.3 kWh/100 km");
+  assert.equal(consumption(null), "–");
+  assert.equal(kwhPer100(15_580), 15.58);
+  assert.equal(kwhPer100(null), null);
 });

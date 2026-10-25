@@ -2,9 +2,10 @@ from datetime import date
 
 import pytest
 
-from car_insights import prices
-from car_insights.db import connect, json_dumps
-from car_insights.derive import ALGO
+from car_insights import prices, store
+from car_insights.db import connect
+from car_insights.kinds import CHARGE
+from conftest import seed_charge
 
 
 @pytest.fixture
@@ -15,12 +16,11 @@ def c():
 
 
 def charge(c, start, end=None, lat=None, lon=None, zone=None, place=None):
-    c.execute("INSERT OR REPLACE INTO charges VALUES(?,?,?,?,?)",
-              ("car1", start, end or start + 1000, ALGO, json_dumps({"lat": lat, "lon": lon, "zone": zone, "place": place})))
+    seed_charge(c, "car1", start, end or start + 1000, lat=lat, lon=lon, zone=zone, place=place)
 
 
 def place(c, start):
-    return c.execute("SELECT json_extract(json,'$.place') FROM charges WHERE vehicle_id='car1' AND start=?", (start,)).fetchone()[0]
+    return store.row(c, CHARGE, "car1", start)["place"]
 
 
 def count(c, table):
@@ -36,17 +36,17 @@ def test_migration_adds_cost_tables(c):
 def test_tariff_boundary(c):
     prices.set_tariff(c, "ac", 1000, 0.40)
     prices.set_tariff(c, "ac", 2000, 0.50)
-    assert prices.tariff_at(c, "ac", 999) is None
-    assert prices.tariff_at(c, "ac", 1000)["per_kwh"] == 0.40
-    assert prices.tariff_at(c, "ac", 1999)["per_kwh"] == 0.40
-    assert prices.tariff_at(c, "ac", 2000) == {"valid_from": 2000, "per_kwh": 0.50, "start_fee": 0, "per_min": 0}
+    assert prices.book(c, "car1").tariff_at("ac", 999) is None
+    assert prices.book(c, "car1").tariff_at("ac", 1000)["per_kwh"] == 0.40
+    assert prices.book(c, "car1").tariff_at("ac", 1999)["per_kwh"] == 0.40
+    assert prices.book(c, "car1").tariff_at("ac", 2000) == {"valid_from": 2000, "per_kwh": 0.50, "start_fee": 0, "per_min": 0}
 
 
 def test_set_tariff_upserts(c):
     prices.set_tariff(c, "ac", 1000, 0.40)
     prices.set_tariff(c, "ac", 1000, 0.45)
     assert count(c, "tariffs") == 1
-    assert prices.tariff_at(c, "ac", 1000)["per_kwh"] == 0.45
+    assert prices.book(c, "car1").tariff_at("ac", 1000)["per_kwh"] == 0.45
 
 
 def test_set_tariff_unknown_spot(c):
@@ -86,7 +86,7 @@ def test_limits(c, call):
 
 def test_limit_bounds_pass(c):
     prices.set_tariff(c, "ac", 0, 5, start_fee=1000)
-    assert prices.tariff_at(c, "ac", 0)["per_kwh"] == 5
+    assert prices.book(c, "car1").tariff_at("ac", 0)["per_kwh"] == 5
 
 
 def test_spot_name_limits(c):
@@ -100,10 +100,23 @@ def test_spot_name_limits(c):
 def test_create_spot_from_charge(c):
     charge(c, 10_000, lat=52.1, lon=5.2)
     sid = prices.create_spot(c, "car1", 10_000, " Plaza ", 0.35)
-    assert prices.spot_at(c, 52.1, 5.2) == (sid, "Plaza")
+    assert prices.book(c, "car1").spot_at(52.1, 5.2) == (sid, "Plaza")
     assert prices.spot_name_at(c, 52.1, 5.2) == "Plaza"
-    assert prices.tariff_at(c, sid, 10_000)["per_kwh"] == 0.35
-    assert place(c, 10_000) == "Plaza"
+    assert prices.book(c, "car1").tariff_at(sid, 10_000)["per_kwh"] == 0.35
+
+
+def test_spot_namer_and_books_query_once(c):
+    charge(c, 10_000, lat=52.1, lon=5.2)
+    prices.create_spot(c, "car1", 10_000, "Plaza", 0.35)
+    queries = []
+    c.set_trace_callback(queries.append)
+    name = prices.spot_namer(c)
+    assert [name(52.1, 5.2) for _ in range(3)] == ["Plaza"] * 3 and name(52.5, 5.5) is None
+    assert len(queries) == 1  # one load, however many points are asked
+    queries.clear()
+    books = prices.books(c)
+    assert books("car1") is books("car1") and books("car1") is not books("car2")
+    assert len([q for q in queries if "FROM tariffs" in q]) == 2  # a book per vehicle, once
 
 
 def test_create_spot_needs_point_and_charge(c):
@@ -117,43 +130,22 @@ def test_create_spot_needs_point_and_charge(c):
 def test_spot_at_nearest_of_overlapping(c):
     for s, lon in (("a", 5.0), ("b", 5.00088)):
         c.execute("INSERT INTO charge_spots VALUES(?,?,?,?,100)", (s, s.upper(), 52.0, lon))
-    assert prices.spot_at(c, 52.0, 5.0007) == ("b", "B")
-    assert prices.spot_at(c, 52.0, 5.0) == ("a", "A")
-    assert prices.spot_at(c, 52.0, 5.0 - 0.0023) is None  # about 157 m west of both
+    assert prices.book(c, "car1").spot_at(52.0, 5.0007) == ("b", "B")
+    assert prices.book(c, "car1").spot_at(52.0, 5.0) == ("a", "A")
+    assert prices.book(c, "car1").spot_at(52.0, 5.0 - 0.0023) is None  # about 157 m west of both
 
 
-def test_zone_wins_over_spot(c):
-    charge(c, 10, lat=52.1, lon=5.2, zone="Work")
-    prices.create_spot(c, "car1", 10, "Plaza", 0.35)
-    assert place(c, 10) == "Work"
-
-
-def test_delete_spot(c):
-    charge(c, 10, lat=52.1, lon=5.2)
-    charge(c, 20, lat=52.1, lon=5.2, zone="Work")
-    charge(c, 30, lat=52.1, lon=5.2, place="Stale")
-    sid = prices.create_spot(c, "car1", 10, "Plaza", 0.35)
-    assert (place(c, 10), place(c, 20), place(c, 30)) == ("Plaza", "Work", "Plaza")
-    prices.delete_spot(c, sid)
-    assert count(c, "tariffs") == 0 and count(c, "charge_spots") == 0
-    assert (place(c, 10), place(c, 20), place(c, 30)) == (None, "Work", None)
-    with pytest.raises(KeyError):
-        prices.delete_spot(c, "nope")
-
-
-def test_rename_spot_relabels(c):
-    charge(c, 10, lat=52.1, lon=5.2)
+def test_spot_writes_leave_the_charges_alone(c):
+    """places follow a spot through store.relabel, which the spot routes call after the write"""
+    charge(c, 10, lat=52.1, lon=5.2, place="Kept")
     sid = prices.create_spot(c, "car1", 10, "Plaza", 0.35)
     prices.rename_spot(c, sid, " Mall ")
-    assert place(c, 10) == "Mall"
-    with pytest.raises(KeyError):
-        prices.rename_spot(c, "nope", "x")
-
-
-def test_relabel_skips_rows_without_point(c):
-    charge(c, 10, place="Kept")
-    prices.relabel(c)
-    assert place(c, 10) == "Kept"
+    assert c.execute("SELECT name FROM charge_spots").fetchone()[0] == "Mall" and place(c, 10) == "Kept"
+    prices.delete_spot(c, sid)
+    assert count(c, "tariffs") == 0 and count(c, "charge_spots") == 0 and place(c, 10) == "Kept"
+    for call in (lambda: prices.rename_spot(c, "nope", "x"), lambda: prices.delete_spot(c, "nope")):
+        with pytest.raises(KeyError):
+            call()
 
 
 def test_receipt_survives_earlier_start(c):
@@ -161,14 +153,14 @@ def test_receipt_survives_earlier_start(c):
     prices.set_receipt(c, "car1", 5000, 12.5)
     charge(c, 4000, 9000)
     c.execute("DELETE FROM charges WHERE start=5000")
-    assert prices.receipt_for(c, "car1", 4000, 9000) == 12.5
-    assert prices.receipt_for(c, "car1", 6000, 9000) is None
-    assert prices.receipt_for(c, "car1", 6000, None) is None
-    assert prices.receipt_for(c, "car1", 4000, None) == 12.5
+    assert prices.book(c, "car1").receipt_for(4000, 9000) == 12.5
+    assert prices.book(c, "car1").receipt_for(6000, 9000) is None
+    assert prices.book(c, "car1").receipt_for(6000, None) is None
+    assert prices.book(c, "car1").receipt_for(4000, None) == 12.5
     prices.set_receipt(c, "car1", 4000, 20)  # the old row at 5000 must not shadow the edit
-    assert prices.receipt_for(c, "car1", 4000, 9000) == 20
+    assert prices.book(c, "car1").receipt_for(4000, 9000) == 20
     prices.set_receipt(c, "car1", 4000, None)
-    assert prices.receipt_for(c, "car1", 4000, 9000) is None
+    assert prices.book(c, "car1").receipt_for(4000, 9000) is None
 
 
 def test_receipt_newest_start_wins(c):
@@ -176,7 +168,7 @@ def test_receipt_newest_start_wins(c):
     charge(c, 6000, 9000)
     prices.set_receipt(c, "car1", 5000, 1)
     prices.set_receipt(c, "car1", 6000, 2)
-    assert prices.receipt_for(c, "car1", 4000, 9000) == 2
+    assert prices.book(c, "car1").receipt_for(4000, 9000) == 2
 
 
 def test_receipt_clear_and_unknown(c):
@@ -205,10 +197,10 @@ def test_fixed_cost_lifecycle(c):
 
 
 def test_card(c):
-    assert prices.card(c, "car1") == (0.0, 0.0)
-    assert prices.card(c, "nope") == (0.0, 0.0)
+    assert prices.book(c, "car1").card == (0.0, 0.0)
+    assert prices.book(c, "nope").card == (0.0, 0.0)
     prices.set_card(c, "car1", 10, 0.35)
-    assert prices.card(c, "car1") == (10.0, 0.35)
+    assert prices.book(c, "car1").card == (10.0, 0.35)
     with pytest.raises(KeyError):
         prices.set_card(c, "nope", 1, 1)
 

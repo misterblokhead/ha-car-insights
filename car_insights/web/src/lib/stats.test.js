@@ -1,37 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { shift, isCurrent, change, periodLabel, bucketLabel, places } from "./stats.js";
+import { statsUrl, change, periodLabel, bucketLabel, places } from "./stats.js";
 
-test("shift: weeks move by 7 days, either way", () => {
-  assert.equal(shift("week", "2026-10-24", -1), "2026-10-17");
-  assert.equal(shift("week", "2026-10-24", 2), "2026-11-07");
-  assert.equal(shift("week", "2026-03-02", -1), "2026-02-23");
-});
-
-test("shift: months clamp to the length of the target month", () => {
-  assert.equal(shift("month", "2026-03-31", -1), "2026-02-28");
-  assert.equal(shift("month", "2024-03-31", -1), "2024-02-29");
-  assert.equal(shift("month", "2026-01-31", 1), "2026-02-28");
-  assert.equal(shift("month", "2026-01-15", -1), "2025-12-15");
-  assert.equal(shift("month", "2026-12-15", 1), "2027-01-15");
-  assert.equal(shift("month", "2026-10-24", 0), "2026-10-24");
-});
-
-test("shift: years, a leap day clamps", () => {
-  assert.equal(shift("year", "2026-10-24", -1), "2025-10-24");
-  assert.equal(shift("year", "2024-02-29", 1), "2025-02-28");
-  assert.equal(shift("year", "2024-02-29", 4), "2028-02-29");
-});
-
-test("isCurrent: same Monday-first week, month or year as today", () => {
-  assert.equal(isCurrent("week", "2026-10-19", "2026-10-25"), true); // Monday and Sunday of one week
-  assert.equal(isCurrent("week", "2026-10-25", "2026-10-26"), false); // Sunday, then the next Monday
-  assert.equal(isCurrent("week", "2026-10-17", "2026-10-24"), false);
-  assert.equal(isCurrent("week", "2026-12-31", "2027-01-03"), true); // across the new year
-  assert.equal(isCurrent("month", "2026-10-01", "2026-10-31"), true);
-  assert.equal(isCurrent("month", "2026-09-30", "2026-10-01"), false);
-  assert.equal(isCurrent("year", "2026-01-01", "2026-12-31"), true);
-  assert.equal(isCurrent("year", "2025-12-31", "2026-01-01"), false);
+test("statsUrl sends no at until a date is chosen", () => {
+  assert.equal(statsUrl("g:a b", "week", null), "api/ui/stats?view=g%3Aa%20b&period=week");
+  assert.equal(statsUrl("v:car1", "month", "2026-09-01"), "api/ui/stats?view=v%3Acar1&period=month&at=2026-09-01");
 });
 
 test("change: a fraction against before; no baseline is null", () => {
