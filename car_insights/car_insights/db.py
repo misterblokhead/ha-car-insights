@@ -87,8 +87,8 @@ def acked_seq(conn, vehicle_id: str, source_id: str) -> int:
 
 
 def vehicle(conn, vehicle_id: str) -> dict | None:
-    r = conn.execute("SELECT name, meta_json FROM vehicles WHERE vehicle_id=?", (vehicle_id,)).fetchone()
-    return None if r is None else {"name": r[0], "meta": json.loads(r[1]) if r[1] else None}
+    r = conn.execute("SELECT meta_json FROM vehicles WHERE vehicle_id=?", (vehicle_id,)).fetchone()
+    return None if r is None else {"meta": json.loads(r[0]) if r[0] else None}
 
 
 def capacity_wh(conn, vehicle_id: str, default_wh: float) -> float:
