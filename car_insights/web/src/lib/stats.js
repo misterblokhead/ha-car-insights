@@ -6,6 +6,9 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
 // The statistics request; without `at` the server answers for today in its own time zone.
 export const statsUrl = (view, period, at) => `api/ui/stats?view=${encodeURIComponent(view)}&period=${period}${at ? `&at=${at}` : ""}`;
 
+// The map request, for the same view, period and day.
+export const mapUrl = (view, period, at) => statsUrl(view, period, at).replace("/stats?", "/map?");
+
 // (now − before) / before; null without a baseline.
 export const change = (now, before) => (now == null || !before ? null : (now - before) / before);
 
