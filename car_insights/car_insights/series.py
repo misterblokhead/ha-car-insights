@@ -3,7 +3,7 @@ from typing import Any
 
 from . import style
 from .protocol import Sample, num
-from .trips import distance_steps, energy_steps
+from .trips import distance_steps, energy_steps, steady
 
 MAX_POINTS = 200
 KEYS = ("plug_state",)  # the cloud sample key series adds to what derivation loads
@@ -43,4 +43,4 @@ def charge(samples: list[Sample], start: int, end: int | None) -> dict[str, list
             soc.append([s.t, v])
         elif s.k == "plug_state" and isinstance(s.v, bool):
             plug.append([s.t, int(s.v)])
-    return {"car_kwh": downsample(car), "cloud_soc": downsample(soc), "cloud_plugged": downsample(plug)}
+    return {"car_kwh": downsample(steady(car)), "cloud_soc": downsample(soc), "cloud_plugged": downsample(plug)}

@@ -665,7 +665,7 @@ def test_algo_bump_rebuilds():
     conn.execute("UPDATE charges SET algo=1")
     d2 = Deriver(conn, lambda la, lo: "Home")
     d2.purge_stale()
-    assert store.closed(conn, CHARGE, "car1") == [] and ALGO == 10
+    assert store.closed(conn, CHARGE, "car1") == [] and ALGO == 11
     _, charges, _ = d2.update("car1", None, at("11:30:00"))
     assert len(charges) == 1
 
