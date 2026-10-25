@@ -12,6 +12,11 @@ SRC = "phone-0000abcd"
 CLOUD = "ha_entities-0000abcd"
 
 
+def bare(rows):
+    """stored rows as derive builds them: without the looked-up addresses the reads add"""
+    return [{k: v for k, v in r.items() if k not in ("from_address", "to_address", "address")} for r in rows]
+
+
 def trip_samples(t0, step=1000, secs=100):
     """ignition on, drive at 10 m/s for secs, ignition off 10 s later; a speed sample stands for at most 5 s"""
     return [s(t0, "ignition", 4.0), s(t0, "gear", 1.0), s(t0, "gps", [52.0, 5.0]),
@@ -33,7 +38,7 @@ def test_closed_trip_stored_and_returned_once():
     assert trips[0]["from"] == "Home" and trips[0]["to"] == "Home" and trips[0]["end"] == 110_000
     assert trips[0]["duration_s"] == 110 and isinstance(trips[0]["duration_s"], int)
     assert d.update("car1", None, 10 * DAY) == ([], [], set())
-    stored = store.closed(conn, TRIP, "car1", 10)
+    stored = bare(store.closed(conn, TRIP, "car1", 10))
     assert len(stored) == 1 and stored[0]["from"] == "Home" and stored[0] == trips[0]
     assert store.current_trip(conn, "car1") is None
 
@@ -83,12 +88,12 @@ def test_late_batch_rederives_once():
     a, b = trip_samples(0, step=10_000), trip_samples(DAY, step=10_000)
     conn, d = setup(a, b)
     d.update("car1", None, 10 * DAY)
-    before = {t["start"]: t for t in store.closed(conn, TRIP, "car1", 10)}
+    before = {t["start"]: t for t in bare(store.closed(conn, TRIP, "car1", 10))}
     assert len(before) == 2
     late = [s(t, "speed", 10.0) for t in range(5_000, 100_000, 10_000)]
     db.ingest(conn, "car1", SRC, late, 0)
     trips, charges, _ = d.update("car1", 5_000, 10 * DAY)
-    after = {t["start"]: t for t in store.closed(conn, TRIP, "car1", 10)}
+    after = {t["start"]: t for t in bare(store.closed(conn, TRIP, "car1", 10))}
     assert len(after) == 2 and charges == []
     assert after[0]["distance_m"] > before[0]["distance_m"]
     assert after[DAY] == before[DAY]
@@ -137,7 +142,7 @@ def test_late_batch_inside_open_trip_keeps_trip_start():
     db.ingest(conn, "car1", SRC, [*[s(t, "speed", 10.0) for t in range(51_000, 100_001, 1000)],
                                    s(100_000, "gear", 4.0), s(110_000, "ignition", 2.0)], 0)
     trips, _, _ = d.update("car1", 51_000, DAY)
-    (t,) = store.closed(conn, TRIP, "car1", 10)
+    (t,) = bare(store.closed(conn, TRIP, "car1", 10))
     assert t["start"] == 0 and t["distance_m"] == 1000 and trips == [t]
     assert len(store.closed(conn, CHARGE, "car1", 10)) == 1 and store.current_trip(conn, "car1") is None
 
@@ -158,7 +163,7 @@ def test_charge_plugged_before_ignition_off_survives():
     assert trips[0]["end"] == 150_000 and charges == []
     db.ingest(conn, "car1", SRC, _unplug_after_charge(), 0)
     _, charges, _ = d.update("car1", None, DAY)
-    (c,) = store.closed(conn, CHARGE, "car1", 10)
+    (c,) = bare(store.closed(conn, CHARGE, "car1", 10))
     assert charges == [c] and c["start"] == 120_000 and c["added_wh"] == 10_000 and len(store.closed(conn, TRIP, "car1", 10)) == 1
 
 
@@ -169,7 +174,7 @@ def test_open_charge_survives_restart():
     d.purge_stale()
     db.ingest(conn, "car1", SRC, _unplug_after_charge(), 0)
     d.update("car1", None, DAY)
-    (c,) = store.closed(conn, CHARGE, "car1", 10)
+    (c,) = bare(store.closed(conn, CHARGE, "car1", 10))
     assert c["start"] == 120_000 and c["added_wh"] == 10_000
 
 
@@ -209,7 +214,7 @@ def test_charge_stored_with_place():
     assert trips == [] and len(charges) == 1
     c = charges[0]
     assert c["place"] == "Home" and c["added_wh"] == 5000 and c["end"] == 3_700_000 and "fix" not in c
-    assert store.closed(conn, CHARGE, "car1", 10) == charges
+    assert bare(store.closed(conn, CHARGE, "car1", 10)) == charges
     assert d.update("car1", None, 10 * DAY) == ([], [], set())
 
 
@@ -245,7 +250,7 @@ def test_backlog_boundary_in_p_stop_keeps_one_trip():
           s(300_000, "gear", 4.0), s(310_000, "ignition", 2.0)]
     db.ingest(conn, "car1", SRC, b2, now)
     trips, _, _ = d.update("car1", 120_000, now)
-    stored = store.closed(conn, TRIP, "car1", 10)
+    stored = bare(store.closed(conn, TRIP, "car1", 10))
     assert [(t["start"], t["end"]) for t in stored] == [(0, 310_000)] and trips == stored
 
 
@@ -268,7 +273,7 @@ def test_backlog_boundary_in_long_p_stop_keeps_one_trip():
           s(400_000, "gear", 4.0), s(410_000, "ignition", 2.0)]
     db.ingest(conn, "car1", SRC, b2, now)
     trips, _, _ = d.update("car1", 310_000, now)
-    stored = store.closed(conn, TRIP, "car1", 10)
+    stored = bare(store.closed(conn, TRIP, "car1", 10))
     assert [(t["start"], t["end"]) for t in stored] == [(0, 410_000)] and trips == stored
 
 
@@ -289,7 +294,7 @@ def test_open_charge_closed_by_the_next_trip_is_stored():
     trips, charges, _ = d.update("car1", None, DAY)  # the unplug was never seen
     (c,) = charges
     assert (c["start"], c["end"], c["added_wh"]) == (0, 600_000, 10000) and trips == []
-    assert store.current_trip(conn, "car1")["start"] == 600_000 and store.closed(conn, CHARGE, "car1", 10) == [c]
+    assert store.current_trip(conn, "car1")["start"] == 600_000 and bare(store.closed(conn, CHARGE, "car1", 10)) == [c]
 
 
 def test_samples_beyond_the_future_slack_are_ignored():
@@ -475,13 +480,13 @@ def test_stale_plugged_seed_after_forced_close_opens_no_session():
                                   *[s(t, "speed", 10.0) for t in range(4_000_000, 4_100_001, 1000)],
                                   s(4_100_000, "gear", 4.0), s(4_110_000, "ignition", 2.0)], 0)
     d.update("car1", 4_000_000, DAY)  # the trip start closes the charge, the trip ends
-    (c,) = store.closed(conn, CHARGE, "car1", 10)
+    (c,) = bare(store.closed(conn, CHARGE, "car1", 10))
     assert c["end"] == 4_000_000 and len(store.closed(conn, TRIP, "car1", 10)) == 1
     db.ingest(conn, "car1", SRC, [s(t, "speed", 0.0) for t in range(4_200_000, 4_500_000, 60_000)] + [s(4_500_000, "battery_wh", 30150.0)], 0)
     d.update("car1", 4_200_000, DAY)  # parked, +150 Wh: the stale plugged flag must not make that a charge
     db.ingest(conn, "car1", SRC, [s(5_000_000, "ignition", 4.0), s(5_000_000, "gear", 1.0), s(5_001_000, "speed", 10.0)], 0)
     _, charges, _ = d.update("car1", 5_000_000, DAY)
-    assert charges == [] and store.closed(conn, CHARGE, "car1", 10) == [c]
+    assert charges == [] and bare(store.closed(conn, CHARGE, "car1", 10)) == [c]
 
 
 # --- cloud source: a charge the car slept through is estimated from SoC, then refined when the car's value arrives ---
@@ -518,7 +523,7 @@ def test_cloud_charge_estimate_then_car_value_refines():
     (c2,) = charges
     assert c2["start"] == c["start"] == at("09:13:32") and c2["added_wh"] == 24_050 and c2["energy_source"] == "car"
     assert refined == {("charges", c["start"])}
-    assert store.closed(conn, CHARGE, "car1") == [c2]
+    assert bare(store.closed(conn, CHARGE, "car1")) == [c2]
     assert d.update("car1", None, at("16:21:00"))[1:] == ([], set())
 
 
@@ -574,13 +579,13 @@ def test_stale_charging_state_seed_after_trip_ignored():
                                   *[s(t, "speed", 10.0) for t in range(4_000_000, 4_100_001, 1000)],
                                   s(4_100_000, "gear", 4.0), s(4_110_000, "ignition", 2.0)], 0)
     d.update("car1", 4_000_000, DAY)  # the trip start closes the charge, the trip ends
-    (c,) = store.closed(conn, CHARGE, "car1", 10)
+    (c,) = bare(store.closed(conn, CHARGE, "car1", 10))
     assert c["end"] == 4_000_000 and len(store.closed(conn, TRIP, "car1", 10)) == 1
     db.ingest(conn, "car1", SRC, [s(t, "speed", 0.0) for t in range(4_200_000, 4_500_000, 60_000)] + [s(4_500_000, "battery_wh", 30150.0)], 0)
     d.update("car1", 4_200_000, DAY)  # parked, +150 Wh: the stale charging_state must not make that a charge
     db.ingest(conn, "car1", SRC, [s(5_000_000, "ignition", 4.0), s(5_000_000, "gear", 1.0), s(5_001_000, "speed", 10.0)], 0)
     _, charges, _ = d.update("car1", 5_000_000, DAY)
-    assert charges == [] and store.closed(conn, CHARGE, "car1", 10) == [c]
+    assert charges == [] and bare(store.closed(conn, CHARGE, "car1", 10)) == [c]
 
 
 def _cloud_charge_while_plugged():
@@ -595,22 +600,22 @@ def _cloud_charge_while_plugged():
 
 def test_plugged_seed_after_closed_cloud_charge_opens_nothing():
     conn, d, p = _cloud_charge_while_plugged()
-    (c,) = store.closed(conn, CHARGE, "car1", 10)
+    (c,) = bare(store.closed(conn, CHARGE, "car1", 10))
     db.ingest(conn, "car1", SRC, [s(p + 3 * 3_600_000, "battery_wh", 40_000.0), s(p + 3 * 3_600_000 + 60_000, "battery_wh", 40_010.0)], 0)
     _, charges, _ = d.update("car1", None, p + 4 * 3_600_000)  # still plugged, no new plug sample: the old flag opens nothing
-    assert charges == [] and store.closed(conn, CHARGE, "car1", 10) == [c] and _count(conn, "charges") == 1
+    assert charges == [] and bare(store.closed(conn, CHARGE, "car1", 10)) == [c] and _count(conn, "charges") == 1
 
 
 def test_resent_plugged_true_after_a_closed_cloud_charge_opens_nothing():
     conn, d, p = _cloud_charge_while_plugged()
-    (c,) = store.closed(conn, CHARGE, "car1", 10)
+    (c,) = bare(store.closed(conn, CHARGE, "car1", 10))
     h = 3_600_000
     db.ingest(conn, "car1", SRC, [s(p + 3 * h, "plugged", True), s(p + 3 * h + 60_000, "battery_wh", 40_010.0)], 0)  # a restart re-sends the flag
     d.update("car1", None, p + 4 * h)
     assert _count(conn, "charges") == 1  # same window as the re-sent flag
     db.ingest(conn, "car1", SRC, [s(p + 5 * h, "plugged", True), s(p + 5 * h + 60_000, "battery_wh", 40_020.0)], 0)
     d.update("car1", None, p + 6 * h)  # the flag is the window's seed now, and sent again
-    assert store.closed(conn, CHARGE, "car1", 10) == [c] and _count(conn, "charges") == 1
+    assert bare(store.closed(conn, CHARGE, "car1", 10)) == [c] and _count(conn, "charges") == 1
 
 
 def test_resent_plugged_after_a_missed_unplug_and_trip_opens_nothing_after_the_cloud_charge():

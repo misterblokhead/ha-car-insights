@@ -15,6 +15,18 @@ _FIELDS = {
                 "recup_wh": "recup_wh", "duration_s": "duration_s", "from": "from_place", "to": "to_place", **{k: k for k in POINT_KEYS}},
     CHARGE.name: {k: k for k in ("start", "end", "added_wh", "energy_source", "start_wh", "lat", "lon", "zone", "place")},
 }
+# read-only extras of a row: wire key -> the (lat, lon) columns of the point whose looked-up address it carries; never written by `insert`
+_ADDRESS = {TRIP.name: {"from_address": ("from_lat", "from_lon"), "to_address": ("to_lat", "to_lon")}, CHARGE.name: {"address": ("lat", "lon")}}
+
+
+def _key(table: str, lat: str, lon: str) -> tuple[str, str]:
+    """The address key of a point, to 1e-4 degrees, computed by SQLite alone so that every join and lookup agrees on the rounding."""
+    return tuple(f"CAST(round({table}.{c}*10000) AS INTEGER)" for c in (lat, lon))
+
+
+def _address(table: str, lat: str, lon: str) -> str:
+    k = _key(table, lat, lon)
+    return f"(SELECT text FROM addresses WHERE lat4={k[0]} AND lon4={k[1]})"
 
 
 def public(row: dict) -> dict:
@@ -27,13 +39,13 @@ def _wire(kind: Kind) -> dict[str, str]:
 
 
 def _sel(kind: Kind) -> str:
-    """The select list `_row` expects: the wire columns, then the json."""
-    return ", ".join((*_wire(kind).values(), "json"))
+    """The select list `_row` expects: the wire columns, the addresses, then the json."""
+    return ", ".join((*_wire(kind).values(), *(_address(kind.table, *pt) for pt in _ADDRESS[kind.name].values()), "json"))
 
 
 def _row(kind: Kind, r: tuple, vid: str | None = None) -> dict:
     *values, js = r
-    d = {**json.loads(js), **dict(zip(_wire(kind), values))}
+    d = {**json.loads(js), **dict(zip((*_wire(kind), *_ADDRESS[kind.name]), values))}
     return d if vid is None else {**d, "vehicle_id": vid}
 
 
@@ -48,7 +60,7 @@ def _satellites(kind: Kind) -> list[str]:
 def insert(conn: sqlite3.Connection, kind: Kind, vid: str, row: dict, series: dict | None, route: list | None, algo: int) -> None:
     """Store a row with its series and, for a trip, its route (None: no such row)."""
     cols = _FIELDS[kind.name]
-    rest = {k: v for k, v in row.items() if k not in cols}
+    rest = {k: v for k, v in row.items() if k not in cols and k not in _ADDRESS[kind.name]}
     conn.execute(f"INSERT INTO {kind.table}(vehicle_id, algo, json, {', '.join(cols.values())}) VALUES(?,?,?{',?' * len(cols)})",
                  (vid, algo, db.json_dumps(rest), *(row.get(k) for k in cols)))
     if series is not None:
@@ -132,7 +144,7 @@ def ended(conn: sqlite3.Connection, kind: Kind, vid: str, lo: int, hi: int | Non
 def rows_after(conn: sqlite3.Connection, kind: Kind, vid: str, w: int) -> dict[int, dict]:
     """start -> row of the rows that are open or end after `w`: what a window starting at `w` derives again."""
     rows = conn.execute(f"SELECT {_sel(kind)} FROM {kind.table} WHERE vehicle_id=? AND (end IS NULL OR end>?)", (vid, w))
-    return {d["start"]: d for d in (_row(kind, r) for r in rows)}
+    return {d["start"]: {k: v for k, v in d.items() if k not in _ADDRESS[kind.name]} for d in (_row(kind, r) for r in rows)}  # derive compares it to rows it just built
 
 
 def straddling(conn: sqlite3.Connection, vid: str, w: int) -> list[int]:
@@ -156,10 +168,11 @@ def sums(conn: sqlite3.Connection, kind: Kind, vids: list[str], lo: int, hi: int
 
 
 def charged_by_place(conn: sqlite3.Connection, vids: list[str], lo: int, hi: int) -> list[tuple[str | None, float]]:
-    """(place, added Wh) of the closed charges with lo <= start < hi, one entry per place."""
+    """(place, added Wh) of the closed charges with lo <= start < hi, one entry per place, an unnamed place by its address."""
+    name = f"COALESCE(place, {_address('charges', 'lat', 'lon')})"
     return [(p, float(wh)) for p, wh in conn.execute(
-        f"SELECT place, COALESCE(SUM(added_wh),0) FROM charges WHERE vehicle_id IN ({_marks(vids)}) AND end IS NOT NULL"
-        " AND start>=? AND start<? GROUP BY place", (*vids, lo, hi))]
+        f"SELECT {name}, COALESCE(SUM(added_wh),0) FROM charges WHERE vehicle_id IN ({_marks(vids)}) AND end IS NOT NULL"
+        f" AND start>=? AND start<? GROUP BY {name}", (*vids, lo, hi))]
 
 
 def trip_distance_m(conn: sqlite3.Connection, vid: str, lo: int, hi: int) -> float:
@@ -209,6 +222,20 @@ def trip_points(conn: sqlite3.Connection) -> list[tuple]:
     """(vehicle_id, start, from_lat, from_lon, to_lat, to_lon) of every trip with a start or end point: the one way a trip's points leave."""
     return conn.execute("SELECT vehicle_id, start, from_lat, from_lon, to_lat, to_lon FROM trips"
                         " WHERE from_lat IS NOT NULL OR to_lat IS NOT NULL").fetchall()
+
+
+def save_address(conn: sqlite3.Connection, lat4: int, lon4: int, text: str | None, now_ms: int) -> None:
+    """Remember what a point is called (None: the lookup found nothing, final)."""
+    conn.execute("INSERT OR REPLACE INTO addresses VALUES(?,?,?,?)", (lat4, lon4, text, now_ms))
+
+
+def unaddressed(conn: sqlite3.Connection) -> tuple[int, int] | None:
+    """The address key of the newest point with no `addresses` row: an unnamed trip start or end, or an unnamed charge."""
+    points = [(TRIP.table, "from_lat", "from_lon", "from_place"), (TRIP.table, "to_lat", "to_lon", "to_place"), (CHARGE.table, "lat", "lon", "place")]
+    union = " UNION ALL ".join(f"SELECT start AS s, {(k := _key(t, la, lo))[0]} AS k1, {k[1]} AS k2 FROM {t} WHERE {pl} IS NULL AND {la} IS NOT NULL"
+                               for t, la, lo, pl in points)
+    return conn.execute(f"SELECT k1, k2 FROM ({union}) WHERE NOT EXISTS(SELECT 1 FROM addresses WHERE lat4=k1 AND lon4=k2)"
+                        " ORDER BY s DESC LIMIT 1").fetchone()
 
 
 def place(zone: str | None, spot: str | None) -> str | None:

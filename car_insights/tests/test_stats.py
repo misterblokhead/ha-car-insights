@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 from pytest import approx
 
-from car_insights import prices, stats
+from car_insights import prices, stats, store
 from car_insights.periods import period_bounds
 from car_insights.db import connect
 from conftest import seed_charge, seed_trip
@@ -203,3 +203,13 @@ def test_period_cost():
     assert sum(v["totals"]["cost"]["total"] for v in s["per_vehicle"]) == approx(s["totals"]["cost"]["total"])
     one = stats.stats(c, ["car1"], "month", date(2026, 10, 10), TZ, None, now)
     assert one["totals"]["cost"]["fixed"] == approx(10.0) and one["previous"]["cost"]["fixed"] == approx(31.0)
+
+
+def test_by_place_groups_unnamed_by_address():
+    c = connect(":memory:")
+    row(c, "charges", ms(2026, 10, 20), {"added_wh": 1000, "lat": 51.2, "lon": 4.3})
+    row(c, "charges", ms(2026, 10, 21), {"added_wh": 2000, "lat": 51.2, "lon": 4.3})
+    row(c, "charges", ms(2026, 10, 22), {"added_wh": 500, "lat": 51.4, "lon": 4.5})
+    store.save_address(c, 512000, 43000, "A 1, B", 1)
+    s = stats.stats(c, ["car1"], "week", OCT24, TZ)
+    assert s["by_place"] == [{"place": "A 1, B", "wh": 3000}, {"place": None, "wh": 500}]
