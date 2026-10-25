@@ -22,10 +22,10 @@
   $effect(() => {
     scheme;
     const css = getComputedStyle(el);
-    const token = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
-    const muted = token("--muted", "#6b6b70");
-    const line = token("--line", "#dcdce0");
-    const font = "11px system-ui, -apple-system, 'Segoe UI', sans-serif";
+    const token = (name) => css.getPropertyValue(name).trim();
+    const muted = token("--muted");
+    const line = token("--line");
+    const font = `11px ${token("--font")}`;
     const axis = (scale, side, extra = {}) => ({ scale, side, stroke: muted, font, grid: { stroke: line, width: 1, show: scale === "y" }, ticks: { stroke: line, width: 1 }, ...extra });
     const scales = { x: { time } };
     // area and bars read from zero
@@ -37,7 +37,7 @@
     const side = (scale) => axis(scale, 1, scale === "plug" ? { size: 76, splits: () => [0, 1], values: (u, v) => v.map((n) => (n ? "plugged" : "unplugged")) } : {});
 
     const make = (s) => {
-      const color = token(s.color ?? "--trip", "#0A84FF");
+      const color = token(s.color ?? "--trip");
       // a lone value would draw no line at all, so it gets a dot
       const lone = s.kind !== "bars" && s.values.filter((v) => v != null).length === 1;
       const base = { label: s.label, scale: s.scale ?? "y", stroke: color, width: 2, spanGaps: true, points: { show: lone, size: 7, fill: color } };

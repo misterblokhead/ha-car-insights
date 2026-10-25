@@ -8,7 +8,6 @@
   import Chart from "../lib/Chart.svelte";
   import Figure from "../lib/ui/Figure.svelte";
   import RouteOutline from "../lib/ui/RouteOutline.svelte";
-  import "../lib/detail.css";
 
   let { vid, start } = $props();
   let data = $state(null);

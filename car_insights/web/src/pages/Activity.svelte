@@ -110,7 +110,7 @@
 
 <div class="split" class:two={screen.split && detail}>
 <div class="page" class:wide={screen.wide}>
-  <h1>Activity</h1>
+  <h1 class="page-title">Activity</h1>
   <LiveStrip {vehicles} />
   <div class="filter"><Segmented options={FILTERS} bind:value={feed.filter} label="Show" /></div>
 
@@ -118,7 +118,7 @@
     {#each days as day (day.date)}
       {@const summary = daySummary(day.summary)}
       <section>
-        <h2>{dayLabel(day.date, feed.today)}{#if summary}<span>{" · "}{summary}</span>{/if}</h2>
+        <h2 class="chrome">{dayLabel(day.date, feed.today)}{#if summary}<span>{" · "}{summary}</span>{/if}</h2>
         <ul>
           {#each day.items as item (`${item.kind}/${item.vehicle_id}/${item.start}`)}
             <li>
@@ -140,7 +140,7 @@
   {#if feed.error}
     <div class="msg" role="alert">
       <p>Couldn't load your activity.</p>
-      <button onclick={() => (feed.days.length ? more() : load(view))}>Retry</button>
+      <button class="btn" onclick={() => (feed.days.length ? more() : load(view))}>Retry</button>
     </div>
   {:else if feed.loading}
     <p class="msg" aria-busy="true">Loading…</p>
@@ -164,25 +164,15 @@
   .split.two { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 24px; align-items: start; } /* only while a detail is open; the list is a single column otherwise */
   .page { --bleed: 16px; max-width: 760px; }
   .page.wide { --bleed: 24px; }
-  h1 { margin: 0 0 12px; font-size: var(--fs-title); font-weight: 700; letter-spacing: -0.01em; }
   .filter { margin: 12px 0 4px; }
   .list { transition: opacity calc(var(--fade) / 2); }
   .list.out { opacity: 0; }
   h2 {
     position: sticky; top: 0; z-index: 2; margin: 0 calc(-1 * var(--bleed)); padding: 14px var(--bleed) 6px;
     font-size: var(--fs-body); font-weight: 600;
-    background: var(--chrome); -webkit-backdrop-filter: var(--chrome-filter); backdrop-filter: var(--chrome-filter);
     border-bottom: var(--edge);
   }
   h2 span { font-weight: 400; color: var(--muted); }
   li { scroll-margin-block: 56px; } /* clear of the sticky day header */
   ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; container-type: inline-size; } /* the cards size to the list, not the screen */
-  .msg { padding: 24px 0; text-align: center; color: var(--muted); }
-  .msg p { margin: 0 0 8px; }
-  button {
-    min-height: 44px; min-width: 44px; padding: 0 20px; border: 0; border-radius: var(--radius-ctl);
-    background: var(--fill); color: var(--trip-text); font: inherit; font-weight: 600; cursor: pointer; transition: transform 100ms;
-  }
-  button:active { transform: scale(var(--press-scale)); }
-  button:focus-visible { outline: 2px solid var(--trip); outline-offset: 2px; }
 </style>

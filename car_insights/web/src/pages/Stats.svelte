@@ -8,7 +8,6 @@
   import Chart from "../lib/Chart.svelte";
   import Figure from "../lib/ui/Figure.svelte";
   import Segmented from "../lib/ui/Segmented.svelte";
-  import "../lib/detail.css";
 
   let { view } = $props();
 
@@ -99,16 +98,16 @@
 {/snippet}
 
 <div class="page">
-  <h1>Statistics</h1>
+  <h1 class="page-title">Statistics</h1>
   <div class="seg"><Segmented options={PERIODS} bind:value={() => period, setPeriod} label="Period" /></div>
 
   <div class="nav">
-    <button onclick={() => (at = data.period.prev_at)} disabled={!data || loading} aria-label="Previous {period}">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+    <button class="press" onclick={() => (at = data.period.prev_at)} disabled={!data || loading} aria-label="Previous {period}">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
     </button>
     <h2 aria-live="polite">{data ? periodLabel(period, data.period.start, data.period.end) : ""}</h2>
-    <button onclick={() => (at = data.period.next_at)} disabled={loading || !data?.period.next_at} aria-label="Next {period}">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+    <button class="press" onclick={() => (at = data.period.next_at)} disabled={loading || !data?.period.next_at} aria-label="Next {period}">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
     </button>
   </div>
 
@@ -127,7 +126,7 @@
             {#each tiles as f (f.label)}
               <Figure label={f.label} value={f.value[0]} unit={f.value[1]}>
                 {#if f.count || f.trend}
-                  <span class="sub">
+                  <span class="sub caption">
                     {#if f.count}<span>{f.count}</span>{/if}
                     {#if f.trend}{@render changeTag(f.trend)}{/if}
                   </span>
@@ -157,7 +156,7 @@
           <ul>
             <li>
               {#if hl.longest}
-                <a href={trip(hl.longest)}>
+                <a class="press" href={trip(hl.longest)}>
                   <span class="k">Longest trip</span><span class="v">{km(hl.longest.distance_m)}</span>
                   <span class="d-note">{hl.longest.from ?? "Unknown"} → {hl.longest.to ?? "Unknown"} · {when(hl.longest.start)}</span>
                 </a>
@@ -167,7 +166,7 @@
             </li>
             <li>
               {#if hl.most_efficient}
-                <a href={trip(hl.most_efficient)}>
+                <a class="press" href={trip(hl.most_efficient)}>
                   <span class="k">Most efficient trip</span><span class="v">{(hl.most_efficient.wh_per_100km / 1000).toFixed(1)} kWh/100 km</span>
                   <span class="d-note">{when(hl.most_efficient.start)} · trips of at least 5 km</span>
                 </a>
@@ -225,21 +224,16 @@
 </div>
 
 <style>
-  .page { --accent: var(--trip-text); max-width: 1000px; }
-  h1 { margin: 0 0 12px; font-size: var(--fs-title); font-weight: 700; letter-spacing: -0.01em; }
+  .page { max-width: 1000px; }
   .seg { max-width: 400px; }
   .nav { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; margin: 8px 0 4px; }
   .nav h2 { margin: 0; text-align: center; font-size: 17px; font-weight: 600; }
   .nav button {
     width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center;
-    background: var(--fill); color: var(--trip-text); cursor: pointer; transition: transform 100ms;
+    background: var(--fill); color: var(--trip-text);
   }
-  .nav button:active:not(:disabled) { transform: scale(var(--press-scale)); }
-  .nav button:disabled { opacity: 0.35; cursor: default; }
-  .nav button:focus-visible { outline: 2px solid var(--trip); outline-offset: 2px; }
-  svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
-  .msg { padding: 24px 0; text-align: center; color: var(--muted); }
-  .msg p { margin: 0 0 8px; }
+  svg { width: 20px; height: 20px; stroke-width: 2.4; }
+  .msg { --accent: var(--trip-text); } /* the Retry button, as on the detail pages */
 
   /* one column on a phone, in reading order; two columns of cards from 768 px */
   .grid { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; transition: opacity var(--fade); }
@@ -256,11 +250,10 @@
   }
   .d-figs { grid-template-columns: repeat(auto-fill, minmax(max(160px, 8em), 1fr)); }
 
-  .sub { display: flex; flex-wrap: wrap; gap: 0 8px; font-size: 13px; color: var(--muted); }
+  .sub { display: flex; flex-wrap: wrap; gap: 0 8px; }
   .trend { white-space: nowrap; }
   .trend.up { color: var(--warn-text); }
   .trend.down { color: var(--good-text); }
-  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
   ul { list-style: none; margin: 0; padding: 0; }
   .pv ul { margin-top: 8px; }
@@ -271,10 +264,9 @@
   .hl ul { margin-top: 4px; }
   .hl li > * {
     display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; align-items: baseline; box-sizing: border-box;
-    min-height: 44px; padding: 10px 0; color: inherit; text-decoration: none; transition: transform 100ms;
+    min-height: 44px; padding: 10px 0; color: inherit; text-decoration: none;
   }
-  .hl a:active { transform: scale(var(--press-scale)); }
-  .hl a:focus-visible { outline: 2px solid var(--trip); outline-offset: 2px; border-radius: 8px; }
+  .hl a:focus-visible { border-radius: 8px; }
   .hl .k { color: var(--muted); }
   .hl .v { margin-left: auto; font-weight: 600; text-align: right; white-space: nowrap; }
   .hl a .v { color: var(--trip-text); }
@@ -282,8 +274,6 @@
   .cost { display: flex; flex-wrap: wrap; gap: 0 8px; }
   .hl .d-note { flex-basis: 100%; }
 
-  .places { --p3: #AF52DE; --p4: #5AC8FA; }
-  @media (prefers-color-scheme: dark) { .places { --p3: #BF5AF2; --p4: #64D2FF; } }
   .bar { display: flex; gap: 2px; height: 12px; border-radius: 6px; overflow: hidden; }
   .bar i { min-width: 2px; }
   .places ul { margin-top: 10px; }

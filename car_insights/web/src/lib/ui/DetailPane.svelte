@@ -146,17 +146,17 @@
 <svelte:window onkeydown={key} />
 
 {#snippet body()}
-  <header class="bar">
-    <button class="back" onclick={close}>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg>
+  <header class="bar chrome">
+    <button class="back press" onclick={close}>
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg>
       {screen.wide ? "Close" : "Activity"}
     </button>
     <span class="steps">
-      <button aria-label="Previous activity" disabled={!prev} onclick={() => go(prev)}>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 15 7-7 7 7" /></svg>
+      <button class="press" aria-label="Previous activity" disabled={!prev} onclick={() => go(prev)}>
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 15 7-7 7 7" /></svg>
       </button>
-      <button aria-label="Next activity" disabled={!next} onclick={() => go(next)}>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 9 7 7 7-7" /></svg>
+      <button class="press" aria-label="Next activity" disabled={!next} onclick={() => go(next)}>
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 9 7 7 7-7" /></svg>
       </button>
     </span>
   </header>
@@ -187,7 +187,7 @@
     position: fixed; inset: 0 0 0 var(--sidebar); z-index: 30; overflow-y: auto; overscroll-behavior: contain;
     background: var(--bg); touch-action: pan-y; /* horizontal drags reach the swipe, vertical ones scroll */
   }
-  .layer.phone { left: 0; box-shadow: -8px 0 24px rgba(0, 0, 0, 0.14); }
+  .layer.phone { left: 0; box-shadow: var(--shadow-sheet); }
   .layer.busy { touch-action: none; will-change: transform; }
   .layer.held { user-select: none; }
   .column { position: sticky; top: 24px; max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain; }
@@ -198,19 +198,15 @@
   .bar {
     position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; align-items: center;
     padding: calc(env(safe-area-inset-top) + 4px) 8px 4px;
-    background: var(--chrome); -webkit-backdrop-filter: var(--chrome-filter); backdrop-filter: var(--chrome-filter);
     border-bottom: var(--edge);
   }
   .steps { display: flex; }
   button {
     min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 2px; padding: 0 8px;
-    border: 0; border-radius: var(--radius-ctl); background: none; color: var(--trip-text); font: inherit; font-size: 17px; cursor: pointer;
-    transition: transform 100ms;
+    border: 0; border-radius: var(--radius-ctl); background: none; color: var(--trip-text); font: inherit; font-size: 17px;
   }
-  button:active:not(:disabled) { transform: scale(var(--press-scale)); }
-  button:disabled { opacity: 0.35; cursor: default; }
-  button:focus-visible { outline: 2px solid var(--trip); outline-offset: -2px; }
-  svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  button:focus-visible { outline-offset: -2px; }
+  svg { width: 22px; height: 22px; stroke-width: 2.2; }
 
   .content { display: grid; padding: 8px 16px calc(32px + env(safe-area-inset-bottom)); }
   .column .content { padding: 8px 4px 32px; }

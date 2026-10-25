@@ -69,34 +69,34 @@
 </script>
 
 <div class="page settings">
-<h1>Settings</h1>
+<h1 class="page-title">Settings</h1>
 {#if error}<p class="err" role="alert">{error}</p>{/if}
 {#if data}
   <h2>Cost groups</h2>
-  <div class="list">
+  <div class="list card">
     {#each data.groups as g (g.id)}
       <form class="row" onsubmit={(e) => { e.preventDefault(); rename(g); }}>
         <label class="grow"><span class="sr">Group name</span><input bind:value={names[g.id]} required maxlength="40" /></label>
-        <button type="submit" disabled={busy} aria-label={`Rename ${g.name}`}>Rename</button>
-        <button type="button" class="danger" disabled={busy} aria-label={`Delete ${g.name}`} onclick={() => remove(g)}>Delete</button>
+        <button class="press" type="submit" disabled={busy} aria-label={`Rename ${g.name}`}>Rename</button>
+        <button type="button" class="danger press" disabled={busy} aria-label={`Delete ${g.name}`} onclick={() => remove(g)}>Delete</button>
       </form>
     {:else}
-      <p class="row empty">No groups yet.</p>
+      <p class="row muted">No groups yet.</p>
     {/each}
     <form class="row" onsubmit={(e) => { e.preventDefault(); addGroup(); }}>
       <label class="grow"><span class="sr">New group</span><input bind:value={newName} required maxlength="40" placeholder="New group" /></label>
-      <button type="submit" disabled={busy}>Add group</button>
+      <button class="press" type="submit" disabled={busy}>Add group</button>
     </form>
   </div>
 
   <Prices {data} {change} />
 
   <h2>Vehicles</h2>
-  <p class="note">Users appear here after they open this page once. Administrators always see every vehicle.</p>
+  <p class="note caption">Users appear here after they open this page once. Administrators always see every vehicle.</p>
   {#each data.vehicles as v (v.id)}
     <section>
       <h3>{v.name}</h3>
-      <div class="list">
+      <div class="list card">
         <label class="row split">Cost group
           <select disabled={busy} value={v.group_id ?? ""} onchange={(e) => control(e, setVehicle(v, e.currentTarget.value || null, v.viewers), (el) => (el.value = v.group_id ?? ""))}>
             <option value="">No group</option>
@@ -113,14 +113,14 @@
       </div>
       <fieldset>
         <legend>Viewers</legend>
-        <div class="list">
+        <div class="list card">
           {#each data.users as u (u.id)}
             <label class="row split">
               <span>{u.name || u.id} <span class="muted">(last seen {when(u.last_seen)})</span></span>
               <input type="checkbox" disabled={busy} checked={v.viewers.includes(u.id)} onchange={(e) => { const on = e.currentTarget.checked; control(e, setVehicle(v, v.group_id, on ? [...v.viewers, u.id] : v.viewers.filter((x) => x !== u.id)), (el) => (el.checked = !on)); }} />
             </label>
           {:else}
-            <p class="row empty">No users yet.</p>
+            <p class="row muted">No users yet.</p>
           {/each}
         </div>
       </fieldset>
@@ -134,7 +134,5 @@
 
 <style>
   .page { max-width: 640px; }
-  h1 { margin: 0 0 12px; font-size: var(--fs-title); font-weight: 700; letter-spacing: -0.01em; }
-  .err { margin: 0 0 8px; padding: 8px 14px; color: #b00020; }
-  @media (prefers-color-scheme: dark) { .err { color: #ff8a80; } }
+  .err { margin: 0 0 8px; padding: 8px 14px; color: var(--warn-text); }
 </style>

@@ -35,34 +35,34 @@
 </script>
 
 <h2>Fixed costs</h2>
-<p class="note">Monthly card fees, insurance and the like. Empty the end date to run a cost on.</p>
+<p class="note caption">Monthly card fees, insurance and the like. Empty the end date to run a cost on.</p>
 {#each data.vehicles as v (v.id)}
   <h3>{v.name}</h3>
-  <div class="list">
+  <div class="list card">
     {#each costs(v.id) as c (c.id)}
       <div class="row split">
         <span>{c.name}<br /><span class="muted">{eur(c.amount)} · {c.period} · from {c.start}{c.end ? ` to ${c.end}` : ""}</span></span>
-        <button type="button" class="danger" aria-label={`Delete ${c.name}`} onclick={() => remove(c)}>Delete</button>
+        <button type="button" class="danger press" aria-label={`Delete ${c.name}`} onclick={() => remove(c)}>Delete</button>
       </div>
       <form class="row split" onsubmit={(e) => end(e, c)}>
         <label class="grow inline">End date <input name="end" type="date" aria-label={`End date of ${c.name}`} min={c.start} value={c.end ?? ""} /></label>
-        <button type="submit" aria-label={`Save end date of ${c.name}`}>Save</button>
+        <button class="press" type="submit" aria-label={`Save end date of ${c.name}`}>Save</button>
       </form>
     {:else}
-      <p class="row empty">No fixed costs.</p>
+      <p class="row muted">No fixed costs.</p>
     {/each}
     {#if adding === v.id}
       <form class="row fields" onsubmit={add}>
-        <label class="wide">Name<input bind:value={f.name} required maxlength="40" {@attach focus} /></label>
-        <label>Amount (€)<input type="number" min="0" step="any" inputmode="decimal" required bind:value={f.amount} /></label>
-        <label>Period<select bind:value={f.period}>{#each PERIODS as p}<option value={p}>{p}</option>{/each}</select></label>
-        <label>Start<input type="date" required bind:value={f.start} /></label>
-        <label>End (optional)<input type="date" min={f.start} bind:value={f.end} /></label>
-        <button type="submit" disabled={saving}>Add</button>
-        <button type="button" onclick={() => (adding = null)}>Cancel</button>
+        <label class="field wide">Name<input bind:value={f.name} required maxlength="40" {@attach focus} /></label>
+        <label class="field">Amount (€)<input type="number" min="0" step="any" inputmode="decimal" required bind:value={f.amount} /></label>
+        <label class="field">Period<select bind:value={f.period}>{#each PERIODS as p}<option value={p}>{p}</option>{/each}</select></label>
+        <label class="field">Start<input type="date" required bind:value={f.start} /></label>
+        <label class="field">End (optional)<input type="date" min={f.start} bind:value={f.end} /></label>
+        <button class="press" type="submit" disabled={saving}>Add</button>
+        <button class="press" type="button" onclick={() => (adding = null)}>Cancel</button>
       </form>
     {:else}
-      <div class="row"><button type="button" onclick={() => openAdd(v.id)}>Add fixed cost</button></div>
+      <div class="row"><button class="press" type="button" onclick={() => openAdd(v.id)}>Add fixed cost</button></div>
     {/if}
   </div>
 {/each}

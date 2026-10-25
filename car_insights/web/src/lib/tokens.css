@@ -14,7 +14,8 @@
   --charge: #30D158;
   --energy: #FF9500;
   --good: #34C759;
-  --warn: #FF3B30;
+  --p3: #AF52DE; /* Statistics' fourth and fifth place colours, after charge, trip and energy */
+  --p4: #5AC8FA;
   /* text and icon variants of the colours above: the bright ones are under 4.5:1 as text on a white card */
   --trip-text: #0062C4;
   --charge-text: #1E7B34;
@@ -24,11 +25,17 @@
   --on-charge: #06300F; /* the glyph on a charge circle: white is 2:1 on #30D158 */
   --radius-card: 14px;
   --radius-ctl: 10px;
+  --radius-seg: 12px; /* the track of a segmented control; its marker uses --radius-ctl */
+  --radius-pill: 22px;
+  --radius-chip: 999px;
+  --shadow-sheet: -8px 0 24px rgba(0, 0, 0, 0.14); /* the detail layer on a phone */
+  --shadow-marker: 0 1px 3px rgba(0, 0, 0, 0.18);
+  --shadow-menu: 0 8px 28px rgba(0, 0, 0, 0.18);
   --sidebar: 240px;
   --press-scale: 0.97;
   --fade: 150ms;
+  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
   --fs-title: 28px;
-  --fs-num: 17px;
   --fs-body: 15px;
   --fs-small: 12px;
 }
@@ -45,7 +52,8 @@
     --marker: rgba(255, 255, 255, 0.18);
     --energy: #FF9F0A;
     --good: #30D158;
-    --warn: #FF453A;
+    --p3: #BF5AF2;
+    --p4: #64D2FF;
     --trip-text: #4DA3FF;
     --charge-text: #30D158;
     --good-text: #30D158;
@@ -81,7 +89,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font);
   font-size: var(--fs-body);
   font-variant-numeric: tabular-nums;
 }

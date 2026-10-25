@@ -84,5 +84,5 @@
 {/if}
 
 <style>
-  .msg { padding: 12px; color: var(--muted); }
+  .msg { padding: 12px; text-align: start; }
 </style>

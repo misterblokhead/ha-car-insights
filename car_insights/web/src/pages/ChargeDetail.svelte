@@ -9,7 +9,6 @@
   import Chart from "../lib/Chart.svelte";
   import Figure from "../lib/ui/Figure.svelte";
   import ChargeBar from "../lib/ui/ChargeBar.svelte";
-  import "../lib/detail.css";
 
   let { vid, start, isAdmin = false } = $props();
   let data = $state(null);
@@ -99,8 +98,8 @@
       <p class="d-sub">{rangeLine(c.start, c.end)}</p>
       {#if c.times_source === "cloud" || estimated}
         <p class="badges">
-          {#if c.times_source === "cloud"}<span>Cloud times</span>{/if}
-          {#if estimated}<span>Estimated</span>{/if}
+          {#if c.times_source === "cloud"}<span class="caption">Cloud times</span>{/if}
+          {#if estimated}<span class="caption">Estimated</span>{/if}
         </p>
       {/if}
     {/if}
@@ -124,7 +123,7 @@
     </section>
 
     <div class="d-figs three">
-      {#each figures as f (f.label)}<Figure {...f} />{/each}
+      {#each figures as f (f.label)}<Figure {...f} size="small" />{/each}
     </div>
 
     <section class="d-card">
@@ -132,17 +131,17 @@
       {#if c.end != null || data.cost.amount != null}<p class="d-note">{chargeBasis(data.cost)}</p>{/if}
       {#if isAdmin}
         <form class="edit" onsubmit={(e) => { e.preventDefault(); setReceipt(Number(receipt)); }}>
-          <label>Actual amount (€)<input type="number" min="0" step="0.01" inputmode="decimal" required bind:value={receipt} /></label>
+          <label class="field">Actual amount (€)<input type="number" min="0" step="0.01" inputmode="decimal" required bind:value={receipt} /></label>
           <button class="d-btn" type="submit" disabled={saving}>Save</button>
           {#if data.cost.basis === "receipt"}<button class="d-btn" type="button" disabled={saving} onclick={() => setReceipt(null)}>Clear</button>{/if}
         </form>
         {#if canSpot}
           {#if spot}
             <form class="edit" onsubmit={saveSpot}>
-              <label class="wide">Location name<input bind:value={spot.name} required maxlength="40" /></label>
-              <label>€/kWh<input type="number" min="0" step="any" inputmode="decimal" required bind:value={spot.per_kwh} /></label>
-              <label>Start fee<input type="number" min="0" step="any" inputmode="decimal" placeholder="0" bind:value={spot.start_fee} /></label>
-              <label>€/min<input type="number" min="0" step="any" inputmode="decimal" placeholder="0" bind:value={spot.per_min} /></label>
+              <label class="field wide">Location name<input bind:value={spot.name} required maxlength="40" /></label>
+              <label class="field">€/kWh<input type="number" min="0" step="any" inputmode="decimal" required bind:value={spot.per_kwh} /></label>
+              <label class="field">Start fee<input type="number" min="0" step="any" inputmode="decimal" placeholder="0" bind:value={spot.start_fee} /></label>
+              <label class="field">€/min<input type="number" min="0" step="any" inputmode="decimal" placeholder="0" bind:value={spot.per_min} /></label>
               <button class="d-btn" type="submit" disabled={saving}>Save location</button>
               <button class="d-btn" type="button" onclick={() => (spot = null)}>Cancel</button>
             </form>
@@ -209,10 +208,10 @@
 
 <style>
   .badges { display: flex; gap: 6px; margin: 8px 0 0; }
-  .badges span { padding: 2px 10px; border-radius: 999px; background: var(--fill); color: var(--muted); font-size: 13px; }
+  .badges span { padding: 2px 10px; border-radius: var(--radius-chip); background: var(--fill); }
   .hero { display: flex; flex-direction: column; gap: 8px; }
-  .big { font-size: 40px; font-weight: 700; line-height: 1.05; letter-spacing: -0.02em; }
-  .big small { font-size: 17px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+  .big { font-size: 40px; font-weight: 700; line-height: 1.05; letter-spacing: -0.02em; white-space: normal; }
+  .big small { font-size: 17px; }
   .levels, .stats { display: flex; justify-content: space-between; gap: 12px; }
   .levels > span, .stats > span { display: flex; flex-direction: column; }
   .levels .end { align-items: flex-end; }
@@ -221,13 +220,8 @@
   .stats > span:last-child { align-items: flex-end; }
   b { font-weight: 600; }
   .edit { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-top: 12px; }
-  .edit label { display: flex; flex: 1 1 6.5em; flex-direction: column; min-width: 0; font-size: 13px; color: var(--muted); }
-  .edit .wide { flex-basis: 12em; }
   .edit input { box-sizing: border-box; width: 100%; min-height: 44px; padding: 0 10px; border: 0; border-radius: var(--radius-ctl); background: var(--fill); color: var(--fg); font: inherit; }
-  .edit input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .d-btn:disabled { opacity: 0.35; cursor: default; }
-  .note { margin: 8px 0 0; color: #b00020; }
-  @media (prefers-color-scheme: dark) { .note { color: #ff8a80; } }
+  .note { margin: 8px 0 0; color: var(--warn-text); }
   .amount { font-size: 22px; letter-spacing: -0.01em; }
   .foot { margin: 0; }
   .foot div:first-child { border-top: 0; }

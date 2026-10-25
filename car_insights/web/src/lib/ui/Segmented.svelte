@@ -44,10 +44,10 @@
 </div>
 
 <style>
-  .group { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 2px; border: var(--edge); border-radius: 12px; background: var(--fill); }
-  .marker { position: absolute; top: 2px; bottom: 2px; left: 2px; box-sizing: border-box; border: var(--edge); border-radius: 10px; background: var(--marker); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18); }
+  .group { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 2px; border: var(--edge); border-radius: var(--radius-seg); background: var(--fill); }
+  .marker { position: absolute; top: 2px; bottom: 2px; left: 2px; box-sizing: border-box; border: var(--edge); border-radius: var(--radius-ctl); background: var(--marker); box-shadow: var(--shadow-marker); }
   label { position: relative; min-height: 44px; min-width: 44px; display: flex; align-items: center; justify-content: center; padding: 0 10px; color: var(--muted); cursor: pointer; }
   label.on { color: var(--fg); font-weight: 600; }
   input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
-  label:has(input:focus-visible) { outline: 2px solid var(--trip); outline-offset: -2px; border-radius: 10px; }
+  label:has(input:focus-visible) { outline: 2px solid var(--trip); outline-offset: -2px; border-radius: var(--radius-ctl); }
 </style>
