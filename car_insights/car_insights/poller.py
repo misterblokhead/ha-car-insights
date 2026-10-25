@@ -1,4 +1,4 @@
-"""Polls the HA history of a mapped car integration (source B) and ingests it as its own source."""
+"""Polls the HA history of a mapped car integration (the HA entities source) and ingests it as its own source."""
 import asyncio
 import hashlib
 import logging

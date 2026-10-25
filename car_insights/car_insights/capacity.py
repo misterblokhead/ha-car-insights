@@ -46,7 +46,10 @@ async def run(conn, now_ms=lambda: int(time.time() * 1000), interval_s: float = 
     """Learns every vehicle's capacity, then again every interval (in memory: a restart learns at once)."""
     logged: set[str] = set()
     while True:
-        now = now_ms()
-        for (vid,) in conn.execute("SELECT DISTINCT vehicle_id FROM sources").fetchall():  # a cloud-only vehicle has no vehicles row
-            update(conn, vid, now, logged)
+        try:
+            now = now_ms()
+            for (vid,) in conn.execute("SELECT DISTINCT vehicle_id FROM sources").fetchall():  # a cloud-only vehicle has no vehicles row
+                update(conn, vid, now, logged)
+        except Exception:
+            log.exception("learning the capacities failed, retrying next interval")
         await asyncio.sleep(interval_s)

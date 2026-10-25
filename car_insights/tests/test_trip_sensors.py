@@ -173,3 +173,18 @@ def test_curve_sensors_are_removed(env):
     for t in gone:
         assert [p for topic, p, _ in mqtt.msgs if topic == t] == [""]  # one empty retained payload, once per vehicle
     assert {r for t, _, r in mqtt.msgs if t in gone} == {True}
+
+
+def test_percent_added_uses_capacity(env):
+    _, mqtt, ts = env
+    ts.publish("car1", None, {"start": 1000, "end": 4600, "added_wh": 24_050.0}, [], [])
+    assert mqtt.on("car_insights/car1/last_charge")[0][0]["added_percent"] == 42.2
+    cfg = json.loads(next(p for t, p, _ in mqtt.msgs if t == "homeassistant/sensor/car1_last_charge_percent/config"))
+    assert cfg["name"] == "Last charge percentage" and cfg["unit_of_measurement"] == "%" and cfg["value_template"] == "{{ value_json.added_percent }}"
+    assert cfg["state_topic"] == "car_insights/car1/last_charge" and "device_class" not in cfg
+
+
+def test_percent_added_null_without_energy(env):
+    _, mqtt, ts = env
+    ts.publish("car1", None, {"start": 1000, "end": 4600, "added_wh": None}, [], [])
+    assert mqtt.on("car_insights/car1/last_charge")[0][0]["added_percent"] is None

@@ -63,7 +63,7 @@ def test_capacity_wh_default_until_set():
     assert db.capacity_wh(conn, "car1", 60_000.0) == 57_000.0
 
 
-def test_update_learns_then_run_repeats_daily():
+def test_update_stores_learned_capacity():
     conn = connect(":memory:")
     put(conn, ten())
     capacity.update(conn, "car1", NOW, set())
@@ -97,3 +97,17 @@ def test_run_learns_every_vehicle(monkeypatch):
         asyncio.run(capacity.run(conn, now_ms=lambda: NOW))
     assert db.capacity_wh(conn, "car1", 1.0) == 57_000.0 and db.capacity_wh(conn, "car2", 1.0) == 40_000.0
     assert sleeps == [86_400]
+
+
+def test_run_survives_a_failing_pass_and_sleeps(monkeypatch, caplog):
+    class Broken:
+        def execute(self, *a):
+            raise RuntimeError("db down")
+
+    async def stop(s):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(asyncio, "sleep", stop)
+    with pytest.raises(asyncio.CancelledError):  # reached the sleep: the error did not end the loop
+        asyncio.run(capacity.run(Broken(), now_ms=lambda: NOW))
+    assert "learning the capacities failed" in caplog.text
