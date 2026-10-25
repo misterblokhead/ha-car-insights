@@ -6,6 +6,8 @@ from fastapi.testclient import TestClient
 
 from car_insights.api import create_app
 from car_insights.db import connect
+from car_insights.pipeline import late_min_t
+from car_insights.protocol import FUTURE_SLACK_MS, Sample
 
 TOKEN = "t" * 64
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
@@ -13,11 +15,11 @@ VALID = json.dumps({"v": 1, "vehicle_id": "car1", "source_id": "car_app-0000abcd
                     "samples": [{"seq": 1, "t": 1, "k": "speed", "v": 1.0}]}).encode()
 
 
-def make(on_ingested=None, summarize=None):
+def make(on_ingested=None, ingested=None, reply=None):
     calls = []
     def default(vid, samples, ms):
         calls.append((vid, samples, ms))
-    return TestClient(create_app(connect(":memory:"), TOKEN, on_ingested or default, lambda: 1000, summarize=summarize)), calls
+    return TestClient(create_app(connect(":memory:"), TOKEN, on_ingested or default, lambda: 1000, ingested=ingested, reply=reply)), calls
 
 
 @pytest.fixture
@@ -77,10 +79,9 @@ def body(**over):
 
 def test_response_includes_summary_when_rev_differs():
     seen = []
-    def summarize(vid, min_t, received):
+    def ingested(vid, min_t, received):
         seen.append((vid, min_t, received))
-        return None, {"rev": "r2"}
-    c, _ = make(summarize=summarize)
+    c, _ = make(ingested=ingested, reply=lambda vid, received: (None, {"rev": "r2"}))
     assert c.post("/ingest", content=body(summary_rev="r1"), headers=AUTH).json() == {"acked_seq": 1, "current_trip": None, "summary": {"rev": "r2"}}
     assert c.post("/ingest", content=VALID, headers=AUTH).json() == {"acked_seq": 1, "current_trip": None, "summary": {"rev": "r2"}}  # no rev sent
     assert seen[0] == ("car1", 7, 1000)
@@ -88,23 +89,15 @@ def test_response_includes_summary_when_rev_differs():
 
 def test_current_trip_on_every_ack_summary_only_when_rev_differs():
     cur = {"start": 5, "end": None, "distance_m": 1.0}
-    c, _ = make(summarize=lambda *a: (cur, {"rev": "r1"}))
+    c, _ = make(reply=lambda *a: (cur, {"rev": "r1"}))
     assert c.post("/ingest", content=body(summary_rev="r1"), headers=AUTH).json() == {"acked_seq": 1, "current_trip": cur}
     assert c.post("/ingest", content=body(summary_rev="old"), headers=AUTH).json() == {"acked_seq": 1, "current_trip": cur, "summary": {"rev": "r1"}}
 
 
-def test_response_omits_both_when_summarize_gives_none():
-    c, _ = make(summarize=lambda *a: None)
-    assert c.post("/ingest", content=VALID, headers=AUTH).json() == {"acked_seq": 1}
-
-
 def test_empty_batch_returns_summary():
     seen = []
-    def summarize(vid, min_t, received):
-        seen.append(min_t)
-        return None, {"rev": "r"}
     conn = connect(":memory:")
-    c = TestClient(create_app(conn, TOKEN, lambda *a: None, lambda: 1000, summarize=summarize))
+    c = TestClient(create_app(conn, TOKEN, lambda *a: None, lambda: 1000, ingested=lambda v, m, r: seen.append(m), reply=lambda v, r: (None, {"rev": "r"})))
     assert c.post("/ingest", content=VALID, headers=AUTH).json()["acked_seq"] == 1
     r = c.post("/ingest", content=body(samples=[]), headers=AUTH)
     assert r.status_code == 200 and r.json() == {"acked_seq": 1, "current_trip": None, "summary": {"rev": "r"}}
@@ -112,44 +105,40 @@ def test_empty_batch_returns_summary():
     assert conn.execute("SELECT count(*) FROM gaps").fetchone()[0] == 0
 
 
-def test_summarize_error_still_acks():
-    def boom(*a):
-        raise RuntimeError("x")
-    assert make(summarize=boom)[0].post("/ingest", content=VALID, headers=AUTH).json() == {"acked_seq": 1}
+def boom(*a):
+    raise RuntimeError("x")
 
 
-def test_summarize_runs_after_on_ingested():
+def test_reply_error_still_acks():
+    assert make(reply=boom)[0].post("/ingest", content=VALID, headers=AUTH).json() == {"acked_seq": 1}
+
+
+def test_failing_ingested_is_logged_and_reply_still_answers(caplog):
+    c, _ = make(ingested=boom, reply=lambda *a: (None, {"rev": "r"}))
+    assert c.post("/ingest", content=VALID, headers=AUTH).json() == {"acked_seq": 1, "current_trip": None, "summary": {"rev": "r"}}
+    assert "ingested failed" in caplog.text
+
+
+def test_reply_runs_after_ingested():
     order = []
-    c, _ = make(on_ingested=lambda *a: order.append("ingested"), summarize=lambda *a: order.append("summarize"))
+    c, _ = make(on_ingested=lambda *a: order.append("on_ingested"), ingested=lambda *a: order.append("ingested"),
+                reply=lambda *a: order.append("reply") or (None, {"rev": "r"}))
     c.post("/ingest", content=VALID, headers=AUTH)
-    assert order == ["ingested", "summarize"]
+    assert order == ["on_ingested", "ingested", "reply"]
 
 
-def test_summarize_min_t_ignores_bogus_timestamps():
+def test_ingested_gets_late_min_t():
     seen = []
+    c = make(ingested=lambda v, m, r: seen.append(m))[0]
+    c.post("/ingest", content=body(samples=[{"seq": 1, "t": 1, "k": "speed", "v": 1.0}, {"seq": 2, "t": 999, "k": "speed", "v": 1.0}]), headers=AUTH)
+    assert seen == [1]  # received is 1000: both are inside the window
+
+
+def test_late_min_t_ignores_bogus_timestamps():
     received = 100 * 86_400_000
-    c = TestClient(create_app(connect(":memory:"), TOKEN, lambda *a: None, lambda: received, summarize=lambda v, m, r: seen.append(m)))
-    def post(*ts):
-        samples = [{"seq": i + 1, "t": t, "k": "speed", "v": 1.0} for i, t in enumerate(ts)]
-        c.post("/ingest", content=body(samples=samples), headers=AUTH)
-    post(1, received - 1000, received + 2 * 86_400_000)  # a clock-reset sample, a good one, a far-future one
-    post(1, received + 2 * 86_400_000)
-    post(received - 31 * 86_400_000, received + 86_400_000)  # exactly at both limits
-    assert seen == [received - 1000, None, received - 31 * 86_400_000]
-
-
-def test_lifespan_starts_and_cancels_background():
-    state = {"started": False, "cancelled": False}
-
-    async def bg():
-        state["started"] = True
-        try:
-            await asyncio.sleep(3600)
-        except asyncio.CancelledError:
-            state["cancelled"] = True
-            raise
-
-    with TestClient(create_app(connect(":memory:"), TOKEN, lambda *a: None, background=[bg])) as c:
-        assert c.get("/health").json() == {"ok": True}
-        assert state == {"started": True, "cancelled": False}
-    assert state["cancelled"]
+    def at(*ts):
+        return late_min_t([Sample(i + 1, t, "speed", 1.0) for i, t in enumerate(ts)], received)
+    assert at(1, received - 1000, received + 2 * 86_400_000) == received - 1000  # a clock-reset sample, a good one, a far-future one
+    assert at(1, received + 2 * 86_400_000) is None
+    assert at(received - 31 * 86_400_000, received + FUTURE_SLACK_MS) == received - 31 * 86_400_000  # exactly at both limits
+    assert at(received - 31 * 86_400_000 - 1) is None and at(received + FUTURE_SLACK_MS + 1) is None

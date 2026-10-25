@@ -8,6 +8,7 @@ import sys
 import uuid
 import warnings
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -52,8 +53,8 @@ def snapshot() -> dict:
                           trip_cost=lambda v, row: costs.trip_cost(conn, v, row, demo.TZ)["total"],
                           charge_cost=lambda v, row: costs.charge_cost(prices.book(conn, v), row)["amount"])
     totals = TotalsSensors(conn, sink, demo.TZ, now_ms=lambda: NOW)
-    summarize = lambda v, min_t, received: pipeline.refresh(deriver, sensors, totals, conn, capacity, v, min_t, received, demo.TZ)
-    c = TestClient(create_app(conn, TOKEN, lambda *a: None, lambda: NOW, summarize=summarize, ui=router))
+    app = pipeline.App(conn, deriver, sensors, totals, demo.TZ, capacity, demo.zones, lambda lat, lon: prices.spot_name_at(conn, lat, lon))
+    c = TestClient(create_app(conn, TOKEN, lambda *a: None, lambda: NOW, ingested=partial(pipeline.ingested, app), reply=partial(pipeline.reply, app), ui=router))
     out: dict = {}
 
     def get(path: str) -> dict:

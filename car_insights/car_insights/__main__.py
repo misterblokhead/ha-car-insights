@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import time
+from functools import partial
 from pathlib import Path
 
 import uvicorn
@@ -11,7 +12,7 @@ from . import capacity as capacity_learning, db
 from .db import connect
 from .mqtt_out import MqttOut
 from .poller import Poller, SourceConf
-from . import costs, ha_users, pipeline, prices, store, ui_api
+from . import costs, ha_users, pipeline, prices, ui_api
 from .derive import Deriver
 from .ha_users import AdminCache
 from .publisher import Publisher
@@ -36,29 +37,24 @@ def main() -> None:
         return db.capacity_wh(conn, vid, default_wh)
 
     spots = lambda lat, lon: prices.spot_name_at(conn, lat, lon)
-    def relabel() -> None:  # a zone list that changed, or a charge spot: past trips and charges take the new names
-        store.relabel(conn, zones, spots)
-
-    zones = ZoneCache(lambda: fetch_zones(sup_token), on_change=relabel)
+    zones = ZoneCache(lambda: fetch_zones(sup_token), on_change=lambda: pipeline.relabel(app))  # app exists before any zone fetch
     deriver = Deriver(conn, zones, capacity, spots=spots)
     # tz is assigned below; the cost lambdas read it only when called
     sensors = TripSensors(conn, mqtt, capacity,
                           trip_cost=lambda vid, row: costs.trip_cost(conn, vid, row, tz)["total"],
                           charge_cost=lambda vid, row: costs.charge_cost(prices.book(conn, vid), row)["amount"])
     tz = fetch_time_zone(sup_token)
-    totals = TotalsSensors(conn, mqtt, tz)
-
-    def summarize(vid: str, min_t: int | None, received: int) -> tuple[dict | None, dict]:
-        return pipeline.refresh(deriver, sensors, totals, conn, capacity, vid, min_t, received, tz)
+    app = pipeline.App(conn, deriver, sensors, TotalsSensors(conn, mqtt, tz), tz, capacity, zones, spots)
 
     poller = Poller(conn, [SourceConf(**c) for c in opts.get("sources", [])], lambda ids, a, b: fetch_history(sup_token, ids, a, b),
-                    lambda vid, min_t, received: summarize(vid, min_t, received))  # the open trip and summary only matter to the webhook ack
+                    partial(pipeline.ingested, app))
     # before the server and run_daily's first publish: an ALGO bump emptied the rows
     zones.refresh()  # start-up relabel: on success on_change renames the stored rows outside any transaction; on failure nothing changes and the lookup retries after the ttl
-    pipeline.rebuild(deriver, sensors, conn, int(time.time() * 1000))
-    uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity).on_ingested, summarize=summarize, background=[poller.run, totals.run_daily, lambda: capacity_learning.run(conn), lambda: pipeline.run_close_quiet(conn, summarize)],
-                           ui=ui_api.router(conn, zones, tz, capacity, AdminCache(lambda: ha_users.fetch_users(sup_token)).is_admin, on_settings=totals.publish_groups,
-                           relabel=relabel, on_costs=lambda vids: pipeline.republish(sensors, totals, conn, vids)),
+    pipeline.rebuild(app, int(time.time() * 1000))
+    uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity).on_ingested, ingested=partial(pipeline.ingested, app), reply=partial(pipeline.reply, app),
+                           background=[poller.run, app.totals.run_daily, lambda: capacity_learning.run(conn), partial(pipeline.run_close_quiet, app)],
+                           ui=ui_api.router(conn, zones, tz, capacity, AdminCache(lambda: ha_users.fetch_users(sup_token)).is_admin, on_settings=app.totals.publish_groups,
+                           relabel=partial(pipeline.relabel, app), on_costs=partial(pipeline.republish, app)),
                            web_dir=Path("/app/web")),
                 host="0.0.0.0", port=8099)
 

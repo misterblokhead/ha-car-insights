@@ -5,12 +5,18 @@ from datetime import datetime, timezone
 
 import pytest
 
-from car_insights import db
+from functools import partial
+
+from car_insights import db, summary
+from car_insights.derive import Deriver
+from car_insights.pipeline import App, ingested
+from car_insights.totals_sensors import TotalsSensors
+from car_insights.trip_sensors import TripSensors
 from car_insights.db import connect
 from car_insights.protocol import Sample
 from car_insights.poller import BACKFILL_MS, Poller, SourceConf, source_id
 from car_insights.ha_entities import MAPPINGS, REPORT_MAX_AGE_MS, entity_ids
-from conftest import ms
+from conftest import FakeMqtt, ms
 
 NOW = ms("2026-10-23T12:00:00+00:00")
 CONF = SourceConf("car1", "renault", "zoe")
@@ -75,6 +81,18 @@ def test_first_poll_ingests_samples_and_notifies():
                    (T, "plug_state", "true"), (T + 570_000, "charging_state", "false"), (T + 570_000, "soc_percent", "55.0"),
                    (T + 600_000, "plug_state", "false")]
     assert calls == [("car1", T - 30_000, NOW)]
+
+
+def test_poller_calls_ingested_only(monkeypatch):
+    conn = connect(":memory:")
+    d = Deriver(conn, lambda la, lo: None)
+    app = App(conn, d, TripSensors(conn, FakeMqtt(), lambda vid: 57_000.0), TotalsSensors(conn, FakeMqtt(), timezone.utc), timezone.utc,
+              lambda vid: 57_000.0, lambda la, lo: None, lambda la, lo: None)
+    built = []
+    monkeypatch.setattr(summary, "build", lambda *a, **k: built.append(1))
+    p = Poller(conn, [CONF], Fetch(FULL), partial(ingested, app), lambda: NOW)
+    poll(p)
+    assert conn.execute("SELECT COUNT(*) FROM samples").fetchone()[0] > 0 and built == []
 
 
 def test_seqs_contiguous_and_acked():
