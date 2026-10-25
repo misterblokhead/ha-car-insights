@@ -52,4 +52,6 @@ button, select, input[type="checkbox"] { cursor: pointer; }
 .d-rows dd { margin: 0; text-align: right; }
 .d-rows.foot { margin: 0; } /* the last card of a detail page: its rows, no rule above the first */
 .d-rows.foot div:first-child { border-top: 0; }
+.bar { display: flex; gap: 2px; height: 12px; border-radius: 6px; overflow: hidden; } /* a share bar: its segments are <i style="flex: share 1 0; background: ..."> */
+.bar i { min-width: 2px; }
 .d-link { color: var(--accent); font-weight: 600; }

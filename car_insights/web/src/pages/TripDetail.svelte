@@ -15,7 +15,7 @@
   const whole = (v) => (v == null ? null : v.toFixed(0));
   const kmh = (v) => (v == null ? NA : `${Math.round(v)} km/h`);
   const EVENTS = [["accel", "Hard accelerations"], ["brake", "Hard brakings"], ["corner", "Sharp corners"]];
-  const BAND_OPACITY = [0.3, 0.45, 0.6, 0.8, 1]; // one hue, darker for faster
+  const BAND_OPACITY = [0.4, 0.45, 0.6, 0.8, 1]; // one hue, darker for faster
 </script>
 
 <DetailPage url={`api/ui/trips/${encodeURIComponent(vid)}/${start}`} noun="trip" accent="--trip-text">
@@ -71,12 +71,14 @@
             <div><dt>{name}</dt><dd>{style[k][0]} · {per10(style[k][0], t.distance_m / 1000)}</dd></div>
           {/each}
         </dl>
-        <div class="d-head bandhead"><h2>Speed</h2><span class="d-note">share of distance · kWh/100 km</span></div>
+        <div class="d-head bandhead"><h2>Speed</h2><span class="d-note">km/h · kWh/100 km · share</span></div>
         <div class="bar" role="img" aria-label="Distance by speed band: {bands.map((b) => `${b.name} km/h ${Math.round(b.share * 100)} %`).join(', ')}">
-          {#each bands as b, i (b.name)}{#if b.share > 0}<i style:flex="{b.share} 1 0" style:opacity={BAND_OPACITY[i]}></i>{/if}{/each}
+          {#each bands as b, i (b.name)}{#if b.share > 0}<i style:flex="{b.share} 1 0" style:background="var(--trip)" style:opacity={BAND_OPACITY[i]}></i>{/if}{/each}
         </div>
         <ul class="bands">
-          {#each bands as b (b.name)}<li><span class="d-note">{b.name}</span><span>{b.kwhPer100 == null ? NA : b.kwhPer100.toFixed(1)}</span></li>{/each}
+          {#each bands as b, i (b.name)}
+            <li><i class="swatch" style:opacity={BAND_OPACITY[i]}></i><span class="n">{b.name}</span><span>{b.kwhPer100 == null ? NA : b.kwhPer100.toFixed(1)}</span><span class="pc">{Math.round(b.share * 100)} %</span></li>
+          {/each}
         </ul>
       </section>
     {/if}
@@ -148,10 +150,11 @@
 
 <style>
   .bandhead { margin: 14px 0 8px; }
-  .bar { display: flex; gap: 2px; height: 12px; border-radius: 6px; overflow: hidden; }
-  .bar i { min-width: 2px; background: var(--trip); }
-  .bands { display: flex; gap: 2px; margin: 6px 0 0; padding: 0; list-style: none; }
-  .bands li { flex: 1 1 0; display: flex; flex-direction: column; min-width: 0; font-size: 13px; }
+  .bands { margin: 10px 0 0; padding: 0; list-style: none; }
+  .bands li { display: flex; align-items: center; gap: 0 10px; min-height: 32px; }
+  .swatch { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--trip); }
+  .n { flex: 1; }
+  .pc { min-width: 3em; text-align: right; color: var(--muted); }
   .cmp { margin-top: 14px; }
   .line { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 12px; margin-bottom: 10px; }
   .line b { font-weight: 600; color: var(--muted); white-space: nowrap; }

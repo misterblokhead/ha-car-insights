@@ -58,9 +58,11 @@
     const markColor = { accel: token("--trip"), brake: token("--trip-text"), corner: muted };
     const drawMarks = (u) => {
       const { ctx, bbox } = u, r = 4 * devicePixelRatio, y = bbox.top + bbox.height;
+      const { min, max } = u.scales.x;
+      if (min == null) return; // no data
       for (const m of marks) {
-        const cx = u.valToPos(m.x, "x", true);
-        if (cx < bbox.left || cx > bbox.left + bbox.width) continue;
+        // a mark just past the data (events are rounded to 0.1 km) is pinned to the edge, and drawn whole inside the plot
+        const cx = Math.min(bbox.left + bbox.width - r, Math.max(bbox.left + r, u.valToPos(Math.min(max, Math.max(min, m.x)), "x", true)));
         ctx.fillStyle = markColor[m.kind];
         ctx.beginPath();
         ctx.moveTo(cx - r, y);

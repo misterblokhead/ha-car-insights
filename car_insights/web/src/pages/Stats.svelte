@@ -280,8 +280,6 @@
   .cost { display: flex; flex-wrap: wrap; gap: 0 8px; }
   .hl .d-note { flex-basis: 100%; }
 
-  .bar { display: flex; gap: 2px; height: 12px; border-radius: 6px; overflow: hidden; }
-  .bar i { min-width: 2px; }
   .places ul { margin-top: 10px; }
   .places li { display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; min-height: 32px; }
   .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; }
