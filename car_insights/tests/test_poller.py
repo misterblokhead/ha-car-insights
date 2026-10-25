@@ -2,10 +2,9 @@ import asyncio
 import hashlib
 import logging
 from datetime import datetime, timezone
+from functools import partial
 
 import pytest
-
-from functools import partial
 
 from car_insights import db, summary
 from car_insights.derive import Deriver

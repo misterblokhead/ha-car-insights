@@ -142,3 +142,20 @@ def test_late_min_t_ignores_bogus_timestamps():
     assert at(1, received + 2 * 86_400_000) is None
     assert at(received - 31 * 86_400_000, received + FUTURE_SLACK_MS) == received - 31 * 86_400_000  # exactly at both limits
     assert at(received - 31 * 86_400_000 - 1) is None and at(received + FUTURE_SLACK_MS + 1) is None
+
+
+def test_lifespan_starts_and_cancels_background():
+    state = {"started": False, "cancelled": False}
+
+    async def bg():
+        state["started"] = True
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            state["cancelled"] = True
+            raise
+
+    with TestClient(create_app(connect(":memory:"), TOKEN, lambda *a: None, background=[bg])) as c:
+        assert c.get("/health").json() == {"ok": True}
+        assert state == {"started": True, "cancelled": False}
+    assert state["cancelled"]

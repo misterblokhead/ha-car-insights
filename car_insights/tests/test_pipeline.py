@@ -384,7 +384,7 @@ def assert_rebuilt_like_one_pass(conn, now):
     copy = sqlite3.connect(":memory:")
     conn.backup(copy)
     d = Deriver(conn, lambda la, lo: "Home")
-    rebuild(App(conn, d, TripSensors(conn, FakeMqtt(), CAP), None, TZ, CAP, lambda la, lo: "Home", lambda la, lo: None), now)
+    rebuild(App(conn, d, TripSensors(conn, FakeMqtt(), CAP), TotalsSensors(conn, FakeMqtt(), TZ), TZ, CAP, lambda la, lo: "Home", lambda la, lo: None), now)
     Deriver(copy, lambda la, lo: "Home").update("car1", None, now)
     for table in ("trips", "charges", "trip_series", "charge_series", "trip_routes"):
         a, b = (c.execute(f"SELECT * FROM {table} ORDER BY start").fetchall() for c in (conn, copy))
@@ -454,7 +454,7 @@ def test_upgrade_keeps_receipt_and_spot(tmp_path):
     db.ingest(conn, "car1", SRC, [s(start, "battery_wh", 20_000.0), s(start + 500, "gps", [52.0, 5.0]), s(start + 1000, "plugged", True),
                                   s(start + 3_600_000, "battery_wh", 25_000.0), s(start + 3_700_000, "plugged", False)], now)
     deriver = Deriver(conn, lambda la, lo: None, CAP, spots=lambda la, lo: prices.spot_name_at(conn, la, lo))
-    rebuild(App(conn, deriver, TripSensors(conn, FakeMqtt(), CAP), None, TZ, CAP, lambda la, lo: None, lambda la, lo: None), now)
+    rebuild(App(conn, deriver, TripSensors(conn, FakeMqtt(), CAP), TotalsSensors(conn, FakeMqtt(), TZ), TZ, CAP, lambda la, lo: None, lambda la, lo: None), now)
     [charge] = store.closed(conn, CHARGE, "car1")
     assert charge["place"] == "Plaza" and charge["zone"] is None
     assert costs.charge_cost(prices.book(conn, "car1"), charge)["basis"] == "receipt"
