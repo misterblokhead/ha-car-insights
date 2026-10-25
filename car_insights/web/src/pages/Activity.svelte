@@ -9,6 +9,7 @@
   import { daySummary } from "../lib/format.js";
   import { dayLabel } from "../lib/time.js";
   import { screen } from "../lib/media.svelte.js";
+  import { cssMs } from "../lib/motion.js";
   import ChargeCard from "../lib/ui/ChargeCard.svelte";
   import LiveStrip from "../lib/ui/LiveStrip.svelte";
   import Segmented from "../lib/ui/Segmented.svelte";
@@ -79,7 +80,7 @@
     const f = feed.filter;
     if (f === untrack(() => shown)) return void (out = false); // back to the shown filter before the swap
     out = true;
-    const half = parseFloat(getComputedStyle(listEl).transitionDuration) * 1000 || 75; // computed, so always in seconds
+    const half = cssMs("--fade") / 2; // the list fades out in half of --fade
     const t = setTimeout(() => ((shown = f), (out = false)), half);
     return () => clearTimeout(t);
   });

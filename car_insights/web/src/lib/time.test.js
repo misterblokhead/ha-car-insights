@@ -1,7 +1,7 @@
 process.env.TZ = "America/New_York"; // the browser is far from HA: only HA's zone may show
 import test from "node:test";
 import assert from "node:assert/strict";
-import { setZone, dayKey, clock, dayLabel, dateTime, today, midnight, nextMidnight, periodDay } from "./time.js";
+import { setZone, dayKey, clock, dayLabel, dateTime, today, midnight, nextMidnight, periodDay, zone } from "./time.js";
 
 setZone("Europe/Amsterdam");
 
@@ -50,9 +50,36 @@ test("midnight and nextMidnight are HA's, across the 25-hour day", () => {
   assert.equal(nextMidnight("2026-10-31"), midnight("2026-11-01"));
 });
 
+test("midnight stays on its own day where the clocks skip midnight", () => {
+  for (const [zone, date, local] of [["America/Havana", "2026-03-08", "01:00"], ["America/Santiago", "2026-09-06", "01:00"]]) {
+    setZone(zone);
+    const m = midnight(date);
+    assert.equal(dayKey(m), date);
+    assert.match(clock(m), /^0?1[:.]00/, `${zone} ${local}`);
+    assert.equal(dayKey(nextMidnight(date) - 1), date);
+  }
+  setZone("Europe/Amsterdam");
+});
+
 test("periodDay reads an API bound as the calendar day it starts", () => {
   assert.deepEqual(periodDay(Date.parse("2026-10-19T00:00+02:00")), [2026, 10, 19]);
   assert.deepEqual(periodDay(Date.parse("2026-01-01T00:00+01:00")), [2026, 1, 1]);
+});
+
+test("periodDay without a zone name reads a bound as the server's midnight day, whatever the browser zone", () => {
+  setZone(undefined); // New York here: 18:00 on the 18th
+  assert.deepEqual(periodDay(Date.parse("2026-10-19T00:00+02:00")), [2026, 10, 19]);
+  assert.equal(dayKey(Date.parse("2026-10-19T00:00+02:00")), "2026-10-18"); // real instants still use the browser's zone
+  setZone("Europe/Amsterdam");
+});
+
+test("zone is the validated name, undefined on the browser's zone", () => {
+  assert.equal(zone(), "Europe/Amsterdam");
+  setZone("Not/AZone");
+  assert.equal(zone(), undefined);
+  setZone(undefined);
+  assert.equal(zone(), undefined);
+  setZone("Europe/Amsterdam");
 });
 
 test("setZone without a name, or with a bad one, falls back to the browser's zone", () => {

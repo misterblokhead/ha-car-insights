@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { split, durationParts, compare, markerAt, deltaText, kwLabel, arrow, rangeLine, place, chargedAt, estimate, routeLabel, temp, fig } from "./detail.js";
-import { setZone } from "./time.js";
+import { split, durationParts, compare, markerAt, deltaText, kwLabel, arrow, rangeLine, place, chargedAt, estimate, routeLabel, tripTitle, span, temp, fig } from "./detail.js";
+import { clock, setZone } from "./time.js";
 
 setZone("Europe/Amsterdam");
 
@@ -80,9 +80,22 @@ test("chargedAt keeps the card and detail title as they were", () => {
   assert.equal(chargedAt(""), "Charged");
 });
 
-test("estimate marks a figure that was estimated", () => {
-  assert.equal(estimate("24.1 kWh", true), "~24.1 kWh");
-  assert.equal(estimate("24.1 kWh", false), "24.1 kWh");
+test("estimate marks an estimated figure, but not a missing one", () => {
+  assert.equal(estimate(24100, true), "~24.10 kWh");
+  assert.equal(estimate(24100, false), "24.10 kWh");
+  assert.equal(estimate(null, true), "–");
+  assert.equal(estimate(undefined, true), "–");
+});
+
+test("tripTitle is From → To with unknown places named", () => {
+  assert.equal(tripTitle({ from: "Home", to: "Work" }), "Home → Work");
+  assert.equal(tripTitle({ from: null, to: undefined }), "Unknown → Unknown");
+});
+
+test("span is start – end, or now for an open end", () => {
+  const at = Date.UTC(2026, 9, 22, 12, 5);
+  assert.equal(span(at, null), `${clock(at)} – now`);
+  assert.equal(span(at, at + 600000), `${clock(at)} – ${clock(at + 600000)}`);
 });
 
 test("routeLabel describes the outline for a screen reader", () => {

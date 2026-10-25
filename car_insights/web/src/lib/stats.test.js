@@ -1,3 +1,4 @@
+process.env.TZ = "America/New_York"; // the browser is west of the server
 import test from "node:test";
 import assert from "node:assert/strict";
 import { statsUrl, change, periodLabel, bucketLabel, places } from "./stats.js";
@@ -49,4 +50,13 @@ test("places: by size, zero and unnamed handled, the tail folds into Other", () 
   const many = places([...[50, 40, 30, 20, 10, 5, 5].map((k, i) => ({ place: `P${i}`, wh: k * 1000 })), { place: null, wh: 1000 }], 3);
   assert.deepEqual(many.map((x) => [x.name, x.wh]), [["P0", 50000], ["P1", 40000], ["P2", 30000], ["Other", 41000]]);
   assert.equal(many.at(-1).other, true);
+});
+
+test("without a zone name the labels still read the server's midnights", () => {
+  setZone(undefined);
+  assert.equal(periodLabel("week", ams("2026-10-19T00:00+02:00"), ams("2026-10-26T00:00+01:00")), "19 – 25 Oct");
+  assert.equal(periodLabel("week", ams("2026-12-28T00:00+01:00"), ams("2027-01-04T00:00+01:00")), "28 Dec 2026 – 3 Jan 2027");
+  assert.equal(periodLabel("month", ams("2026-10-01T00:00+02:00"), ams("2026-11-01T00:00+01:00")), "October 2026");
+  assert.equal(bucketLabel("month", ams("2026-10-05T00:00+02:00")), "5");
+  setZone("Europe/Amsterdam");
 });

@@ -1,7 +1,7 @@
 <script>
   import { NA, km, kwh, kwhPer100 } from "../lib/format.js";
   import { eur, tripCostLine } from "../lib/costs.js";
-  import { arrow, compare, deltaText, durationParts, fig, markerAt, place, rangeLine, routeLabel, split, temp } from "../lib/detail.js";
+  import { arrow, compare, deltaText, durationParts, fig, markerAt, rangeLine, routeLabel, split, temp, tripTitle } from "../lib/detail.js";
   import { consumptionBuckets, tripCharts } from "../lib/series.js";
   import Chart from "../lib/Chart.svelte";
   import DetailPage from "../lib/ui/DetailPage.svelte";
@@ -18,12 +18,10 @@
 </script>
 
 <DetailPage url={`api/ui/trips/${encodeURIComponent(vid)}/${start}`} noun="trip" accent="--trip-text">
-  {#snippet title({ trip: t })}{place(t.from)} → {place(t.to)}{/snippet}
+  {#snippet title({ trip: t })}{tripTitle(t)}{/snippet}
   {#snippet subtitle({ trip: t })}<p class="d-sub">{rangeLine(t.start, t.end)}</p>{/snippet}
   {#snippet body(data)}
     {@const t = data.trip}
-    {@const from = place(t.from)}
-    {@const to = place(t.to)}
     {@const buckets = consumptionBuckets(data.series, 0.5)}
     {@const speed = tripCharts(data.series)?.speed}
     {@const avg = t.avg_speed_mps != null ? t.avg_speed_mps * 3.6 : null}
@@ -100,7 +98,7 @@
     {#if rows.length}
       <section class="d-card">
         <h2>Compared with your usual route</h2>
-        <p class="d-note">{from} → {to}, {data.similar.n} earlier {data.similar.n === 1 ? "trip" : "trips"}</p>
+        <p class="d-note">{tripTitle(t)}, {data.similar.n} earlier {data.similar.n === 1 ? "trip" : "trips"}</p>
         {#each rows as r (r.name)}
           {@const text = deltaText(r.m.delta, r.unit, r.digits)}
           <div class="cmp">

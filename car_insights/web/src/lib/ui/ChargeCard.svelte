@@ -1,16 +1,15 @@
 <script>
   import { hashOf } from "../activity.js";
-  import { kwh, kw } from "../format.js";
-  import { clock } from "../time.js";
-  import { chargedAt, estimate } from "../detail.js";
+  import { kw } from "../format.js";
+  import { chargedAt, estimate, span } from "../detail.js";
   import { costLabel } from "../costs.js";
   import Card from "./Card.svelte";
   import ChargeBar from "./ChargeBar.svelte";
 
   let { item, current = false, onclick } = $props();
   const from = $derived(item.start_pct), to = $derived(item.end_pct);
-  const [added, unit] = $derived(estimate(kwh(item.added_wh), item.energy_source === "soc_estimate" && item.added_wh != null).split(" "));
-  const when = $derived(`${clock(item.start)} – ${item.end == null ? "now" : clock(item.end)} · ${kw(item.avg_w)}`);
+  const [added, unit] = $derived(estimate(item.added_wh, item.energy_source === "soc_estimate").split(" "));
+  const when = $derived(`${span(item.start, item.end)} · ${kw(item.avg_w)}`);
 </script>
 
 <Card href={hashOf(item)} {current} {onclick} kind="charge" title={chargedAt(item.place)} value={added} {unit} {when}>

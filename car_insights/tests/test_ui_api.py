@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -76,6 +76,12 @@ def test_missing_user_header_forbidden(conn):
 def test_me_has_ha_time_zone(conn):
     c, _ = client(conn)
     assert c.get("/api/ui/me", headers=VIEWER).json()["tz"] == "Europe/Amsterdam"
+
+
+def test_me_has_no_time_zone_name_on_a_fixed_offset(conn):
+    router = ui_api.router(conn, lambda lat, lon: "Home", timezone(timedelta(hours=1)), lambda vid: 60_000.0, is_admin, now_ms=lambda: NOW)
+    c = TestClient(create_app(conn, "t" * 64, lambda *a: None, lambda: NOW, ui=router), client=("172.30.32.2", 50000))
+    assert c.get("/api/ui/me", headers=VIEWER).json()["tz"] is None
 
 
 def test_me_and_seen_user_recorded(conn):

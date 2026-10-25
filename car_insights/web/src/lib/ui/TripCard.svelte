@@ -2,7 +2,7 @@
   import { hashOf } from "../activity.js";
   import { km, consumption, kwh, duration } from "../format.js";
   import { clock } from "../time.js";
-  import { place, routeLabel } from "../detail.js";
+  import { routeLabel, tripTitle } from "../detail.js";
   import Card from "./Card.svelte";
   import RouteOutline from "./RouteOutline.svelte";
 
@@ -11,7 +11,7 @@
   const when = $derived(`${clock(item.start)} · ${item.end == null ? "now" : duration(item.duration_s)}`);
 </script>
 
-<Card href={hashOf(item)} {current} {onclick} kind="trip" title="{place(item.from)} → {place(item.to)}" value={dist} {unit} {when}>
+<Card href={hashOf(item)} {current} {onclick} kind="trip" title={tripTitle(item)} value={dist} {unit} {when}>
   {#snippet glyph()}
     <svg class="icon" viewBox="0 0 24 24"><path d="M5 16v-5l2-5h10l2 5v5M5 16h14M5 16v3h3v-3M16 16v3h3v-3M7 11h10" /></svg>
   {/snippet}

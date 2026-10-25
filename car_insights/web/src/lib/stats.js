@@ -11,12 +11,19 @@ export const change = (now, before) => (now == null || !before ? null : (now - b
 
 const short = (m) => MONTHS[m - 1].slice(0, 3);
 
+// the day before an exclusive end bound
+function lastDay(end) {
+  const [y, m, d] = periodDay(end);
+  const prev = new Date(Date.UTC(y, m - 1, d - 1));
+  return [prev.getUTCFullYear(), prev.getUTCMonth() + 1, prev.getUTCDate()];
+}
+
 // "October 2026", "2026", "19 – 25 Oct"; `end` is exclusive.
 export function periodLabel(period, start, end) {
   const [y, m, d] = periodDay(start); // the API's bounds are midnights in HA's zone
   if (period === "year") return String(y);
   if (period === "month") return `${MONTHS[m - 1]} ${y}`;
-  const [ey, em, ed] = periodDay(end - 1);
+  const [ey, em, ed] = lastDay(end);
   if (ey !== y) return `${d} ${short(m)} ${y} – ${ed} ${short(em)} ${ey}`;
   return m === em ? `${d} – ${ed} ${short(m)}` : `${d} ${short(m)} – ${ed} ${short(em)}`;
 }

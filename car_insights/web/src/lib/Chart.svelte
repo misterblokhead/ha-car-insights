@@ -1,6 +1,7 @@
 <script>
   import uPlot from "uplot";
   import "uplot/dist/uPlot.min.css";
+  import { zone } from "./time.js";
 
   // x: numbers (seconds when `time`, else km, ...); series: [{label, values, scale = "y" | "y2" | "plug", kind = "line" | "area" | "bars",
   // color: a token name such as "--trip", dash}]. `label` is what screen readers get (the key figures); it defaults to the series names.
@@ -53,8 +54,10 @@
       return base;
     };
 
+    const tz = zone(); // time axes follow HA's zone; without one uPlot keeps the browser's
     const plot = new uPlot(
       {
+        ...(tz && { tzDate: (ts) => uPlot.tzDate(new Date(ts * 1e3), tz) }),
         width: el.clientWidth || 300,
         height,
         legend: { show: series.length > 1, live: false }, // names and swatches only: the live "--" would read as missing data

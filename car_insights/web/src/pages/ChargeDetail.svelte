@@ -29,7 +29,7 @@
     const at = speed.x.map((_, i) => i).sort((a, b) => speed.x[a] - speed.x[b]);
     return { x: at.map((i) => speed.x[i]), kw: at.map((i) => speed.kw[i]) };
   });
-  const added = $derived(c ? split(estimate(kwh(c.added_wh), estimated && c.added_wh != null)) : [NA, ""]);
+  const added = $derived(c ? split(estimate(c.added_wh, estimated)) : [NA, ""]);
   const figures = $derived(
     c
       ? [
