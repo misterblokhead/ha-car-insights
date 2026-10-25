@@ -43,8 +43,8 @@ def _is_num(v) -> bool:
 
 def fetch_zones(token: str) -> list[Zone]:
     rows = json.loads(_call("/core/api/template", token, {"template": _ZONES_TEMPLATE}))
-    return [Zone(z["name"], z["latitude"], z["longitude"], z["radius"]) for z in rows
-            if isinstance(z, dict) and not z.get("passive") and isinstance(z.get("name"), str)  # passive zones never trigger
+    return [Zone(z["name"], z["latitude"], z["longitude"], z["radius"], bool(z.get("passive"))) for z in rows
+            if isinstance(z, dict) and isinstance(z.get("name"), str)
             and _is_num(z.get("latitude")) and _is_num(z.get("longitude")) and _is_num(z.get("radius"))]
 
 

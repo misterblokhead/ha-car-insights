@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from car_insights.zones import Zone, ZoneCache, name_at
+from car_insights.zones import Zone, ZoneCache, covers, name_at
 
 HOME = Zone("Home", 52.0, 5.0, 100)
 DLAT = 1 / 111_195  # degrees of latitude per metre
@@ -11,6 +11,20 @@ DLAT = 1 / 111_195  # degrees of latitude per metre
 def test_name_at_inside_and_outside():
     assert name_at([HOME], 52.0 + 50 * DLAT, 5.0) == "Home"
     assert name_at([HOME], 52.0 + 200 * DLAT, 5.0) is None
+
+
+def test_name_at_skips_passive_zones_but_covers_does_not():
+    quiet = Zone("Quiet", 52.0, 5.0, 100, passive=True)
+    inside = (52.0 + 50 * DLAT, 5.0)
+    assert name_at([quiet], *inside) is None and name_at([quiet, Zone("Town", 52.0, 5.0, 1000)], *inside) == "Town"
+    assert covers([quiet], *inside) and not covers([quiet], 52.0 + 200 * DLAT, 5.0)
+    assert not covers([], *inside)
+
+
+def test_the_cache_covers_what_it_does_not_name():
+    cache = ZoneCache(lambda: [Zone("Quiet", 52.0, 5.0, 100, passive=True)])
+    cache.refresh()
+    assert cache(52.0, 5.0) is None and cache.covers(52.0, 5.0) and not cache.covers(53.0, 5.0)
 
 
 def test_name_at_nearest_centre_wins():
@@ -43,13 +57,23 @@ def test_a_lookup_never_fetches_and_never_announces():
 
 
 def test_refresh_keeps_the_last_list_on_error():
-    fetch, calls = _source([HOME], RuntimeError("down"), [])
+    fetch, calls = _source([HOME], RuntimeError("down"))
     cache = ZoneCache(fetch)
     cache.refresh()
     cache.refresh()
     assert cache(52.0, 5.0) == "Home" and cache.loaded  # the fetch failed: the last list stays
+
+
+def test_an_empty_list_is_a_failed_fetch():
+    fetch, _ = _source([], [HOME], [])
+    changes = []
+    cache = ZoneCache(fetch, on_change=lambda: changes.append(1))
     cache.refresh()
-    assert cache(52.0, 5.0) is None
+    assert not cache.loaded and changes == [] and not cache.covers(52.0, 5.0)  # Home Assistant is still starting
+    cache.refresh()
+    assert cache.loaded and changes == [1]
+    cache.refresh()
+    assert cache(52.0, 5.0) == "Home" and cache.loaded and changes == [1]  # the last list stays, nothing is renamed
 
 
 def test_a_failed_first_fetch_is_not_loaded():

@@ -28,31 +28,49 @@ def label(answer: dict) -> str | None:
         return None
     road = _first(address, _ROADS)
     town = _first(address, _TOWNS)
-    street = road and (f"{road} {address['house_number']}" if address.get("house_number") else road) or answer.get("name")
+    if not road:
+        street = answer.get("name")
+    elif address.get("house_number"):
+        street = f"{road} {address['house_number']}"
+    else:
+        street = road
     return ", ".join(p for p in (street if street != town else None, town) if p) or None  # a town's own name is no street
 
 
 def fetch(lat: float, lon: float, language: str, timeout: float = 10) -> dict:
-    """Nominatim's answer for a point; raises on a network error, a timeout or a status other than 200."""
+    """Nominatim's answer for a point; raises on a network error, a timeout or a status other than 200. A body that is no JSON object is {}:
+    the answer is final (no address), not a failure that would block the queue."""
     ua = f"ha-car-insights/{os.environ.get('CAR_INSIGHTS_VERSION') or 'dev'} (+https://github.com/misterblokhead/ha-car-insights)"
     req = urllib.request.Request(_URL.format(lat, lon), headers={"User-Agent": ua, "Accept-Language": language})
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        if r.status != 200:
+        if r.status != 200:  # urlopen raised for the rest of non-2xx
             raise OSError(f"Nominatim answered {r.status}")
-        return json.loads(r.read())
+        try:
+            answer = json.loads(r.read())
+        except ValueError:
+            return {}
+    return answer if isinstance(answer, dict) else {}
 
 
-async def run(conn, fetch: Callable[[float, float], dict], now_ms: Callable[[], int], sleep=asyncio.sleep) -> None:
-    """Forever: look up the newest point without an address, wait SPACING_S; idle IDLE_S when none is left; BACKOFF_S after a failure."""
+async def run(conn, fetch: Callable[[float, float], dict], now_ms: Callable[[], int], ready: Callable[[], bool],
+              protected: Callable[[float, float], bool], sleep=asyncio.sleep) -> None:
+    """Forever: look up the newest point without an address, wait SPACING_S; idle IDLE_S when none is left or `ready` is False
+    (nothing is sent before the zones are known); BACKOFF_S after a failure. A `protected` point (in a zone or a charge location)
+    is stored without an address and never sent."""
     while True:
         try:
-            key = store.unaddressed(conn)
+            key = store.unaddressed(conn) if ready() else None
             if key is None:
                 wait = IDLE_S
             else:
-                answer = await asyncio.to_thread(fetch, key[0] / 10000, key[1] / 10000)  # off the loop: the DB stays on it
-                store.save_address(conn, *key, label(answer), now_ms())
-                wait = SPACING_S
+                lat, lon = key[0] / 10000, key[1] / 10000  # the point that would leave, as the lookup rounds it
+                if protected(lat, lon):
+                    store.save_address(conn, *key, None, now_ms())
+                    wait = 0  # nothing was sent: no spacing owed
+                else:
+                    answer = await asyncio.to_thread(fetch, lat, lon)  # off the loop: the DB stays on it
+                    store.save_address(conn, *key, label(answer), now_ms())
+                    wait = SPACING_S
         except Exception as err:  # never the coordinates: they are where the car has been
             log.warning("address lookup failed, retrying in %d s: %r", BACKOFF_S, err)
             wait = BACKOFF_S

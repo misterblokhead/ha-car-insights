@@ -4,6 +4,7 @@ import json
 import logging
 import time
 import urllib.error
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -48,7 +49,7 @@ def test_label_without_road_uses_the_name_and_the_town():
     assert geocode.label({"name": "Winkel", "address": {}}) is None
 
 
-def run(conn, fetch, rounds):
+def run(conn, fetch, rounds, ready=lambda: True, protected=lambda lat, lon: False):
     """geocode.run until `rounds` sleeps have happened; returns the sleeps"""
     sleeps = []
 
@@ -58,7 +59,7 @@ def run(conn, fetch, rounds):
             raise asyncio.CancelledError
 
     with pytest.raises(asyncio.CancelledError):
-        asyncio.run(geocode.run(conn, fetch, lambda: 99, sleep))
+        asyncio.run(geocode.run(conn, fetch, lambda: 99, ready, protected, sleep))
     return sleeps
 
 
@@ -135,6 +136,49 @@ def test_run_skips_named_points():
     assert run(conn, fetch, 1) == [geocode.IDLE_S]
 
 
+def test_run_sends_nothing_until_ready():
+    conn = db.connect(":memory:")
+    seed_charge(conn, "car1", 10, 20, lat=51.2, lon=4.3)
+    calls = []
+    ready = iter([False, False, True])
+
+    def fetch(lat, lon):
+        calls.append(1)
+        return answer("house")
+
+    assert run(conn, fetch, 3, ready=lambda: next(ready)) == [geocode.IDLE_S, geocode.IDLE_S, geocode.SPACING_S]
+    assert len(calls) == 1  # only after the zones had loaded
+
+
+def test_run_never_sends_a_protected_point():
+    conn = db.connect(":memory:")
+    seed_charge(conn, "car1", 10, 20, lat=51.2, lon=4.3)  # inside a charge location or a passive zone
+    seed_trip(conn, "car1", 30, 40, to_lat=51.4, to_lon=4.5)
+    asked, checked = [], []
+
+    def fetch(lat, lon):
+        asked.append((lat, lon))
+        return {"address": {"road": "Weg", "city": "Stad"}}
+
+    def protected(lat, lon):
+        checked.append((lat, lon))
+        return (lat, lon) == (51.2, 4.3)
+
+    assert run(conn, fetch, 3, protected=protected) == [geocode.SPACING_S, 0, geocode.IDLE_S]
+    assert asked == [(51.4, 4.5)] and checked == [(51.4, 4.5), (51.2, 4.3)]  # it checks the rounded point it would send
+    assert addresses(conn) == [(512000, 43000, None, 99), (514000, 45000, "Weg, Stad", 99)]
+
+
+def test_run_stores_no_address_for_a_non_json_answer_and_goes_on(monkeypatch):
+    conn = db.connect(":memory:")
+    seed_charge(conn, "car1", 10, 20, lat=51.2, lon=4.3)
+    seed_charge(conn, "car1", 30, 40, lat=51.4, lon=4.5)
+    bodies = iter([b"<html>busy</html>", json.dumps({"address": {"road": "Weg", "city": "Stad"}}).encode()])
+    monkeypatch.setattr("car_insights.geocode.urllib.request.urlopen", lambda req, timeout: _ok(next(bodies)))
+    assert run(conn, partial(geocode.fetch, language="en"), 3) == [geocode.SPACING_S, geocode.SPACING_S, geocode.IDLE_S]
+    assert addresses(conn) == [(512000, 43000, "Weg, Stad", 99), (514000, 45000, None, 99)]
+
+
 def test_run_does_not_block_the_event_loop():
     conn = db.connect(":memory:")
     seed_charge(conn, "car1", 10, 20, lat=51.2, lon=4.3)
@@ -154,11 +198,17 @@ def test_run_does_not_block_the_event_loop():
                 await asyncio.sleep(0.01)
         t = asyncio.create_task(tick())
         with pytest.raises(asyncio.CancelledError):
-            await geocode.run(conn, fetch, lambda: 1, stop)
+            await geocode.run(conn, fetch, lambda: 1, lambda: True, lambda lat, lon: False, stop)
         t.cancel()
 
     asyncio.run(main())
     assert len(ticks) > 5
+
+
+def _ok(body, status=200):
+    r = io.BytesIO(body)
+    r.status = status
+    return r
 
 
 def _nominatim(monkeypatch, body=b"{}", status=200):
@@ -166,9 +216,7 @@ def _nominatim(monkeypatch, body=b"{}", status=200):
 
     def urlopen(req, timeout):
         seen.update(url=req.full_url, ua=req.get_header("User-agent"), lang=req.get_header("Accept-language"), timeout=timeout)
-        r = io.BytesIO(body)
-        r.status = status
-        return r
+        return _ok(body, status)
 
     monkeypatch.setattr("car_insights.geocode.urllib.request.urlopen", urlopen)
     return seen
@@ -193,3 +241,9 @@ def test_fetch_raises_on_a_status_other_than_200(monkeypatch):
     _nominatim(monkeypatch, status=204)
     with pytest.raises(OSError):
         geocode.fetch(51.2, 4.3, "en")
+
+
+@pytest.mark.parametrize("body", [b"<html>busy</html>", b"", b"[1, 2]", b"null", b"\xff"])
+def test_fetch_answers_nothing_for_a_200_that_is_no_json_object(monkeypatch, body):
+    _nominatim(monkeypatch, body)
+    assert geocode.fetch(51.2, 4.3, "en") == {}

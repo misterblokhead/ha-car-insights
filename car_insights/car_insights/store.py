@@ -15,8 +15,9 @@ _FIELDS = {
                 "recup_wh": "recup_wh", "duration_s": "duration_s", "from": "from_place", "to": "to_place", **{k: k for k in POINT_KEYS}},
     CHARGE.name: {k: k for k in ("start", "end", "added_wh", "energy_source", "start_wh", "lat", "lon", "zone", "place")},
 }
-# read-only extras of a row: wire key -> the (lat, lon) columns of the point whose looked-up address it carries; never written by `insert`
-_ADDRESS = {TRIP.name: {"from_address": ("from_lat", "from_lon"), "to_address": ("to_lat", "to_lon")}, CHARGE.name: {"address": ("lat", "lon")}}
+# read-only extras of a row: wire key -> the (lat, lon, place) columns of the point whose looked-up address it carries; never written by `insert`
+_ADDRESS = {TRIP.name: {"from_address": ("from_lat", "from_lon", "from_place"), "to_address": ("to_lat", "to_lon", "to_place")},
+            CHARGE.name: {"address": ("lat", "lon", "place")}}
 
 
 def _key(table: str, lat: str, lon: str) -> tuple[str, str]:
@@ -38,14 +39,15 @@ def _wire(kind: Kind) -> dict[str, str]:
     return {k: c for k, c in _FIELDS[kind.name].items() if k not in POINT_KEYS}
 
 
-def _sel(kind: Kind) -> str:
-    """The select list `_row` expects: the wire columns, the addresses, then the json."""
-    return ", ".join((*_wire(kind).values(), *(_address(kind.table, *pt) for pt in _ADDRESS[kind.name].values()), "json"))
+def _sel(kind: Kind, addresses: bool = True) -> str:
+    """The select list `_row` expects: the wire columns, the addresses (unless not wanted), then the json."""
+    extras = [_address(kind.table, lat, lon) for lat, lon, _ in _ADDRESS[kind.name].values()] if addresses else []
+    return ", ".join((*_wire(kind).values(), *extras, "json"))
 
 
-def _row(kind: Kind, r: tuple, vid: str | None = None) -> dict:
+def _row(kind: Kind, r: tuple, vid: str | None = None, addresses: bool = True) -> dict:
     *values, js = r
-    d = {**json.loads(js), **dict(zip((*_wire(kind), *_ADDRESS[kind.name]), values))}
+    d = {**json.loads(js), **dict(zip((*_wire(kind), *(_ADDRESS[kind.name] if addresses else ())), values))}
     return d if vid is None else {**d, "vehicle_id": vid}
 
 
@@ -60,7 +62,7 @@ def _satellites(kind: Kind) -> list[str]:
 def insert(conn: sqlite3.Connection, kind: Kind, vid: str, row: dict, series: dict | None, route: list | None, algo: int) -> None:
     """Store a row with its series and, for a trip, its route (None: no such row)."""
     cols = _FIELDS[kind.name]
-    rest = {k: v for k, v in row.items() if k not in cols and k not in _ADDRESS[kind.name]}
+    rest = {k: v for k, v in row.items() if k not in cols}
     conn.execute(f"INSERT INTO {kind.table}(vehicle_id, algo, json, {', '.join(cols.values())}) VALUES(?,?,?{',?' * len(cols)})",
                  (vid, algo, db.json_dumps(rest), *(row.get(k) for k in cols)))
     if series is not None:
@@ -150,8 +152,8 @@ def ended(conn: sqlite3.Connection, kind: Kind, vid: str, lo: int, hi: int | Non
 
 def rows_after(conn: sqlite3.Connection, kind: Kind, vid: str, w: int) -> dict[int, dict]:
     """start -> row of the rows that are open or end after `w`: what a window starting at `w` derives again."""
-    rows = conn.execute(f"SELECT {_sel(kind)} FROM {kind.table} WHERE vehicle_id=? AND (end IS NULL OR end>?)", (vid, w))
-    return {d["start"]: {k: v for k, v in d.items() if k not in _ADDRESS[kind.name]} for d in (_row(kind, r) for r in rows)}  # derive compares it to rows it just built
+    rows = conn.execute(f"SELECT {_sel(kind, addresses=False)} FROM {kind.table} WHERE vehicle_id=? AND (end IS NULL OR end>?)", (vid, w))
+    return {d["start"]: d for d in (_row(kind, r, addresses=False) for r in rows)}  # derive compares it to rows it just built
 
 
 def straddling(conn: sqlite3.Connection, vid: str, w: int) -> list[int]:
@@ -237,11 +239,15 @@ def save_address(conn: sqlite3.Connection, lat4: int, lon4: int, text: str | Non
 
 
 def unaddressed(conn: sqlite3.Connection) -> tuple[int, int] | None:
-    """The address key of the newest point with no `addresses` row: an unnamed trip start or end, or an unnamed charge."""
-    points = [(TRIP.table, "from_lat", "from_lon", "from_place"), (TRIP.table, "to_lat", "to_lon", "to_place"), (CHARGE.table, "lat", "lon", "place")]
-    union = " UNION ALL ".join(f"SELECT start AS s, {(k := _key(t, la, lo))[0]} AS k1, {k[1]} AS k2 FROM {t} WHERE {pl} IS NULL AND {la} IS NOT NULL AND {lo} IS NOT NULL"
-                               for t, la, lo, pl in points)
-    return conn.execute(f"SELECT k1, k2 FROM ({union}) WHERE NOT EXISTS(SELECT 1 FROM addresses WHERE lat4=k1 AND lon4=k2)"
+    """The address key of the newest point with no `addresses` row: an unnamed trip start or end, or an unnamed charge.
+    An open trip's end is where the car is now, so it waits for the trip to close."""
+    selects = []
+    for kind in KINDS:
+        for lat, lon, place in _ADDRESS[kind.name].values():
+            k = _key(kind.table, lat, lon)
+            closed = " AND end IS NOT NULL" if lat == "to_lat" else ""
+            selects.append(f"SELECT start AS s, {k[0]} AS k1, {k[1]} AS k2 FROM {kind.table} WHERE {place} IS NULL AND {lat} IS NOT NULL AND {lon} IS NOT NULL{closed}")
+    return conn.execute(f"SELECT k1, k2 FROM ({' UNION ALL '.join(selects)}) WHERE NOT EXISTS(SELECT 1 FROM addresses WHERE lat4=k1 AND lon4=k2)"
                         " ORDER BY s DESC LIMIT 1").fetchone()
 
 

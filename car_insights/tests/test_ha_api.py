@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from car_insights.ha_api import fetch_history, fetch_language, fetch_zones
+from car_insights.ha_api import fetch_history, fetch_language, fetch_tile, fetch_zones
 from car_insights.zones import Zone
 
 HOME = Zone("Home", 52.0, 5.0, 100)
@@ -27,13 +27,25 @@ def test_fetch_zones_renders_only_the_zones_through_a_template(monkeypatch):
     assert "states.zone" in seen["body"]["template"] and "tojson" in seen["body"]["template"]
 
 
-def test_fetch_zones_skips_passive_and_unusable_entries(monkeypatch):
+def test_fetch_zones_keeps_passive_zones_flagged_and_skips_unusable_entries(monkeypatch):
     good = {"name": "Home", "latitude": 52.0, "longitude": 5.0, "radius": 100, "passive": False}
     rows = [good, {**good, "name": "Hidden", "passive": True}, {**good, "name": "NoRadius", "radius": None},
             {**good, "name": "Text", "latitude": "52.0"}, {**good, "name": "Bool", "longitude": True}, {**good, "name": 5},
             {**good, "name": "NoPassive", "passive": None}, "junk"]
     _template_server(monkeypatch, json.dumps(rows))
-    assert fetch_zones("tok") == [HOME, Zone("NoPassive", 52.0, 5.0, 100)]
+    assert fetch_zones("tok") == [HOME, Zone("Hidden", 52.0, 5.0, 100, True), Zone("NoPassive", 52.0, 5.0, 100)]
+
+
+def test_fetch_tile_asks_the_core_tile_proxy_with_the_token(monkeypatch):
+    seen = {}
+
+    def urlopen(req, timeout):
+        seen.update(url=req.full_url, method=req.get_method(), auth=req.get_header("Authorization"))
+        return io.BytesIO(b"PNG")
+
+    monkeypatch.setattr("car_insights.ha_api.urllib.request.urlopen", urlopen)
+    assert fetch_tile("tok", 3, 4, 5) == b"PNG"
+    assert seen == {"url": "http://supervisor/core/api/map_tiles/raster/3/4/5.png", "method": "GET", "auth": "Bearer tok"}
 
 
 def test_fetch_time_zone_falls_back_to_local(monkeypatch, caplog):

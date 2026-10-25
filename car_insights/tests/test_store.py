@@ -127,10 +127,12 @@ def test_ended_between_is_closed_and_inclusive(conn):
 
 def test_rows_after_and_straddling_find_what_a_window_must_redo(conn):
     seed_trip(conn, "car1", 0, 100)
-    seed_trip(conn, "car1", 200, 300)
+    seed_trip(conn, "car1", 200, 300, from_lat=51.2, from_lon=4.3)
     seed_charge(conn, "car1", 400, None)
     assert sorted(store.rows_after(conn, TRIP, "car1", 100)) == [200] and sorted(store.rows_after(conn, CHARGE, "car1", 100)) == [400]
     assert store.rows_after(conn, TRIP, "car1", 100)[200]["end"] == 300
+    store.save_address(conn, 512000, 43000, "A 1, B", 1)
+    assert "from_address" not in store.rows_after(conn, TRIP, "car1", 100)[200]  # derive compares it to rows without addresses
     assert sorted(store.straddling(conn, "car1", 50)) == [0] and store.straddling(conn, "car1", 100) == []
     assert store.straddling(conn, "car1", 450) == [400]  # an open row straddles any later window start
 
@@ -320,6 +322,20 @@ def test_unaddressed_skips_named_points(conn):
     assert store.unaddressed(conn) is None
 
 
+def test_unaddressed_waits_for_an_open_trips_end(conn):
+    seed_trip(conn, "car1", 10, None, **{"from": "Home"}, from_lat=51.2, from_lon=4.3, to_lat=51.3, to_lon=4.4)  # driving: the end is the car's position
+    assert store.unaddressed(conn) is None
+    conn.execute("UPDATE trips SET end=20")
+    assert store.unaddressed(conn) == (513000, 44000)
+
+
+def test_unaddressed_sends_an_open_trips_start(conn):
+    seed_trip(conn, "car1", 10, None, from_lat=51.2, from_lon=4.3, to_lat=51.3, to_lon=4.4)
+    assert store.unaddressed(conn) == (512000, 43000)  # the start is fixed
+    store.save_address(conn, 512000, 43000, None, 1)
+    assert store.unaddressed(conn) is None
+
+
 def test_unaddressed_newest_first(conn):
     seed_charge(conn, "car1", 10, 20, lat=51.2, lon=4.3)
     seed_charge(conn, "car2", 30, None, lat=51.4, lon=4.5)  # open counts
@@ -368,11 +384,10 @@ def test_saved_none_is_final(conn):
     assert store.row(conn, CHARGE, "car1", 10)["address"] is None
 
 
-def test_insert_ignores_address_fields(conn):
-    store.insert(conn, TRIP, "car1", {"start": 1, "end": 2, "from_lat": 51.2, "from_lon": 4.3, "from_address": "Fake", "to_address": "Fake"},
-                 None, None, ALGO)
-    store.insert(conn, CHARGE, "car1", {"start": 1, "end": 2, "lat": 51.2, "lon": 4.3, "address": "Fake"}, None, None, ALGO)
-    assert "Fake" not in "".join(r[0] for k in KINDS for r in conn.execute(f"SELECT json FROM {k.table}"))
+def test_addresses_are_read_from_the_table_never_stored_in_a_row(conn):
+    store.insert(conn, TRIP, "car1", {"start": 1, "end": 2, "from_lat": 51.2, "from_lon": 4.3}, None, None, ALGO)
+    store.insert(conn, CHARGE, "car1", {"start": 1, "end": 2, "lat": 51.2, "lon": 4.3}, None, None, ALGO)
+    assert "address" not in "".join(r[0] for k in KINDS for r in conn.execute(f"SELECT json FROM {k.table}"))
     store.save_address(conn, 512000, 43000, "Real", 1)
     assert store.row(conn, TRIP, "car1", 1)["from_address"] == "Real" and store.row(conn, CHARGE, "car1", 1)["address"] == "Real"
     assert store.row(conn, TRIP, "car1", 1)["to_address"] is None

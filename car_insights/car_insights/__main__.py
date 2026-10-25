@@ -54,7 +54,8 @@ def main() -> None:
     pipeline.rebuild(app, int(time.time() * 1000))
     uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity).on_ingested, ingested=partial(pipeline.ingested, app), reply=partial(pipeline.reply, app),
                            background=[poller.run, app.totals.run_daily, lambda: capacity_learning.run(conn), zones.run, partial(pipeline.run_close_quiet, app),
-                                       partial(geocode.run, conn, partial(geocode.fetch, language=language), lambda: int(time.time() * 1000))],
+                                       partial(geocode.run, conn, partial(geocode.fetch, language=language), lambda: int(time.time() * 1000), lambda: zones.loaded,
+                                               lambda lat, lon: zones.covers(lat, lon) or prices.spot_name_at(conn, lat, lon) is not None)],
                            ui=ui_api.router(conn, zones, tz, capacity, AdminCache(lambda: ha_users.fetch_users(sup_token)).is_admin, on_settings=app.totals.publish_groups,
                            relabel=partial(pipeline.relabel, app), tile=lambda z, x, y: fetch_tile(sup_token, z, x, y), on_costs=partial(pipeline.republish, app)),
                            web_dir=Path("/app/web")),
