@@ -232,7 +232,7 @@ def save_address(conn: sqlite3.Connection, lat4: int, lon4: int, text: str | Non
 def unaddressed(conn: sqlite3.Connection) -> tuple[int, int] | None:
     """The address key of the newest point with no `addresses` row: an unnamed trip start or end, or an unnamed charge."""
     points = [(TRIP.table, "from_lat", "from_lon", "from_place"), (TRIP.table, "to_lat", "to_lon", "to_place"), (CHARGE.table, "lat", "lon", "place")]
-    union = " UNION ALL ".join(f"SELECT start AS s, {(k := _key(t, la, lo))[0]} AS k1, {k[1]} AS k2 FROM {t} WHERE {pl} IS NULL AND {la} IS NOT NULL"
+    union = " UNION ALL ".join(f"SELECT start AS s, {(k := _key(t, la, lo))[0]} AS k1, {k[1]} AS k2 FROM {t} WHERE {pl} IS NULL AND {la} IS NOT NULL AND {lo} IS NOT NULL"
                                for t, la, lo, pl in points)
     return conn.execute(f"SELECT k1, k2 FROM ({union}) WHERE NOT EXISTS(SELECT 1 FROM addresses WHERE lat4=k1 AND lon4=k2)"
                         " ORDER BY s DESC LIMIT 1").fetchone()

@@ -12,14 +12,14 @@ from . import capacity as capacity_learning, db
 from .db import connect
 from .mqtt_out import MqttOut
 from .poller import Poller, SourceConf
-from . import costs, ha_users, pipeline, prices, ui_api
+from . import costs, geocode, ha_users, pipeline, prices, ui_api
 from .derive import Deriver
 from .ha_users import AdminCache
 from .publisher import Publisher
 from .token_file import load_or_create
 from .totals_sensors import TotalsSensors
 from .trip_sensors import TripSensors
-from .ha_api import fetch_history, fetch_time_zone, fetch_zones, supervisor_get
+from .ha_api import fetch_history, fetch_language, fetch_time_zone, fetch_zones, supervisor_get
 from .zones import ZoneCache
 
 
@@ -38,6 +38,7 @@ def main() -> None:
 
     Path("/data/zones.json").unlink(missing_ok=True)  # an earlier version's cache of the zone list
     tz = fetch_time_zone(sup_token)
+    language = fetch_language(sup_token)
     zones = ZoneCache(lambda: fetch_zones(sup_token))
     deriver = Deriver(conn, zones, capacity, spots=lambda lat, lon: prices.spot_name_at(conn, lat, lon))
     sensors = TripSensors(conn, mqtt, capacity,
@@ -52,7 +53,8 @@ def main() -> None:
     zones.refresh()  # a success renames the stored rows through on_change; a failure changes nothing and zones.run retries
     pipeline.rebuild(app, int(time.time() * 1000))
     uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity).on_ingested, ingested=partial(pipeline.ingested, app), reply=partial(pipeline.reply, app),
-                           background=[poller.run, app.totals.run_daily, lambda: capacity_learning.run(conn), zones.run, partial(pipeline.run_close_quiet, app)],
+                           background=[poller.run, app.totals.run_daily, lambda: capacity_learning.run(conn), zones.run, partial(pipeline.run_close_quiet, app),
+                                       partial(geocode.run, conn, partial(geocode.fetch, language=language), lambda: int(time.time() * 1000))],
                            ui=ui_api.router(conn, zones, tz, capacity, AdminCache(lambda: ha_users.fetch_users(sup_token)).is_admin, on_settings=app.totals.publish_groups,
                            relabel=partial(pipeline.relabel, app), on_costs=partial(pipeline.republish, app)),
                            web_dir=Path("/app/web")),

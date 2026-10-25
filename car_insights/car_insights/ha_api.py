@@ -58,6 +58,15 @@ def fetch_time_zone(token: str, tries: int = 30, wait_s: float = 10) -> tzinfo:
     return datetime.now().astimezone().tzinfo
 
 
+def fetch_language(token: str) -> str:
+    """HA's configured language ("nl"), "en" when it cannot be read."""
+    try:
+        return supervisor_get("/core/api/config", token).get("language") or "en"
+    except Exception as err:
+        log.warning("could not read the Home Assistant language, using en: %r", err)
+        return "en"
+
+
 def _iso_utc(ms: int) -> str:
     return datetime.fromtimestamp(ms / 1000, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 

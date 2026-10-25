@@ -1,7 +1,9 @@
 import io
 import json
 
-from car_insights.ha_api import fetch_history, fetch_zones
+import pytest
+
+from car_insights.ha_api import fetch_history, fetch_language, fetch_zones
 from car_insights.zones import Zone
 
 HOME = Zone("Home", 52.0, 5.0, 100)
@@ -11,7 +13,7 @@ def _template_server(monkeypatch, rendered):
     seen = {}
 
     def urlopen(req, timeout):
-        seen.update(url=req.full_url, method=req.get_method(), auth=req.get_header("Authorization"), body=json.loads(req.data))
+        seen.update(url=req.full_url, method=req.get_method(), auth=req.get_header("Authorization"), body=req.data and json.loads(req.data))
         return io.BytesIO(rendered.encode())
 
     monkeypatch.setattr("car_insights.ha_api.urllib.request.urlopen", urlopen)
@@ -84,3 +86,22 @@ def test_fetch_time_zone_retries(monkeypatch):
     monkeypatch.setattr(z, "supervisor_get", flaky)
     assert z.fetch_time_zone("tok", wait_s=0) == ZoneInfo("Europe/Amsterdam")
     assert len(calls) == 3
+
+
+def test_fetch_language_reads_the_config(monkeypatch):
+    _template_server(monkeypatch, '{"language": "nl", "time_zone": "UTC"}')
+    assert fetch_language("tok") == "nl"
+
+
+@pytest.mark.parametrize("rendered", ['{"time_zone": "UTC"}', '{"language": ""}', "[]", "not json"])
+def test_fetch_language_is_en_without_one(monkeypatch, rendered):
+    _template_server(monkeypatch, rendered)
+    assert fetch_language("tok") == "en"
+
+
+def test_fetch_language_is_en_when_home_assistant_is_down(monkeypatch, caplog):
+    def down(*a, **k):
+        raise OSError("down")
+    monkeypatch.setattr("car_insights.ha_api.urllib.request.urlopen", down)
+    assert fetch_language("tok") == "en"
+    assert caplog.records[-1].levelname == "WARNING"

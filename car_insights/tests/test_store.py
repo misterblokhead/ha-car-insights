@@ -338,6 +338,12 @@ def test_address_key_matches_on_edges(conn):
     assert store.unaddressed(conn) is None
 
 
+def test_unaddressed_ignores_a_point_without_a_lon(conn):
+    seed_charge(conn, "car1", 10, 20, lat=51.2)
+    seed_trip(conn, "car1", 30, 40, from_lat=51.2, to_lat=51.3)
+    assert store.unaddressed(conn) is None
+
+
 def test_trip_reads_carry_addresses(conn):
     seed_trip(conn, "car1", 10, 20, from_lat=51.2, from_lon=4.3, to_lat=51.3, to_lon=4.4)
     seed_trip(conn, "car1", 30, None, from_lat=51.2, from_lon=4.3)
