@@ -20,7 +20,7 @@ Pages are addressed by hash: `#/activity`, `#/trips/<vehicle>/<start>`, `#/charg
 
 Dates on the page follow Home Assistant's time zone.
 
-Each trip of 2 km or more gets a driving style score from 0 to 100, lowered by hard accelerations (above 2.5 m/s²), hard brakings (above 3 m/s²) and sharp corners (above 3 m/s² sideways). The trip detail shows the score, the counts per 10 km and the share of distance per speed band with kWh/100 km per band; Statistics shows the same for the period against the one before. Speed limits are not used yet. The first start after the update recalculates all trips.
+Each trip of 2 km or more gets a driving style score from 0 to 100, lowered by hard accelerations (above 3 m/s²), hard brakings (above 3 m/s²) and sharp corners (above 4 m/s² sideways, from 25 km/h). The trip detail shows the score, the counts per 10 km and the share of distance per speed band with kWh/100 km per band (energy while standing still is its own Standing row); Statistics shows the same for the period against the one before. Speed limits are not used yet. The first start after the update recalculates all trips.
 
 Admin status is read server-side from Home Assistant's user list (the `system-admin` group, via the Core websocket; cached for a minute), never from request headers; when the list cannot be read nobody is treated as admin. The page's API is internal and answers only Supervisor ingress requests.
 

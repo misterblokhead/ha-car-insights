@@ -29,7 +29,7 @@ def similar_trips(conn: sqlite3.Connection, vid: str, trip: dict, limit: int = 2
 
 
 def _style(rows: list[dict]) -> dict:
-    """Driving style of the trips that carry it: summed events, distance-weighted score, consumption per speed band."""
+    """Driving style of the trips that carry it: summed events, distance-weighted score, consumption per speed band, standing energy."""
     rows = [r for r in rows if r.get("style")]
     km = {b: 0.0 for b in SPEED_BANDS}
     wh, wh_km = dict(km), dict(km)  # wh_km: the km of the trips that have energy for the band
@@ -43,10 +43,12 @@ def _style(rows: list[dict]) -> dict:
         if r["style"]["score"] is not None:
             scored.append((r.get("distance_m") or 0, r["style"]["score"]))
     weight = sum(m for m, _ in scored)
+    standing = [r["style"]["standing"] for r in rows if r["style"].get("standing") is not None]
     return {"km": round(sum(r.get("distance_m") or 0 for r in rows) / 1000, 1),
             **{e: sum(r["style"][e][0] for r in rows) for e in KINDS},
             "score": round(sum(m * sc for m, sc in scored) / weight) if weight else None,
-            "bands": {b: {"km": round(km[b], 1), "kwh_per_100km": round(wh[b] / wh_km[b] / 10, 1) if wh_km[b] >= 5 else None} for b in SPEED_BANDS}}
+            "bands": {b: {"km": round(km[b], 1), "kwh_per_100km": round(wh[b] / wh_km[b] / 10, 1) if wh_km[b] >= 5 else None} for b in SPEED_BANDS},
+            "standing_kwh": round(sum(standing) / 1000, 2) if standing else None}
 
 
 def stats(conn: sqlite3.Connection, vids: list[str], period: str, at: date, tz: tzinfo,

@@ -5,14 +5,14 @@ from typing import Iterator
 from .protocol import Sample, num
 from .trips import MAX_SPEED_STEP_MS, _wh_readings, distance_steps, energy_steps
 
-ACCEL_MPS2 = 2.5
+ACCEL_MPS2 = 3.0
 BRAKE_MPS2 = 3.0  # a magnitude
-CORNER_MPS2 = 3.0
+CORNER_MPS2 = 4.0
 CORNER_MAX_MPS2 = 10  # no road car corners harder; above it a fix's bearing is a GPS glitch (the collector sends 0.0 without one)
 MIN_RUN_S = 0.5
 SMOOTH_S = 1.0
 DIFF_S = 1.0
-CORNER_MIN_MPS = 4.167  # 15 km/h
+CORNER_MIN_MPS = 6.944  # 25 km/h
 CORNER_MAX_ACC_M = 15
 CORNER_MAX_GAP_S = 2
 PENALTY = 20
@@ -121,28 +121,36 @@ def _band(mps: float) -> str:
     return [name for lo, name in BANDS if mps * 3.6 >= lo][-1]
 
 
-def bands(samples: list[Sample], wh0: float | None, start: int, steps: Steps | None = None) -> dict[str, list[int | None]]:
-    """band -> [m, wh]: each distance increment in the band of the speed that produced it, each energy step's net change in the band of the
-    distance-weighted mean speed since the previous step (none moved: the lowest band); no base wh, wh None"""
+def bands(samples: list[Sample], wh0: float | None, start: int, steps: Steps | None = None) -> tuple[dict[str, list[int | None]], int | None]:
+    """(band -> [m, wh], standing wh): each distance increment in the band of the speed that produced it, each energy step's net change split
+    across the bands by the distance driven in each since the previous step; a step with no distance is standing; no base wh: wh and standing None"""
     out = {name: [0.0, 0.0] for _, name in BANDS}
     steps = list(distance_steps(samples)) if steps is None else steps
     incs = [(t1, d1 - d0, v0) for (_, d0, v0), (t1, d1, _) in zip(steps, steps[1:])]
     for _, d, v in incs:
         out[_band(v)][0] += d
-    i, prev_net = 0, 0.0
+    i, prev_net, standing = 0, 0.0, 0.0
     for t, net, *_ in energy_steps(samples, wh0, start):
-        d = dv = 0.0
+        part: dict[str, float] = {}
         while i < len(incs) and incs[i][0] <= t:
-            d, dv, i = d + incs[i][1], dv + incs[i][1] * incs[i][2], i + 1
-        out[_band(dv / d if d else 0.0)][1] += net - prev_net
+            name = _band(incs[i][2])
+            part[name] = part.get(name, 0.0) + incs[i][1]
+            i += 1
+        d = sum(part.values())
+        if d:
+            for name, m in part.items():
+                out[name][1] += (net - prev_net) * m / d
+        else:
+            standing += net - prev_net
         prev_net = net
     known = _wh_readings(samples, wh0, start)[0] is not None
-    return {name: [round(m), round(wh) if known else None] for name, (m, wh) in out.items()}
+    return {name: [round(m), round(wh) if known else None] for name, (m, wh) in out.items()}, round(standing) if known else None
 
 
 def measure(samples: list[Sample], wh0: float | None, start: int, distance_m: float, found: list[tuple[str, float, float]] | None = None) -> dict:
-    """the driving style of a trip: [count, summed severity] per event kind, the speed bands and the score; `found` is events(samples) when already at hand"""
+    """the driving style of a trip: [count, summed severity] per event kind, the speed bands, the standing wh and the score; `found` is events(samples) when already at hand"""
     steps = list(distance_steps(samples))
     found = events(samples, steps) if found is None else found
+    by_band, standing = bands(samples, wh0, start, steps)
     return {**{kind: [sum(k == kind for k, _, _ in found), round(sum(sev for k, _, sev in found if k == kind), 2)] for kind in KINDS},
-            "bands": bands(samples, wh0, start, steps), "score": score(found, distance_m)}
+            "bands": by_band, "standing": standing, "score": score(found, distance_m)}
