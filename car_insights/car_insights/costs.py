@@ -1,9 +1,9 @@
 """What a charge costs: receipt, else the spot's tariff, else the AC/DC default. What a trip costs: energy plus its share of the fixed costs."""
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 from . import prices, store
 from .kinds import CHARGE
-from .periods import midnight_ms
+from .periods import local_date, midnight_ms
 
 ENERGY_WINDOW_MS = 30 * 86_400_000
 FIXED_DAYS = 365
@@ -80,9 +80,9 @@ def _energy(conn, vid: str, trip: dict) -> float | None:
 def _fixed(conn, vid: str, trip: dict, tz) -> float | None:
     if trip.get("distance_m") is None:
         return None
-    end_day = datetime.fromtimestamp(trip["end"] / 1000, tz).date()
+    end_day = local_date(trip["end"], tz)
     first = store.first_trip_start(conn, vid, trip["start"])
-    lo = max(end_day - timedelta(days=FIXED_DAYS - 1), datetime.fromtimestamp(first / 1000, tz).date())
+    lo = max(end_day - timedelta(days=FIXED_DAYS - 1), local_date(first, tz))
     km = store.trip_distance_m(conn, vid, midnight_ms(lo, tz), trip["end"]) / 1000.0
     if km < MIN_FIXED_KM:
         return None
@@ -100,11 +100,9 @@ def trip_cost(conn, vid: str, trip: dict, tz) -> dict:
 
 def period_costs(conn, vids: list[str], lo: int, hi: int, tz, now_ms: int) -> dict:
     """Costs of the closed charges starting in [lo, hi) plus the fixed costs of the days up to the period's last day, or today if still running."""
-    energy, uncosted, books = 0.0, 0, {}
+    energy, uncosted, book = 0.0, 0, prices.books(conn)
     for ch in store.in_range(conn, CHARGE, vids, lo, hi):
-        vid = ch["vehicle_id"]
-        a = charge_cost(books.get(vid) or books.setdefault(vid, prices.book(conn, vid)), ch)["amount"]
+        a = charge_cost(book(ch["vehicle_id"]), ch)["amount"]
         energy, uncosted = (energy + a, uncosted) if a is not None else (energy, uncosted + 1)
-    day = lambda ms: datetime.fromtimestamp(ms / 1000, tz).date()
-    fixed = fixed_between(conn, vids, day(lo), min(day(hi - 1), day(now_ms)) + timedelta(days=1))
+    fixed = fixed_between(conn, vids, local_date(lo, tz), min(local_date(hi - 1, tz), local_date(now_ms, tz)) + timedelta(days=1))
     return {"energy": energy, "fixed": fixed, "total": energy + fixed, "uncosted": uncosted}

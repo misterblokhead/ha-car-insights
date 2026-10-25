@@ -105,7 +105,7 @@ def test_detail_has_series_and_capacity(conn):
     charge = seed_charge(conn, "car1", 1000, 2000, series={"t": [1, 2]})
     c, _ = client(conn)
     t = c.get("/api/ui/trips/car1/1000", headers=VIEWER).json()
-    assert t == {"trip": row | {"start_pct": None, "end_pct": None, "wh_per_100km": None}, "cost": {"energy": None, "fixed": None, "total": None}, "series": None, "route": None, "similar": None, "capacity_wh": CAP["car1"]}
+    assert t == {"trip": row | {"start_pct": None, "end_pct": None, "wh_per_100km": None}, "cost": {"energy": None, "fixed": None, "total": None}, "series": None, "route": None, "similar": None}
     ch = c.get("/api/ui/charges/car1/1000", headers=VIEWER).json()
     cost = ch.pop("cost")
     assert cost["amount"] is None and cost["basis"] is None  # no tariff set: not computable, never 0
@@ -284,7 +284,7 @@ def test_activity_visibility(conn):
     assert c.get("/api/ui/activity?view=v:car3", headers=VIEWER).status_code == 404
     assert c.get(f"/api/ui/activity?view=g:{gid}", headers=VIEWER).status_code == 404  # a partly hidden group is not listed
     r = c.get("/api/ui/activity?view=v:car1", headers=VIEWER).json()
-    assert [i["vehicle_id"] for d in r["days"] for i in d["items"]] == ["car1"] and list(r["capacity_wh"]) == ["car1"]
+    assert [i["vehicle_id"] for d in r["days"] for i in d["items"]] == ["car1"] and "capacity_wh" not in r
 
 
 def test_activity_before_validated(conn):

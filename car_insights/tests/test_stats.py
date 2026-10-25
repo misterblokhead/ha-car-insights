@@ -50,6 +50,13 @@ def test_similar_zero_distance_no_division():
     assert stats.similar_trips(c, "car1", trip()) == {"n": 2, "avg_duration_s": 90, "avg_wh_per_100km": None}
 
 
+def test_similar_short_trips_have_no_consumption():
+    c = connect(":memory:")
+    put(c, 1000, {"from": "Home", "to": "Work", "duration_s": 60, "distance_m": 40, "net_wh": 30})
+    put(c, 2000, {"from": "Home", "to": "Work", "duration_s": 60, "distance_m": 50, "net_wh": 40})
+    assert stats.similar_trips(c, "car1", trip())["avg_wh_per_100km"] is None  # 90 m in all: the one consumption rule says nothing
+
+
 TZ = ZoneInfo("Europe/Amsterdam")
 OCT24 = date(2026, 10, 24)
 

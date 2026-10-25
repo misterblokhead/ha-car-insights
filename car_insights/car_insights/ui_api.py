@@ -2,7 +2,7 @@
 import dataclasses
 import logging
 import time
-from datetime import date, datetime
+from datetime import date
 from typing import Annotated, Any, Awaitable, Callable, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
@@ -10,7 +10,8 @@ from pydantic import BaseModel, Field
 
 from . import access, activity, costs, db, prices, stats, store
 from .access import Viewer
-from .figures import pct
+from .figures import pct, with_figures
+from .periods import local_date
 from .zones import Zones
 from .kinds import CHARGE, TRIP, Kind
 from .protocol import fix, num
@@ -171,19 +172,11 @@ def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
 
     @r.get("/activity")
     async def get_activity(request: Request, view: str = "", before: EpochMs | None = None):
-        out = activity.page(conn, vids_of(await who(request), view), before, now_ms(), tz, lambda v: db.device_info(conn, v)[0],
-                            capacity)
-        books: dict[str, prices.Book] = {}
-        for d in out["days"]:
-            for i in d["items"]:
-                if i["kind"] == "charge":
-                    c = costs.charge_cost(books.get(i["vehicle_id"]) or books.setdefault(i["vehicle_id"], prices.book(conn, i["vehicle_id"])), i)
-                    i["cost"] = {"amount": c["amount"], "basis": c["basis"]}
-        return out
+        return activity.page(conn, vids_of(await who(request), view), before, now_ms(), tz, lambda v: db.device_info(conn, v)[0], capacity)
 
     @r.get("/stats")
     async def get_stats(request: Request, view: str = "", period: Literal["week", "month", "year"] = "week", at: date | None = None):
-        vids, today = vids_of(await who(request), view), datetime.fromtimestamp(now_ms() / 1000, tz).date()
+        vids, today = vids_of(await who(request), view), local_date(now_ms(), tz)
         if at is not None and at > today:
             raise HTTPException(422, "at is in the future")
         return stats.stats(conn, vids, period, at or today, tz, (lambda v: db.device_info(conn, v)[0]) if view.startswith("g:") else None, now_ms())
@@ -191,13 +184,13 @@ def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
     @r.get("/trips/{vid}/{start}")
     async def trip(request: Request, vid: str, start: StartMs):
         row, series = detail(TRIP, await who(request), vid, start)
-        return {"trip": activity.with_figures("trip", row, capacity(vid)), "cost": costs.trip_cost(conn, vid, row, tz), "series": series,
-                "route": store.route(conn, vid, start), "similar": stats.similar_trips(conn, vid, row), "capacity_wh": capacity(vid)}
+        return {"trip": with_figures(TRIP, row, capacity(vid)), "cost": costs.trip_cost(conn, vid, row, tz), "series": series,
+                "route": store.route(conn, vid, start), "similar": stats.similar_trips(conn, vid, row)}
 
     @r.get("/charges/{vid}/{start}")
     async def charge(request: Request, vid: str, start: StartMs):
         row, series = detail(CHARGE, await who(request), vid, start)
-        return {"charge": activity.with_figures("charge", row, capacity(vid)), "cost": costs.charge_cost(prices.book(conn, vid), row),
+        return {"charge": with_figures(CHARGE, row, capacity(vid)), "cost": costs.charge_cost(prices.book(conn, vid), row),
                 "series": series, "capacity_wh": capacity(vid),
                 "outside_temp_c": num(db.latest_at_or_before(conn, vid, start, ("outside_temp",)).get("outside_temp"))}
 

@@ -37,14 +37,14 @@ def test_merges_trips_and_charges_newest_first(conn):
     put(conn, "charges", "car2", at(2026, 10, 25, 10), at(2026, 10, 25, 11))
     put(conn, "trips", "car1", at(2026, 10, 24, 8), at(2026, 10, 24, 9))
     p = page(conn, ("car1", "car2"))
-    assert p["today"] == "2026-10-25" and p["capacity_wh"] == {"car1": 50_000.0, "car2": 50_000.0} and p["next"] is None
+    assert p["today"] == "2026-10-25" and "capacity_wh" not in p and p["next"] is None
     assert [d["date"] for d in p["days"]] == ["2026-10-25", "2026-10-24"]
     first = p["days"][0]["items"]
     assert [(i["kind"], i["vehicle_id"], i["vehicle_name"]) for i in first] == [("charge", "car2", "Car Two"), ("trip", "car1", "Car One")]
 
 
 def test_empty(conn):
-    assert page(conn) == {"today": "2026-10-25", "capacity_wh": {"car1": 50_000.0}, "days": [], "next": None}
+    assert page(conn) == {"today": "2026-10-25", "days": [], "next": None}
 
 
 def test_page_holds_whole_days(conn):
@@ -131,7 +131,8 @@ def test_first_page_reads_only_recent_rows(conn):
     assert got["next"] == cut
     want = sorted(((st, k) for st, k, _ in allrows if st >= cut), key=lambda r: (-r[0], r[1]))
     assert sorted(((i["start"], i["kind"]) for d in got["days"] for i in d["items"]), key=lambda r: (-r[0], r[1])) == want
-    assert all("LIMIT" in q or "start>=?" in q or "end IS NULL" in q or "trip_routes" in q for q in seen)  # a route is read per shown trip
+    assert all("LIMIT" in q or "start>=?" in q or "end IS NULL" in q or "trip_routes" in q or "tariffs" in q or "FROM charge_" in q or "FROM vehicles" in q
+               for q in seen)  # a route is read per shown trip, the prices once per vehicle
     assert sum(i["end"] is None for d in got["days"] for i in d["items"]) == 2  # both open rows are there
 
 

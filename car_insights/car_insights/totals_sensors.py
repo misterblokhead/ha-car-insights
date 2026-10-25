@@ -3,10 +3,10 @@ import json
 import logging
 import sqlite3
 import time
-from datetime import datetime, time as dtime, timedelta, tzinfo
+from datetime import timedelta, tzinfo
 from typing import Callable
 
-from . import db, ha_mqtt
+from . import db, ha_mqtt, periods
 from .ha_mqtt import Sink
 from .totals import totals
 
@@ -76,9 +76,8 @@ class TotalsSensors:
         self._groups = set(names)
 
     def _seconds_to_next_run(self) -> float:
-        now = datetime.fromtimestamp(self._now_ms() / 1000, self._tz)
-        nxt = datetime.combine(now.date() + timedelta(days=1), dtime.min, self._tz)
-        return nxt.timestamp() - now.timestamp() + RUN_DELAY_S  # timestamps: aware datetimes in one zone subtract as wall time, DST-blind
+        now = self._now_ms()
+        return (periods.midnight_ms(periods.local_date(now, self._tz) + timedelta(days=1), self._tz) - now) / 1000 + RUN_DELAY_S
 
     def _publish_all(self) -> None:
         try:

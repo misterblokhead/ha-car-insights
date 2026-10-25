@@ -20,9 +20,8 @@ def similar_trips(conn: sqlite3.Connection, vid: str, trip: dict, limit: int = 2
         return None
     durs = [r.get("duration_s") for r in rows if r.get("duration_s") is not None]
     used = [(r["distance_m"], r["net_wh"]) for r in rows if r.get("distance_m") and r["distance_m"] > 0 and r.get("net_wh") is not None]
-    dist = sum(m for m, _ in used)
     return {"n": len(rows), "avg_duration_s": sum(durs) / len(durs) if durs else None,
-            "avg_wh_per_100km": sum(wh for _, wh in used) / dist * 100_000 if used else None}
+            "avg_wh_per_100km": wh_per_100km(sum(m for m, _ in used), sum(wh for _, wh in used))}
 
 
 def stats(conn: sqlite3.Connection, vids: list[str], period: str, at: date, tz: tzinfo,
@@ -48,8 +47,8 @@ def stats(conn: sqlite3.Connection, vids: list[str], period: str, at: date, tz: 
         gross += t.get("gross_wh") or 0
         if dist is not None and (longest is None or dist > longest["distance_m"]):
             longest = {"vehicle_id": vid, "start": start, "distance_m": dist, "from": a, "to": b}
-        if dist is not None and dist >= 5000 and net is not None and (best is None or net / dist < best[0]):
-            best = (net / dist, {"vehicle_id": vid, "start": start, "wh_per_100km": net / dist * 100_000})
+        if dist is not None and dist >= 5000 and (w := wh_per_100km(dist, net)) is not None and (best is None or w < best["wh_per_100km"]):
+            best = {"vehicle_id": vid, "start": start, "wh_per_100km": w}
     places = [{"place": p, "wh": wh} for p, wh in store.charged_by_place(conn, vids, lo, hi)]
     places.sort(key=lambda p: (-p["wh"], p["place"] is None, p["place"] or ""))
     return {
@@ -60,6 +59,6 @@ def stats(conn: sqlite3.Connection, vids: list[str], period: str, at: date, tz: 
         "previous": sums(conn, vids, plo, phi, tz, now_ms),
         "buckets": [{"start": midnight_ms(d, tz), "distance_m": m, "net_wh": wh, "wh_per_100km": wh_per_100km(m, wh)} for d, (m, wh) in buckets.items()],
         "by_place": places,
-        "highlights": {"longest": longest, "most_efficient": best[1] if best else None, "recup_wh": recup, "gross_wh": gross},
+        "highlights": {"longest": longest, "most_efficient": best, "recup_wh": recup, "gross_wh": gross},
         "per_vehicle": [{"id": v, "name": names(v), "totals": sums(conn, [v], lo, hi, tz, now_ms)} for v in vids] if names else None,
     }

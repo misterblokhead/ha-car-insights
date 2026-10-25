@@ -24,6 +24,7 @@ from car_insights import access, db, prices, store, ui_api  # noqa: E402
 from car_insights.api import create_app  # noqa: E402
 from car_insights.derive import Deriver  # noqa: E402
 from car_insights.kinds import CHARGE  # noqa: E402
+from car_insights.periods import local_date  # noqa: E402
 from car_insights.protocol import Sample  # noqa: E402
 
 TZ = ZoneInfo("Europe/Amsterdam")
@@ -141,7 +142,7 @@ def charge(log, t0, wh, cap, target, car_reports: bool) -> tuple[int, float]:
 
 def build(conn, now: int) -> Deriver:
     rng = random.Random(7)
-    today = datetime.fromtimestamp(now / 1000, TZ).date()
+    today = local_date(now, TZ)
     local = lambda day, h, m: int(datetime(day.year, day.month, day.day, h, tzinfo=TZ).timestamp() * 1000) + m * MIN
     for vid, (name, cap, cloud, full) in CARS.items():
         car, sky = [], []
