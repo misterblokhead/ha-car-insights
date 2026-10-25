@@ -36,5 +36,8 @@ export function animate(spring, {
   };
 }
 
-// A duration token such as --fade (written in ms), read once from the page.
-export const cssMs = (name) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+// A CSS time such as "150ms" or ".15s" (the minifier rewrites one as the other), in ms.
+export const toMs = (css) => parseFloat(css) * (css.trim().endsWith("ms") ? 1 : 1000);
+
+// A duration token such as --fade, read once from the page.
+export const cssMs = (name) => toMs(getComputedStyle(document.documentElement).getPropertyValue(name));
