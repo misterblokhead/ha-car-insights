@@ -65,6 +65,13 @@ def test_charge_series_open_has_no_upper_bound():
     assert series.charge(samples, 100, 200)["car_kwh"] == [[100, 20.0]]
 
 
+
+def test_charge_series_drops_battery_flicker():
+    """a reading replaced within a second is the car's flicker, not energy: it would draw a +-1000 kW spike"""
+    samples = [s(0, "battery_wh", 20_000.0), s(60_000, "battery_wh", 20_200.0), s(60_200, "battery_wh", 20_100.0),
+               s(120_000, "battery_wh", 20_300.0)]
+    assert series.charge(samples, 0, None)["car_kwh"] == [[0, 20.0], [60_200, 20.1], [120_000, 20.3]]
+
 def test_series_carries_events():
     ramp = lambda t: 25.0 if t <= 100 else 10.0 if t >= 103 else 25.0 - 5 * (t - 100)  # 5 m/s2 for 3 s: one hard brake
     samples = [s(t, "speed", ramp(t / 1000)) for t in range(0, 200_001, 200)]

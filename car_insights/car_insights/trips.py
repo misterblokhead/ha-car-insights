@@ -106,7 +106,12 @@ def _wh_readings(samples: list[Sample], wh0: float | None, start: int) -> tuple[
                 base = v
             else:
                 readings.append((s.t, v))
-    return base, [r for r, nxt in zip(readings, readings[1:]) if nxt[0] - r[0] >= WH_FLICKER_MS] + readings[-1:]
+    return base, steady(readings)
+
+
+def steady(readings: list) -> list:
+    """the battery_wh readings without flicker: a reading replaced within WH_FLICKER_MS is dropped, the last one always stays"""
+    return [r for r, nxt in zip(readings, readings[1:]) if nxt[0] - r[0] >= WH_FLICKER_MS] + readings[-1:]
 
 
 def energy_steps(samples: list[Sample], wh0: float | None, start: int) -> Iterator[tuple[int, float, float, float]]:
