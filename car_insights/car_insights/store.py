@@ -124,6 +124,13 @@ def route(conn: sqlite3.Connection, vid: str, start: int) -> list[list[float]] |
     return None if r is None else json.loads(r[0])
 
 
+def routes(conn: sqlite3.Connection, vids: list[str], lo: int, hi: int) -> list[tuple[str, int, list]]:
+    """(vehicle_id, start, points) of the closed trips with lo <= start < hi that have a route, oldest first."""
+    rows = conn.execute(f"SELECT r.vehicle_id, r.start, r.points FROM {_ROUTES} r JOIN trips t ON t.vehicle_id=r.vehicle_id AND t.start=r.start"
+                        f" WHERE r.vehicle_id IN ({_marks(vids)}) AND t.end IS NOT NULL AND r.start>=? AND r.start<? ORDER BY r.start", (*vids, lo, hi))
+    return [(v, s, json.loads(p)) for v, s, p in rows]
+
+
 def newest_start(conn: sqlite3.Connection, kind: Kind, vid: str) -> int:
     """Newest start of a kind, open rows included, or -1."""
     return conn.execute(f"SELECT MAX(start) FROM {kind.table} WHERE vehicle_id=?", (vid,)).fetchone()[0] or -1

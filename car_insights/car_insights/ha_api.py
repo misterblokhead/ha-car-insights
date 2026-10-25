@@ -21,6 +21,10 @@ def _call(path: str, token: str, body: dict | None = None, timeout: float = 10) 
         return r.read()
 
 
+def fetch_tile(token: str, z: int, x: int, y: int) -> bytes:
+    return _call(f"/core/api/map_tiles/raster/{z}/{x}/{y}.png", token)
+
+
 def supervisor_get(path: str, token: str):
     return json.loads(_call(path, token))
 

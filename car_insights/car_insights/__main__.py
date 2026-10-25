@@ -19,7 +19,7 @@ from .publisher import Publisher
 from .token_file import load_or_create
 from .totals_sensors import TotalsSensors
 from .trip_sensors import TripSensors
-from .ha_api import fetch_history, fetch_language, fetch_time_zone, fetch_zones, supervisor_get
+from .ha_api import fetch_history, fetch_language, fetch_time_zone, fetch_tile, fetch_zones, supervisor_get
 from .zones import ZoneCache
 
 
@@ -56,7 +56,7 @@ def main() -> None:
                            background=[poller.run, app.totals.run_daily, lambda: capacity_learning.run(conn), zones.run, partial(pipeline.run_close_quiet, app),
                                        partial(geocode.run, conn, partial(geocode.fetch, language=language), lambda: int(time.time() * 1000))],
                            ui=ui_api.router(conn, zones, tz, capacity, AdminCache(lambda: ha_users.fetch_users(sup_token)).is_admin, on_settings=app.totals.publish_groups,
-                           relabel=partial(pipeline.relabel, app), on_costs=partial(pipeline.republish, app)),
+                           relabel=partial(pipeline.relabel, app), tile=lambda z, x, y: fetch_tile(sup_token, z, x, y), on_costs=partial(pipeline.republish, app)),
                            web_dir=Path("/app/web")),
                 host="0.0.0.0", port=8099)
 

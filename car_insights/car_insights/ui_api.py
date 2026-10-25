@@ -1,11 +1,12 @@
 """The sidebar page's API: answers only Supervisor ingress requests, and only with what the viewer may see."""
+import asyncio
 import dataclasses
 import logging
 import time
 from datetime import date
 from typing import Annotated, Any, Awaitable, Callable, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from . import access, activity, costs, db, prices, stats, store
@@ -77,9 +78,14 @@ class _Card(BaseModel):
     start_fee: Num
 
 
+def _no_tiles(z: int, x: int, y: int) -> bytes:
+    raise RuntimeError("no tile source")
+
+
 def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
            is_admin: Callable[[str], Awaitable[bool]], on_settings: Callable[[], None] = lambda: None,
            on_costs: Callable[[list[str] | None], None] = lambda vids: None, relabel: Callable[[], None] = lambda: None,
+           tile: Callable[[int, int, int], bytes] = _no_tiles,
            ingress_hosts: tuple[str, ...] = ("172.30.32.2",), now_ms: Callable[[], int] = lambda: int(time.time() * 1000)) -> APIRouter:
     # handlers are async def with no awaits around the DB work (like /ingest): the event loop serializes access to the connection
     async def ingress_guard(request: Request) -> None:
@@ -182,6 +188,25 @@ def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
         if at is not None and at > today:
             raise HTTPException(422, "at is in the future")
         return stats.stats(conn, vids, period, at or today, tz, (lambda v: db.device_info(conn, v)[0]) if view.startswith("g:") else None, now_ms())
+
+    @r.get("/map")
+    async def get_map(request: Request, view: str = "", period: Literal["week", "month", "year"] = "week", at: date | None = None):
+        vids, today = vids_of(await who(request), view), local_date(now_ms(), tz)
+        if at is not None and at > today:
+            raise HTTPException(422, "at is in the future")
+        return stats.map_items(conn, vids, period, at or today, tz)
+
+    @r.get("/tiles/{z}/{x}/{y}.png")
+    async def get_tile(request: Request, z: int, x: int, y: int):
+        await who(request)
+        if not (0 <= z <= 19 and 0 <= x < 2**z and 0 <= y < 2**z):
+            raise _not_found()
+        try:
+            png = await asyncio.to_thread(tile, z, x, y)
+        except Exception:
+            log.warning("tile %s/%s/%s failed", z, x, y, exc_info=True)
+            return Response(status_code=502)
+        return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=604800"})
 
     @r.get("/trips/{vid}/{start}")
     async def trip(request: Request, vid: str, start: StartMs):
