@@ -9,12 +9,12 @@ from .kinds import CHARGE, KINDS, TRIP
 from .odometer import chain
 from .protocol import FUTURE_SLACK_MS
 from .trips import KEYS as TRIP_KEYS, QUIET_MS, Trip, find_trips
+from .zones import Zones
 
 log = logging.getLogger(__name__)
 ALGO = 7  # trips keep their start and end points, rows have real columns; bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
 ESTIMATE_HOLD_MS = 7 * 86_400_000  # a SoC-estimated charge this recent is re-derived on every update: the car's value may still arrive
 KEYS = tuple(sorted({*TRIP_KEYS, *CHARGE_KEYS, *series.KEYS}))  # the only sample keys derivation loads
-Zones = Callable[[float, float], str | None]
 
 
 def _trip_wire(t: Trip, zones: Zones, odo: tuple[float | None, float | None]) -> dict:
@@ -37,7 +37,7 @@ def _charge_wire(c: Charge, zones: Zones, spots: Zones) -> dict:
     d = asdict(c)
     fix = d.pop("fix")
     zone = zones(*fix) if fix else None
-    return {**d, "lat": fix and fix[0], "lon": fix and fix[1], "zone": zone, "place": zone or (spots(*fix) if fix else None),
+    return {**d, "lat": fix and fix[0], "lon": fix and fix[1], "zone": zone, "place": store.place(zone, spots(*fix) if fix else None),
             "duration_s": round(c.duration_s)}
 
 
@@ -52,11 +52,10 @@ class Deriver:
         # shortcut: in memory only, a restart between the quiet close and the backlog keeps the split; persist it if that shows up
         self._quiet: dict[str, int] = {}
 
-    def purge_stale(self, rebuild: bool = False) -> None:
-        """Delete the rows of every vehicle with a row of another derivation version, so it is derived whole again; `rebuild` (the
-        zones changed) deletes every vehicle's."""
+    def purge_stale(self) -> None:
+        """Delete the rows of every vehicle with a row of another derivation version, so it is derived whole again."""
         with db.tx(self._conn):
-            for vid in store.stale_vehicles(self._conn, ALGO, rebuild):
+            for vid in store.stale_vehicles(self._conn, ALGO):
                 for kind in KINDS:
                     store.purge(self._conn, kind, vid)
 

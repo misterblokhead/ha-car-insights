@@ -5,6 +5,7 @@ import sqlite3
 
 from . import db
 from .kinds import CHARGE, KINDS, TRIP, Kind
+from .zones import Zones
 
 _ROUTES = "trip_routes"
 # wire key -> column, for the fields SQL filters, sorts or sums; the rest of a row stays in `json`, and a field is in one or the other
@@ -70,9 +71,9 @@ def drop_after(conn: sqlite3.Connection, kind: Kind, vid: str, w: int) -> None:
     conn.execute(f"DELETE FROM {kind.table} WHERE vehicle_id=? AND (end IS NULL OR end>?)", (vid, w))
 
 
-def stale_vehicles(conn: sqlite3.Connection, algo: int, everything: bool = False) -> set[str]:
-    """Vehicles with a row of another derivation version in either table (every vehicle with a row when `everything`)."""
-    return {r[0] for k in KINDS for r in conn.execute(f"SELECT vehicle_id FROM {k.table} WHERE algo!=? OR ?", (algo, everything))}
+def stale_vehicles(conn: sqlite3.Connection, algo: int) -> set[str]:
+    """Vehicles with a row of another derivation version in either table."""
+    return {r[0] for k in KINDS for r in conn.execute(f"SELECT vehicle_id FROM {k.table} WHERE algo!=?", (algo,))}
 
 
 def current_trip(conn: sqlite3.Connection, vid: str) -> dict | None:
@@ -204,17 +205,35 @@ def any_before(conn: sqlite3.Connection, kind: Kind, vids: list[str], cut: int) 
     return conn.execute(f"SELECT 1 FROM {kind.table} WHERE vehicle_id IN ({_marks(vids)}) AND start<? LIMIT 1", (*vids, cut)).fetchone() is not None
 
 
-def charge_points(conn: sqlite3.Connection) -> list[dict]:
-    """Every charge that has a GPS point: its vehicle_id, start, lat, lon, zone and place."""
-    keys = ("vehicle_id", "start", "lat", "lon", "zone", "place")
-    return [dict(zip(keys, r)) for r in conn.execute(f"SELECT {', '.join(keys)} FROM charges WHERE lat IS NOT NULL")]
-
-
 def trip_points(conn: sqlite3.Connection) -> list[tuple]:
     """(vehicle_id, start, from_lat, from_lon, to_lat, to_lon) of every trip with a start or end point: the one way a trip's points leave."""
     return conn.execute("SELECT vehicle_id, start, from_lat, from_lon, to_lat, to_lon FROM trips"
                         " WHERE from_lat IS NOT NULL OR to_lat IS NOT NULL").fetchall()
 
 
-def set_place(conn: sqlite3.Connection, vid: str, start: int, place: str | None) -> None:
-    conn.execute("UPDATE charges SET place=? WHERE vehicle_id=? AND start=?", (place, vid, start))
+def place(zone: str | None, spot: str | None) -> str | None:
+    """How a charge is named: its zone, else the charge spot it lies in, else nothing."""
+    return zone or spot
+
+
+def relabel(conn: sqlite3.Connection, zones: Zones, spots: Zones) -> int:
+    """Name every row again from its stored points: a trip's two ends by `zones`, a charge's zone by `zones` and its place by `place`.
+    Rows without a point are left alone; returns the rows changed. A savepoint, so it also runs inside a caller's transaction."""
+    changed = 0
+    conn.execute("SAVEPOINT relabel")
+    try:
+        for vid, start, from_lat, from_lon, to_lat, to_lon in trip_points(conn):
+            frm, to = (None if lat is None else zones(lat, lon) for lat, lon in ((from_lat, from_lon), (to_lat, to_lon)))
+            changed += conn.execute("UPDATE trips SET from_place=?, to_place=? WHERE vehicle_id=? AND start=?"
+                                    " AND (from_place IS NOT ? OR to_place IS NOT ?)", (frm, to, vid, start, frm, to)).rowcount
+        for vid, start, lat, lon in conn.execute("SELECT vehicle_id, start, lat, lon FROM charges WHERE lat IS NOT NULL").fetchall():
+            zone = zones(lat, lon)
+            name = place(zone, None if zone else spots(lat, lon))
+            changed += conn.execute("UPDATE charges SET zone=?, place=? WHERE vehicle_id=? AND start=? AND (zone IS NOT ? OR place IS NOT ?)",
+                                    (zone, name, vid, start, zone, name)).rowcount
+        conn.execute("RELEASE relabel")
+    except BaseException:
+        conn.execute("ROLLBACK TO relabel")
+        conn.execute("RELEASE relabel")
+        raise
+    return changed

@@ -1,12 +1,11 @@
-import json
 import logging
 import math
 import time
-from dataclasses import astuple, dataclass
-from pathlib import Path
+from dataclasses import dataclass
 from typing import Callable
 
 log = logging.getLogger(__name__)
+Zones = Callable[[float, float], str | None]  # (lat, lon) -> the name of the zone (or spot) holding the point
 
 
 @dataclass(frozen=True)
@@ -29,36 +28,40 @@ def name_at(zones: list[Zone], lat: float, lon: float) -> str | None:
     return min(inside)[1] if inside else None
 
 
-def zones_changed(fetch: Callable[[], list[Zone]], saved: Path) -> bool:
-    """True when the zones differ from the list saved at the last start (stored trips name the zones of their day); saves the new list.
-    False on the first start (nothing to compare with) and when the zones cannot be read."""
-    try:
-        key = json.dumps(sorted(astuple(z) for z in fetch()))
-    except Exception:
-        log.warning("could not read the zones, stored place names stay as they are", exc_info=True)
-        return False
-    old = saved.read_text() if saved.exists() else None
-    saved.write_text(key)
-    return old is not None and old != key
-
-
 class ZoneCache:
     """Callable (lat, lon) -> zone name, refetching the zone list when it is older than ttl_ms.
+    `on_change` runs after a fetch whose list differs from the last one that got through (the first fetch included), so places can
+    be renamed; a failed fetch keeps the list and calls nothing.
 
     shortcut: a refetch blocks the event loop (at most every ttl_ms, 10 s timeout), move it to a thread if that ever shows.
     """
 
-    def __init__(self, fetch: Callable[[], list[Zone]], ttl_ms: int = 600_000, now_ms: Callable[[], int] = lambda: int(time.time() * 1000)):
-        self._fetch, self._ttl, self._now = fetch, ttl_ms, now_ms
-        self._zones: list[Zone] = []
+    def __init__(self, fetch: Callable[[], list[Zone]], ttl_ms: int = 600_000, now_ms: Callable[[], int] = lambda: int(time.time() * 1000),
+                 on_change: Callable[[], None] = lambda: None):
+        self._fetch, self._ttl, self._now, self._on_change = fetch, ttl_ms, now_ms, on_change
+        self._zones: list[Zone] | None = None  # None until a fetch gets through
+        self._announced: list[Zone] | None = None  # the list on_change last ran for
         self._at: int | None = None
+
+    @property
+    def loaded(self) -> bool:
+        """A fetch has got through: until then the list is empty, which names no place."""
+        return self._zones is not None
 
     def __call__(self, lat: float, lon: float) -> str | None:
         now = self._now()
         if self._at is None or now - self._at >= self._ttl:
             self._at = now  # a failed fetch counts as an attempt, so a down HA is retried once per ttl, not per lookup
             try:
-                self._zones = self._fetch()
+                zones = self._fetch()
             except Exception:
                 log.exception("zone fetch failed, keeping the last list")
-        return name_at(self._zones, lat, lon)
+            else:
+                self._zones = zones
+                if zones != self._announced:
+                    try:
+                        self._on_change()
+                        self._announced = zones
+                    except Exception:  # a lookup (maybe mid-derivation) must not fail for it; the next fetch tries again
+                        log.exception("renaming places after a zone change failed")
+        return name_at(self._zones or [], lat, lon)

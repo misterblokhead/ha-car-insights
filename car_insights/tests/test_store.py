@@ -168,7 +168,6 @@ def test_stale_vehicles_have_a_row_of_an_old_algo(conn):
     seed_trip(conn, "mixed", 10, 15)
     seed_trip(conn, "fresh", 0, 5)
     assert store.stale_vehicles(conn, ALGO) == {"old", "mixed"}
-    assert store.stale_vehicles(conn, ALGO, everything=True) == {"old", "mixed", "fresh"}
     assert store.stale_vehicles(conn, 1) == {"mixed", "fresh"}
 
 
@@ -224,13 +223,59 @@ def test_charged_by_place_sums_closed_charges_in_range(conn):
         ("Home", 1500.0), ("Work", 0.0), (None, 300.0)]
 
 
-def test_charge_places_and_set_place(conn):
-    seed_charge(conn, "car1", 0, 5, lat=52.0, lon=5.0, zone=None, place="Old")
-    seed_charge(conn, "car1", 10, 15, lat=None, lon=None, zone=None, place=None)  # no point: not listed
-    [c] = store.charge_points(conn)
-    assert (c["vehicle_id"], c["start"], c["lat"], c["zone"], c["place"]) == ("car1", 0, 52.0, None, "Old")
-    store.set_place(conn, "car1", 0, "New")
-    assert store.row(conn, CHARGE, "car1", 0)["place"] == "New"
+def test_place():
+    assert store.place("Home", "Spot") == "Home"
+    assert store.place(None, "Spot") == "Spot"
+    assert store.place(None, None) is None
+
+
+def _named(table, conn):
+    return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+
+
+def test_relabel_after_a_zone_rename(conn):
+    A, B = (52.0, 5.0), (52.1, 5.1)
+    seed_trip(conn, "car1", 0, 5, from_lat=A[0], from_lon=A[1], to_lat=B[0], to_lon=B[1], **{"from": "Home", "to": "Work"})
+    seed_charge(conn, "car1", 10, 15, lat=A[0], lon=A[1], zone="Home", place="Home")
+    renamed = lambda lat, lon: {A: "Home 2", B: "Work"}[(lat, lon)]
+    assert store.relabel(conn, renamed, lambda lat, lon: None) == 2
+    trip = store.row(conn, TRIP, "car1", 0)
+    assert (trip["from"], trip["to"]) == ("Home 2", "Work")
+    charge = store.row(conn, CHARGE, "car1", 10)
+    assert (charge["zone"], charge["place"]) == ("Home 2", "Home 2")
+    assert (_named("trips", conn), _named("charges", conn)) == (1, 1)  # rows renamed, none rebuilt
+    assert store.relabel(conn, renamed, lambda lat, lon: None) == 0  # nothing left to change
+
+
+def test_relabel_names_a_charge_outside_every_zone_after_its_spot(conn):
+    seed_charge(conn, "car1", 0, 5, lat=52.0, lon=5.0, zone="Old", place="Old")
+    seed_charge(conn, "car1", 10, 15, lat=52.0, lon=5.0, zone=None, place=None)
+    assert store.relabel(conn, lambda lat, lon: None, lambda lat, lon: "Plaza") == 2
+    assert [store.row(conn, CHARGE, "car1", s)[k] for s in (0, 10) for k in ("zone", "place")] == [None, "Plaza"] * 2
+    assert store.relabel(conn, lambda lat, lon: None, lambda lat, lon: None) == 2  # a deleted spot: back to nothing
+    assert [store.row(conn, CHARGE, "car1", s)["place"] for s in (0, 10)] == [None, None]
+
+
+def test_relabel_runs_inside_a_transaction_and_rolls_back_on_error(conn):
+    """a zone list can change in the middle of a derivation, which holds a transaction"""
+    seed_charge(conn, "car1", 0, 5, lat=52.0, lon=5.0, zone="Old", place="Old")
+    with db.tx(conn):
+        assert store.relabel(conn, lambda lat, lon: "New", lambda lat, lon: None) == 1
+    assert store.row(conn, CHARGE, "car1", 0)["zone"] == "New" and not conn.in_transaction
+    def boom(lat, lon):
+        raise RuntimeError("boom")
+    with pytest.raises(RuntimeError):
+        store.relabel(conn, boom, lambda lat, lon: None)
+    assert store.row(conn, CHARGE, "car1", 0)["zone"] == "New" and not conn.in_transaction
+
+
+def test_relabel_skips_rows_without_gps(conn):
+    seed_charge(conn, "car1", 0, 5, lat=None, lon=None, zone=None, place="Cloud")
+    seed_trip(conn, "car1", 10, 15, **{"from": "Kept", "to": "Kept"})
+    seed_trip(conn, "car1", 20, 25, from_lat=52.0, from_lon=5.0, **{"from": "Old"})  # only a start fix: the end has no place
+    assert store.relabel(conn, lambda lat, lon: "New", lambda lat, lon: "Spot") == 1
+    assert store.row(conn, CHARGE, "car1", 0)["place"] == "Cloud"
+    assert [(t["from"], t["to"]) for t in store.closed(conn, TRIP, "car1")] == [("New", None), ("Kept", "Kept")]
 
 
 TRIP_FIELDS = {"distance_m": 1500.5, "duration_s": 360, "net_wh": 220.5, "gross_wh": 300.0, "recup_wh": 79.5, "from": "Home", "to": "Work",

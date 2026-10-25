@@ -38,18 +38,6 @@ def test_closed_trip_stored_and_returned_once():
     assert store.current_trip(conn, "car1") is None
 
 
-def test_rebuild_drops_rows_and_renames_places():
-    conn, d = setup(trip_samples(0))
-    d.update("car1", None, 10 * DAY)
-    Deriver(conn, lambda la, lo: "Home").purge_stale()
-    assert store.closed(conn, TRIP, "car1", 10) != []  # nothing stale: the rows stay
-    d2 = Deriver(conn, lambda la, lo: "Work")
-    d2.purge_stale(rebuild=True)
-    assert store.closed(conn, TRIP, "car1", 10) == []
-    d2.update("car1", None, 10 * DAY)
-    assert store.closed(conn, TRIP, "car1", 10)[0]["from"] == "Work"
-
-
 def test_open_trip_tail_in_p_closes_once_the_car_is_quiet():
     parked = [s(0, "ignition", 4.0), s(0, "gear", 1.0), *[s(t, "speed", 10.0) for t in range(0, 61_000, 1000)], s(62_000, "gear", 4.0)]
     conn, d = setup(parked)  # ingested at 0
@@ -354,8 +342,6 @@ def test_purge_stale_deletes_old_algo_rows():
     tables = ("trips", "trip_series", "trip_routes", "charges", "charge_series")
     assert [_count(conn, t, "old") for t in tables] == [0] * 5
     assert [_count(conn, t, "cur") for t in tables] == [1] * 5
-    d.purge_stale(rebuild=True)  # a zone edit: every vehicle
-    assert [_count(conn, t, "cur") for t in tables] == [0] * 5
 
 
 def _spy_samples_after(monkeypatch, seen, what):

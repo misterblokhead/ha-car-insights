@@ -40,6 +40,10 @@ def zones(lat: float, lon: float) -> str | None:
     return next((n for n, (a, b) in PLACES.items() if n != "Elsewhere" and math.hypot((lat - a) * 111_000, (lon - b) * 68_000) < 400), None)
 
 
+def relabel(conn) -> None:
+    store.relabel(conn, zones, lambda lat, lon: prices.spot_name_at(conn, lat, lon))
+
+
 def plan(vid: str, day) -> list[tuple[int, int, str, str]]:
     """(hour, minute, from, to) of the day's drives"""
     wd = day.weekday()
@@ -180,6 +184,7 @@ def build(conn, now: int) -> Deriver:
     shop = min(((c["start"], vid) for vid in CARS for c in store.closed(conn, CHARGE, vid) if c["place"] == "Shop"), default=None)
     if shop:  # none when the Saturday visit falls outside the 10 days
         prices.create_spot(conn, shop[1], shop[0], "Shop", 0.35)
+        relabel(conn)
     for vid in CARS:
         prices.add_fixed_cost(conn, vid, "Charge card", 3.99, "month", first, None)
     return deriver
@@ -207,7 +212,7 @@ def main(web_dir: str) -> None:
         return uid == "u-admin"
 
     capacity = lambda vid: db.capacity_wh(conn, vid, 60_000.0)
-    router = ui_api.router(conn, zones, TZ, capacity, is_admin, ingress_hosts=("127.0.0.1",))
+    router = ui_api.router(conn, zones, TZ, capacity, is_admin, relabel=lambda: relabel(conn), ingress_hosts=("127.0.0.1",))
     app = create_app(conn, "demo-token", lambda *a: None, ui=router, web_dir=Path(web_dir))
     uvicorn.run(AsUser(app, user), host="127.0.0.1", port=8765)
 

@@ -406,6 +406,27 @@ def test_spot_from_charge_without_point(conn):
     assert prices.settings(conn)["spots"] == [] and not calls
 
 
+def test_spot_routes_relabel_after_the_write_and_before_on_costs(conn):
+    put(conn, "charges", "car1", 1000, 2000, CHARGE)
+    order = []
+    router = ui_api.router(conn, lambda a, b: None, TZ, lambda v: 1.0, is_admin, now_ms=lambda: NOW,
+                           relabel=lambda: order.append(("relabel", conn.execute("SELECT COUNT(*) FROM charge_spots").fetchone()[0])),
+                           on_costs=lambda vids: order.append("costs"))
+    c = TestClient(create_app(conn, "t" * 64, lambda *a: None, lambda: NOW, ui=router), client=("172.30.32.2", 50000))
+    sid = c.post(f"{URL}/spots", json={"vehicle_id": "car1", "start": 1000, "name": "Shop", "per_kwh": 0.3}, headers=ADMIN).json()["id"]
+    assert order == [("relabel", 1), "costs"]  # the spot is written when relabel runs
+    order.clear()
+    assert c.put(f"{URL}/spots/{sid}", json={"name": "Shop 2"}, headers=ADMIN).status_code == 200
+    assert order == [("relabel", 1), "costs"]
+    order.clear()
+    assert c.delete(f"{URL}/spots/{sid}", headers=ADMIN).status_code == 200
+    assert order == [("relabel", 0), "costs"]
+    order.clear()
+    assert c.put(f"{URL}/spots/nope", json={"name": "X"}, headers=ADMIN).status_code == 404
+    assert c.delete(f"{URL}/spots/nope", headers=ADMIN).status_code == 404
+    assert order == []  # a failed write relabels nothing
+
+
 def test_on_costs_targets(conn):
     put(conn, "charges", "car1", 1000, 2000, CHARGE)
     c, calls = client(conn)

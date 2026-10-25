@@ -1,4 +1,4 @@
-from car_insights.zones import Zone, ZoneCache, name_at, zones_changed
+from car_insights.zones import Zone, ZoneCache, name_at
 
 HOME = Zone("Home", 52.0, 5.0, 100)
 DLAT = 1 / 111_195  # degrees of latitude per metre
@@ -33,12 +33,47 @@ def test_cache_keeps_last_list_on_error():
     assert cache(52.0, 5.0) is None
 
 
-def test_zones_changed_compares_with_the_last_start(tmp_path):
-    saved = tmp_path / "zones.json"
-    assert zones_changed(lambda: [HOME], saved) is False  # first start: nothing to compare with
-    assert zones_changed(lambda: [HOME], saved) is False
-    assert zones_changed(lambda: [HOME, Zone("Work", 52.1, 5.1, 150)], saved) is True
-    assert zones_changed(lambda: [Zone("Work", 52.1, 5.1, 150), HOME], saved) is False  # order does not matter
-    def down():
-        raise OSError("down")
-    assert zones_changed(down, saved) is False and zones_changed(lambda: [HOME], saved) is True  # a failed read keeps the saved list
+def test_on_change_only_for_a_new_list():
+    now, results, changes = [0], [[HOME]], []
+    def fetch():
+        r = results[0]
+        if isinstance(r, Exception):
+            raise r
+        return r
+    cache = ZoneCache(fetch, ttl_ms=1000, now_ms=lambda: now[0], on_change=lambda: changes.append(1))
+    cache(52.0, 5.0)
+    assert changes == [1]  # the first list counts
+    now[0] = 1000
+    cache(52.0, 5.0)
+    assert changes == [1]  # fetched again, the same
+    results[0], now[0] = [HOME, Zone("Work", 52.1, 5.1, 150)], 2000
+    cache(52.0, 5.0)
+    assert changes == [1, 1]
+    results[0], now[0] = RuntimeError("down"), 3000
+    assert cache(52.0, 5.0) == "Home"
+    assert changes == [1, 1]  # a failed fetch keeps the list and relabels nothing
+    results[0], now[0] = [HOME, Zone("Work", 52.1, 5.1, 150)], 4000
+    cache(52.0, 5.0)
+    assert changes == [1, 1]  # back up with the list it had
+
+
+def test_on_change_runs_with_the_new_list_in_place():
+    seen = []
+    cache = ZoneCache(lambda: [HOME], on_change=lambda: seen.append(cache(52.0, 5.0)))
+    cache(52.0, 5.0)
+    assert seen == ["Home"]  # a relabel asks the cache itself, and gets the list that changed
+
+
+def test_a_failing_on_change_is_retried_at_the_next_fetch():
+    now, calls = [0], []
+    def on_change():
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("busy")
+    cache = ZoneCache(lambda: [HOME], ttl_ms=1000, now_ms=lambda: now[0], on_change=on_change)
+    assert cache(52.0, 5.0) == "Home"  # the lookup itself still works
+    now[0] = 1000
+    cache(52.0, 5.0)
+    now[0] = 2000
+    cache(52.0, 5.0)
+    assert calls == [1, 1]

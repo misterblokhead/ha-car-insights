@@ -11,7 +11,7 @@ from . import capacity as capacity_learning, db
 from .db import connect
 from .mqtt_out import MqttOut
 from .poller import Poller, SourceConf
-from . import costs, ha_users, pipeline, prices, ui_api
+from . import costs, ha_users, pipeline, prices, store, ui_api
 from .derive import Deriver
 from .ha_users import AdminCache
 from .publisher import Publisher
@@ -19,7 +19,7 @@ from .token_file import load_or_create
 from .totals_sensors import TotalsSensors
 from .trip_sensors import TripSensors
 from .ha_api import fetch_history, fetch_time_zone, fetch_zones, supervisor_get
-from .zones import ZoneCache, zones_changed
+from .zones import ZoneCache
 
 
 def main() -> None:
@@ -35,8 +35,12 @@ def main() -> None:
     def capacity(vid: str) -> float:
         return db.capacity_wh(conn, vid, default_wh)
 
-    zones = ZoneCache(lambda: fetch_zones(sup_token))
-    deriver = Deriver(conn, zones, capacity, spots=lambda lat, lon: prices.spot_name_at(conn, lat, lon))
+    spots = lambda lat, lon: prices.spot_name_at(conn, lat, lon)
+    def relabel() -> None:  # a zone list that changed, or a charge spot: past trips and charges take the new names
+        store.relabel(conn, zones, spots)
+
+    zones = ZoneCache(lambda: fetch_zones(sup_token), on_change=relabel)
+    deriver = Deriver(conn, zones, capacity, spots=spots)
     # tz is assigned below; the cost lambdas read it only when called
     sensors = TripSensors(conn, mqtt, capacity,
                           trip_cost=lambda vid, row: costs.trip_cost(conn, vid, row, tz)["total"],
@@ -49,11 +53,11 @@ def main() -> None:
 
     poller = Poller(conn, [SourceConf(**c) for c in opts.get("sources", [])], lambda ids, a, b: fetch_history(sup_token, ids, a, b),
                     lambda vid, min_t, received: summarize(vid, min_t, received))  # the open trip and summary only matter to the webhook ack
-    # before the server and run_daily's first publish: an ALGO bump emptied the rows, and a zone added, moved or renamed rebuilds them all
-    pipeline.rebuild(deriver, sensors, conn, int(time.time() * 1000), zones_changed(lambda: fetch_zones(sup_token), Path("/data/zones.json")))
+    # before the server and run_daily's first publish: an ALGO bump emptied the rows
+    pipeline.rebuild(deriver, sensors, conn, int(time.time() * 1000), zones, spots)
     uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity).on_ingested, summarize=summarize, background=[poller.run, totals.run_daily, lambda: capacity_learning.run(conn), lambda: pipeline.run_close_quiet(conn, summarize)],
                            ui=ui_api.router(conn, zones, tz, capacity, AdminCache(lambda: ha_users.fetch_users(sup_token)).is_admin, on_settings=totals.publish_groups,
-                           on_costs=lambda vids: pipeline.republish(sensors, totals, conn, vids)),
+                           relabel=relabel, on_costs=lambda vids: pipeline.republish(sensors, totals, conn, vids)),
                            web_dir=Path("/app/web")),
                 host="0.0.0.0", port=8099)
 

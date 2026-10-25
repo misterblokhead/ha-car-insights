@@ -55,14 +55,6 @@ def spot_name_at(conn, lat: float, lon: float) -> str | None:
     return hit and hit[1]
 
 
-def relabel(conn) -> None:
-    """A charge shows its zone, else the spot it lies in, else nothing."""
-    for c in store.charge_points(conn):
-        new = c.get("zone") or spot_name_at(conn, c["lat"], c["lon"])
-        if new != c.get("place"):
-            store.set_place(conn, c["vehicle_id"], c["start"], new)
-
-
 def create_spot(conn, vid: str, start: int, name: str, per_kwh: float, start_fee: float = 0, per_min: float = 0) -> str:
     name = _name(name)
     c = store.row(conn, CHARGE, vid, start)
@@ -74,7 +66,6 @@ def create_spot(conn, vid: str, start: int, name: str, per_kwh: float, start_fee
     with db.tx(conn):
         conn.execute("INSERT INTO charge_spots VALUES(?,?,?,?,?)", (sid, name, c["lat"], c["lon"], SPOT_RADIUS_M))
         set_tariff(conn, sid, start, per_kwh, start_fee, per_min)  # a bad price rolls the spot back
-        relabel(conn)
     return sid
 
 
@@ -83,7 +74,6 @@ def rename_spot(conn, spot_id: str, name: str) -> None:
     with db.tx(conn):
         if conn.execute("UPDATE charge_spots SET name=? WHERE spot_id=?", (name, spot_id)).rowcount == 0:
             raise KeyError(spot_id)
-        relabel(conn)
 
 
 def delete_spot(conn, spot_id: str) -> None:
@@ -91,7 +81,6 @@ def delete_spot(conn, spot_id: str) -> None:
         if conn.execute("DELETE FROM charge_spots WHERE spot_id=?", (spot_id,)).rowcount == 0:
             raise KeyError(spot_id)
         conn.execute("DELETE FROM tariffs WHERE target=?", (spot_id,))
-        relabel(conn)
 
 
 def set_receipt(conn, vid: str, start: int, amount: float | None) -> None:

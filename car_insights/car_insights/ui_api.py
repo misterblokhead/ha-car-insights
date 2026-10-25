@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from . import access, activity, costs, db, prices, stats, store
 from .access import Viewer
 from .figures import pct
-from .derive import Zones
+from .zones import Zones
 from .kinds import CHARGE, TRIP, Kind
 from .protocol import fix, num
 
@@ -75,7 +75,7 @@ class _Card(BaseModel):
 
 def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
            is_admin: Callable[[str], Awaitable[bool]], on_settings: Callable[[], None] = lambda: None,
-           on_costs: Callable[[list[str] | None], None] = lambda vids: None,
+           on_costs: Callable[[list[str] | None], None] = lambda vids: None, relabel: Callable[[], None] = lambda: None,
            ingress_hosts: tuple[str, ...] = ("172.30.32.2",), now_ms: Callable[[], int] = lambda: int(time.time() * 1000)) -> APIRouter:
     # handlers are async def with no awaits around the DB work (like /ingest): the event loop serializes access to the connection
     async def ingress_guard(request: Request) -> None:
@@ -121,9 +121,12 @@ def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
         on_settings()
         return {}
 
-    def cost_edit(fn, *args, vids: list[str] | Callable[[Any], list[str]] | None = None) -> Any:
-        """Every admin cost write: run it, then republish the cost sensors of `vids` (a list, None for all, or a function of the result)."""
+    def cost_edit(fn, *args, vids: list[str] | Callable[[Any], list[str]] | None = None, spot: bool = False) -> Any:
+        """Every admin cost write: run it, rename the places when it changed a charge spot, then republish the cost sensors of `vids`
+        (a list, None for all, or a function of the result)."""
         out = attempt(fn, *args)
+        if spot:
+            relabel()
         on_costs(vids(out) if callable(vids) else vids)
         return out
 
@@ -231,18 +234,18 @@ def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
     @r.post("/spots")
     async def create_spot(request: Request, body: _Spot):
         await who(request, admin=True)
-        return {"id": cost_edit(prices.create_spot, conn, body.vehicle_id, body.start, body.name, body.per_kwh, body.start_fee, body.per_min)}
+        return {"id": cost_edit(prices.create_spot, conn, body.vehicle_id, body.start, body.name, body.per_kwh, body.start_fee, body.per_min, spot=True)}
 
     @r.put("/spots/{sid}")
     async def rename_spot(request: Request, sid: str, body: _Name):
         await who(request, admin=True)
-        cost_edit(prices.rename_spot, conn, sid, body.name)
+        cost_edit(prices.rename_spot, conn, sid, body.name, spot=True)
         return {}
 
     @r.delete("/spots/{sid}")
     async def delete_spot(request: Request, sid: str):
         await who(request, admin=True)
-        cost_edit(prices.delete_spot, conn, sid)
+        cost_edit(prices.delete_spot, conn, sid, spot=True)
         return {}
 
     @r.put("/charges/{vid}/{start}/receipt")

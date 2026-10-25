@@ -44,7 +44,7 @@ def snapshot() -> dict:
         return True
 
     capacity = lambda vid: db.capacity_wh(conn, vid, 60_000.0)
-    router = ui_api.router(conn, demo.zones, demo.TZ, capacity, is_admin, ingress_hosts=("testclient",), now_ms=lambda: NOW)
+    router = ui_api.router(conn, demo.zones, demo.TZ, capacity, is_admin, relabel=lambda: demo.relabel(conn), ingress_hosts=("testclient",), now_ms=lambda: NOW)
     start, vid = max((c["start"], vid) for vid in demo.CARS for c in store.closed(conn, CHARGE, vid, 1))  # the newest closed charge
     prices.set_receipt(conn, vid, start, 12.34)  # puts a "receipt" cost basis in the answers
     sink = Sink()

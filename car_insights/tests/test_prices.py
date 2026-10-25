@@ -103,7 +103,6 @@ def test_create_spot_from_charge(c):
     assert prices.book(c, "car1").spot_at(52.1, 5.2) == (sid, "Plaza")
     assert prices.spot_name_at(c, 52.1, 5.2) == "Plaza"
     assert prices.book(c, "car1").tariff_at(sid, 10_000)["per_kwh"] == 0.35
-    assert place(c, 10_000) == "Plaza"
 
 
 def test_create_spot_needs_point_and_charge(c):
@@ -122,38 +121,17 @@ def test_spot_at_nearest_of_overlapping(c):
     assert prices.book(c, "car1").spot_at(52.0, 5.0 - 0.0023) is None  # about 157 m west of both
 
 
-def test_zone_wins_over_spot(c):
-    charge(c, 10, lat=52.1, lon=5.2, zone="Work")
-    prices.create_spot(c, "car1", 10, "Plaza", 0.35)
-    assert place(c, 10) == "Work"
-
-
-def test_delete_spot(c):
-    charge(c, 10, lat=52.1, lon=5.2)
-    charge(c, 20, lat=52.1, lon=5.2, zone="Work")
-    charge(c, 30, lat=52.1, lon=5.2, place="Stale")
-    sid = prices.create_spot(c, "car1", 10, "Plaza", 0.35)
-    assert (place(c, 10), place(c, 20), place(c, 30)) == ("Plaza", "Work", "Plaza")
-    prices.delete_spot(c, sid)
-    assert count(c, "tariffs") == 0 and count(c, "charge_spots") == 0
-    assert (place(c, 10), place(c, 20), place(c, 30)) == (None, "Work", None)
-    with pytest.raises(KeyError):
-        prices.delete_spot(c, "nope")
-
-
-def test_rename_spot_relabels(c):
-    charge(c, 10, lat=52.1, lon=5.2)
+def test_spot_writes_leave_the_charges_alone(c):
+    """places follow a spot through store.relabel, which the spot routes call after the write"""
+    charge(c, 10, lat=52.1, lon=5.2, place="Kept")
     sid = prices.create_spot(c, "car1", 10, "Plaza", 0.35)
     prices.rename_spot(c, sid, " Mall ")
-    assert place(c, 10) == "Mall"
-    with pytest.raises(KeyError):
-        prices.rename_spot(c, "nope", "x")
-
-
-def test_relabel_skips_rows_without_point(c):
-    charge(c, 10, place="Kept")
-    prices.relabel(c)
-    assert place(c, 10) == "Kept"
+    assert c.execute("SELECT name FROM charge_spots").fetchone()[0] == "Mall" and place(c, 10) == "Kept"
+    prices.delete_spot(c, sid)
+    assert count(c, "tariffs") == 0 and count(c, "charge_spots") == 0 and place(c, 10) == "Kept"
+    for call in (lambda: prices.rename_spot(c, "nope", "x"), lambda: prices.delete_spot(c, "nope")):
+        with pytest.raises(KeyError):
+            call()
 
 
 def test_receipt_survives_earlier_start(c):
