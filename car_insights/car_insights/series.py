@@ -1,6 +1,7 @@
 import heapq
 from typing import Any
 
+from . import style
 from .protocol import Sample, num
 from .trips import distance_steps, energy_steps
 
@@ -15,7 +16,7 @@ def downsample(rows: list, n: int = MAX_POINTS) -> list:
 
 
 def trip(samples: list[Sample], start_wh: float | None, start: int) -> dict[str, Any]:
-    """one row per distance or energy step in t order, each carrying the latest value of every column (None where none exists yet)"""
+    """one row per distance or energy step in t order, each carrying the latest value of every column (None where none exists yet), and the style events as [km, kind]"""
     steps = heapq.merge(((t, "d", (d, v)) for t, d, v in distance_steps(samples)),
                         ((t, "e", e) for t, *e in energy_steps(samples, start_wh, start)), key=lambda x: x[0])
     dist: tuple[float, float] | None = None
@@ -26,7 +27,7 @@ def trip(samples: list[Sample], start_wh: float | None, start: int) -> dict[str,
         rows.append([t, None if dist is None else round(dist[0] / 1000, 3),
                      *([None] * 3 if energy is None else [round(x / 1000, 3) for x in energy]),
                      None if dist is None else round(dist[1] * 3.6, 1)])
-    return {"cols": TRIP_COLS, "rows": downsample(rows)}
+    return {"cols": TRIP_COLS, "rows": downsample(rows), "events": [[round(km, 1), kind] for kind, km, _ in style.events(samples)]}
 
 
 def charge(samples: list[Sample], start: int, end: int | None) -> dict[str, list]:

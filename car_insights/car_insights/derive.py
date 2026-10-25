@@ -12,7 +12,7 @@ from .trips import KEYS as TRIP_KEYS, QUIET_MS, Trip, find_trips
 from .zones import Zones
 
 log = logging.getLogger(__name__)
-ALGO = 8  # battery_wh flicker (readings replaced within 1 s) is no gross or recuperation; bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
+ALGO = 9  # every trip carries its driving style (events, score, energy and distance per speed band) and its series the events; 8: battery_wh flicker (readings replaced within 1 s) is no gross or recuperation; bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
 ESTIMATE_HOLD_MS = 7 * 86_400_000  # a SoC-estimated charge this recent is re-derived on every update: the car's value may still arrive
 KEYS = tuple(sorted({*TRIP_KEYS, *CHARGE_KEYS, *series.KEYS}))  # the only sample keys derivation loads
 

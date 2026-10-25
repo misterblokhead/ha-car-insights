@@ -3,7 +3,7 @@ from bisect import bisect_left, bisect_right
 from typing import Iterator
 
 from .protocol import Sample, num
-from .trips import MAX_SPEED_STEP_MS, distance_steps
+from .trips import MAX_SPEED_STEP_MS, distance_steps, energy_steps
 
 ACCEL_MPS2 = 2.5
 BRAKE_MPS2 = 3.0  # a magnitude
@@ -16,6 +16,7 @@ CORNER_MAX_ACC_M = 15
 CORNER_MAX_GAP_S = 2
 PENALTY = 20
 MIN_SCORE_M = 2000
+BANDS = ((0, "0-50"), (50, "50-80"), (80, "80-100"), (100, "100-120"), (120, "120+"))  # km/h lower bounds, inclusive
 
 Point = tuple[int, float, float]  # t ms, value, cumulative m
 
@@ -42,7 +43,7 @@ def _accel_groups(samples: list[Sample]) -> list[list[Point]]:
         group = []
         for i, (t, m, _) in enumerate(st):
             k, j = bisect_left(ts, t - DIFF_S * 500), bisect_right(ts, t + DIFF_S * 500) - 1
-            group.append((t, (smooth[j] - smooth[k]) / ((ts[j] - ts[k]) / 1000) if j > k else 0.0, m))
+            group.append((t, (smooth[j] - smooth[k]) / ((ts[j] - ts[k]) / 1000) if ts[j] > ts[k] else 0.0, m))
         out.append(group)
     return out
 
@@ -114,3 +115,32 @@ def score(events: list[tuple[str, float, float]], distance_m: float) -> int | No
     km = distance_m / 1000
     subs = [max(0.0, 100 - PENALTY * sum(sev for k, _, sev in events if k == kind) / km) for kind in ("accel", "brake", "corner")]
     return round(sum(subs) / 3)
+
+
+def _band(mps: float) -> str:
+    return [name for lo, name in BANDS if mps * 3.6 >= lo][-1]
+
+
+def bands(samples: list[Sample], wh0: float | None, start: int) -> dict[str, list[int]]:
+    """band -> [m, wh]: each distance increment in the band of the speed that produced it, each energy step's net change in the band of the
+    distance-weighted mean speed since the previous step (none moved: the lowest band); no base wh, no wh"""
+    out = {name: [0.0, 0.0] for _, name in BANDS}
+    steps = list(distance_steps(samples))
+    incs = [(t1, d1 - d0, v0) for (_, d0, v0), (t1, d1, _) in zip(steps, steps[1:])]
+    for _, d, v in incs:
+        out[_band(v)][0] += d
+    i, prev_net = 0, 0.0
+    for t, net, *_ in energy_steps(samples, wh0, start):
+        d = dv = 0.0
+        while i < len(incs) and incs[i][0] <= t:
+            d, dv, i = d + incs[i][1], dv + incs[i][1] * incs[i][2], i + 1
+        out[_band(dv / d if d else 0.0)][1] += net - prev_net
+        prev_net = net
+    return {name: [round(m), round(wh)] for name, (m, wh) in out.items()}
+
+
+def measure(samples: list[Sample], wh0: float | None, start: int, distance_m: float) -> dict:
+    """the driving style of a trip: [count, summed severity] per event kind, the speed bands and the score"""
+    found = events(samples)
+    return {**{kind: [sum(k == kind for k, _, _ in found), round(sum(sev for k, _, sev in found if k == kind), 2)] for kind in ("accel", "brake", "corner")},
+            "bands": bands(samples, wh0, start), "score": score(found, distance_m)}

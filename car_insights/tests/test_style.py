@@ -2,7 +2,8 @@ import math
 
 import pytest
 
-from car_insights.style import accel_series, events, score
+from car_insights.style import accel_series, bands, events, measure, score
+from car_insights.trips import find_trips
 from conftest import s
 
 
@@ -57,6 +58,10 @@ def test_short_spike_no_event():
 
 def test_longer_spike_is_an_event():
     assert [e[0] for e in events(step_up(4.0))] == ["accel"]
+
+
+def test_two_speed_samples_at_one_instant_are_no_error():
+    assert events([s(0, "speed", 10.0), s(0, "speed", 12.0), s(1000, "speed", 12.0)]) == []
 
 
 def test_gap_is_no_event():
@@ -120,3 +125,45 @@ def test_score_formula():
     assert score([("brake", 0.0, 100.0)], 10_000) == 67  # that sub-score clamps at 0
     assert score(ev, 1999) is None
     assert score([], 2000) == 100
+
+
+def band_trip():
+    """60, 90, then 125 km/h for a minute each at 1 Hz; a reading every 10 s: drops, one 150 Wh rise (recuperation), a flicker (replaced after 0.3 s)"""
+    kmh = lambda t: 60 if t < 60_000 else 90 if t < 120_000 else 125
+    wh = {10_000 * k: 50_000 - 100 * k for k in range(1, 13)} | {130_000: 48_600, 140_000: 48_750, 150_000: 48_550, 155_000: 48_700, 155_300: 48_550,
+                                                                  160_000: 48_400, 170_000: 48_300, 180_000: 48_200}
+    return ordered([*(s(t, "speed", kmh(t) / 3.6) for t in range(0, 180_001, 1000)), s(0, "battery_wh", 50_000.0), *(s(t, "battery_wh", v) for t, v in wh.items())])
+
+
+def test_band_energy_sums_to_net():
+    samples = band_trip()
+    (trip,) = find_trips(samples, {}, True)
+    b = trip.style["bands"]
+    assert trip.net_wh == 1800
+    assert abs(sum(wh for _, wh in b.values()) - trip.net_wh) <= 2.5
+    assert b["120+"][1] == 600  # the energy of the 125 km/h stretch's steps (t > 120 s)
+    assert (b["50-80"][1], b["80-100"][1], b["0-50"][1], b["100-120"][1]) == (600, 600, 0, 0)
+    assert [b[n][0] for n in ("0-50", "50-80", "80-100", "100-120", "120+")] == [0, 1000, 1500, 0, 2083]
+
+
+def test_step_goes_to_mean_speed_band():
+    # 72 km/h for 1 s, then 90 for 2 s: the step ending at 3 s has mean 84 km/h
+    samples = [s(0, "speed", 20.0), s(0, "battery_wh", 50_000.0), s(1000, "speed", 25.0), s(2000, "speed", 25.0), s(3000, "speed", 25.0), s(3000, "battery_wh", 49_900.0)]
+    assert bands(samples, None, 0) == {"0-50": [0, 0], "50-80": [20, 0], "80-100": [50, 100], "100-120": [0, 0], "120+": [0, 0]}
+
+
+def test_step_without_movement_goes_to_the_lowest_band():
+    assert bands([s(1000, "speed", 0.0), s(2000, "speed", 0.0), s(2000, "battery_wh", 49_900.0)], 50_000.0, 0)["0-50"] == [0, 100]
+
+
+def test_style_without_energy():
+    samples = [s(t, "speed", 25.0) for t in range(0, 11_000, 1000)]
+    assert bands(samples, None, 0) == {"0-50": [0, 0], "50-80": [0, 0], "80-100": [250, 0], "100-120": [0, 0], "120+": [0, 0]}
+    assert measure(samples, None, 0, 250)["score"] is None
+
+
+def test_measure_shape():
+    samples = ordered(brake())
+    m = measure(samples, None, 0, 3000)
+    assert m["brake"][0] == 1 and m["brake"][1] == round(m["brake"][1], 2) and m["accel"] == [0, 0] and m["corner"] == [0, 0]
+    assert m["score"] == score(events(samples), 3000) and set(m["bands"]) == {"0-50", "50-80", "80-100", "100-120", "120+"}

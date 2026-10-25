@@ -135,6 +135,14 @@ def test_trip_detail_route_and_similar(conn):
     assert t["similar"] == {"n": 1, "avg_duration_s": 60, "avg_wh_per_100km": 10_000}
 
 
+def test_trip_reply_has_style(conn):
+    style = {"accel": [1, 1.2], "brake": [0, 0], "corner": [0, 0], "bands": {"0-50": [1000, 80]}, "score": 94}
+    seed_trip(conn, "car1", 1000, 2000, series={"cols": [], "rows": [], "events": [[0.4, "accel"]]}, style=style)
+    c, _ = client(conn)
+    t = c.get("/api/ui/trips/car1/1000", headers=VIEWER).json()
+    assert t["trip"]["style"] == style and t["series"]["events"] == [[0.4, "accel"]]
+
+
 def test_charge_outside_temp_from_sample_before_start(conn):
     put(conn, "charges", "car1", 1000, 2000)
     put(conn, "charges", "car1", 5000, 6000)

@@ -187,3 +187,10 @@ def test_keys_cover_what_the_trip_derivation_reads():
                       s(0, "battery_wh", 33000), s(60_000, "battery_wh", 32900), s(0, "ignition", 4.0), s(100_000, "ignition", 2.0),
                       s(5_000, "soc", 50.0), s(6_000, "range_m", 100.0), s(7_000, "plugged", True)], key=lambda x: (x.t, x.seq))
     assert find_trips([x for x in samples if x.k in KEYS], {}, True) == find_trips(samples, {}, True) != []
+
+
+def test_trip_carries_style():
+    (long,) = trips(drive(0, 300_000))  # 3 km: scored
+    (short,) = trips(drive(0, 150_000))  # 1.5 km: too short to score
+    assert long.style["score"] == 100 and short.style["score"] is None
+    assert long.style["bands"]["0-50"] == [3000, 0]  # 36 km/h
