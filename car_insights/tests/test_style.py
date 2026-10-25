@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from car_insights.style import accel_series, bands, events, measure, score
+from car_insights.style import _accel_groups, bands, events, measure, score
 from car_insights.trips import find_trips
 from conftest import s
 
@@ -22,6 +22,11 @@ def turn(bearings, speed=13.9, acc=5.0):
     """gps fixes at 1 Hz with the given bearings and a constant speed over the same span"""
     gps = [s(i * 1000, "gps", [52.0 + i * 1e-4, 5.0, acc, b, speed, 0.0]) for i, b in enumerate(bearings)]
     return [*speeds(lambda t: speed, len(bearings) - 1), *gps]
+
+
+def accel(samples):
+    """(t, a m/s2, cumulative m) per speed sample, across every stretch"""
+    return [p for group in _accel_groups(samples) for p in group]
 
 
 def ordered(samples):
@@ -67,12 +72,12 @@ def test_two_speed_samples_at_one_instant_are_no_error():
 def test_gap_is_no_event():
     samples = ordered([*speeds(lambda t: 20.0, 10), *speeds(lambda t: 30.0, 10, t0=16_000)])
     assert events(samples) == []
-    assert all(a == pytest.approx(0, abs=1e-9) for _, a, _ in accel_series(samples))
+    assert all(a == pytest.approx(0, abs=1e-9) for _, a, _ in accel(samples))
 
 
-def test_accel_series_shape():
+def test_accel_shape():
     samples = ordered(speeds(lambda t: 10.0 + 2 * t, 5))
-    series = accel_series(samples)
+    series = accel(samples)
     assert [t for t, _, _ in series] == [x.t for x in samples]
     assert series[-1][2] == pytest.approx(sum(10 + 2 * t / 1000 for t in range(0, 5000, 200)) * 0.2, rel=0.02)
     assert series[len(series) // 2][1] == pytest.approx(2.0, abs=0.05)
@@ -80,7 +85,7 @@ def test_accel_series_shape():
 
 def test_event_km_at_peak():
     samples = ordered(brake())
-    series = accel_series(samples)
+    series = accel(samples)
     _, a, m = min(series, key=lambda p: p[1])
     (_, km, _), = events(samples)
     assert a == pytest.approx(-5, abs=0.2)
@@ -114,6 +119,20 @@ def test_corner_fix_without_accuracy_or_bearing_is_unusable():
         assert events(ordered(samples)) == []
 
 
+def test_impossible_corner_is_a_glitch():
+    # a fix reporting bearing 0.0 on a straight drive heading 180: ~43 m/s2 both ways, no road car corners above 10
+    samples = ordered(turn([180, 180, 180, 0.0, 180, 180, 180]))
+    assert events(samples) == []
+    m = measure(samples, None, 0, 10_000)
+    assert m["corner"] == [0, 0] and m["score"] == 100
+
+
+def test_impossible_pair_ends_the_corner_group():
+    # a glitch fix (270) between two stretches of a steady 30 deg/s turn: its pairs count for nothing and the run is cut in two
+    samples = ordered(turn([0, 30, 60, 270, 90, 120, 150]))
+    assert [e[0] for e in events(samples)] == ["corner", "corner"]
+
+
 def test_bearing_wraps():
     samples = ordered(turn([359, 1, 359, 1, 359, 1], 20.0))
     assert events(samples) == []  # a 2 degree change per second, not 358
@@ -138,7 +157,7 @@ def band_trip():
 def test_band_energy_sums_to_net():
     samples = band_trip()
     (trip,) = find_trips(samples, {}, True)
-    b = trip.style["bands"]
+    b = bands(samples, None, 0)
     assert trip.net_wh == 1800
     assert abs(sum(wh for _, wh in b.values()) - trip.net_wh) <= 2.5
     assert b["120+"][1] == 600  # the energy of the 125 km/h stretch's steps (t > 120 s)
@@ -158,7 +177,7 @@ def test_step_without_movement_goes_to_the_lowest_band():
 
 def test_style_without_energy():
     samples = [s(t, "speed", 25.0) for t in range(0, 11_000, 1000)]
-    assert bands(samples, None, 0) == {"0-50": [0, 0], "50-80": [0, 0], "80-100": [250, 0], "100-120": [0, 0], "120+": [0, 0]}
+    assert bands(samples, None, 0) == {"0-50": [0, None], "50-80": [0, None], "80-100": [250, None], "100-120": [0, None], "120+": [0, None]}
     assert measure(samples, None, 0, 250)["score"] is None
 
 

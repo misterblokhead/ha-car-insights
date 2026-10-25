@@ -8,7 +8,7 @@ from .figures import wh_per_100km
 from .kinds import CHARGE, TRIP
 from .periods import local_date, midnight_ms, period_bounds, span
 from .series import downsample
-from .style import BANDS
+from .style import BANDS, KINDS
 from .totals import sums
 
 SPEED_BANDS = tuple(n for _, n in BANDS)
@@ -32,19 +32,21 @@ def _style(rows: list[dict]) -> dict:
     """Driving style of the trips that carry it: summed events, distance-weighted score, consumption per speed band."""
     rows = [r for r in rows if r.get("style")]
     km = {b: 0.0 for b in SPEED_BANDS}
-    wh = dict(km)
+    wh, wh_km = dict(km), dict(km)  # wh_km: the km of the trips that have energy for the band
     scored = []  # (distance_m, score)
     for r in rows:
         for b, (m, w) in r["style"]["bands"].items():
             km[b] += m / 1000
-            wh[b] += w
+            if w is not None:
+                wh[b] += w
+                wh_km[b] += m / 1000
         if r["style"]["score"] is not None:
             scored.append((r.get("distance_m") or 0, r["style"]["score"]))
     weight = sum(m for m, _ in scored)
     return {"km": round(sum(r.get("distance_m") or 0 for r in rows) / 1000, 1),
-            **{e: sum(r["style"][e][0] for r in rows) for e in ("accel", "brake", "corner")},
+            **{e: sum(r["style"][e][0] for r in rows) for e in KINDS},
             "score": round(sum(m * sc for m, sc in scored) / weight) if weight else None,
-            "bands": {b: {"km": round(km[b], 1), "kwh_per_100km": round(wh[b] / km[b] / 10, 1) if km[b] >= 5 else None} for b in SPEED_BANDS}}
+            "bands": {b: {"km": round(km[b], 1), "kwh_per_100km": round(wh[b] / wh_km[b] / 10, 1) if wh_km[b] >= 5 else None} for b in SPEED_BANDS}}
 
 
 def stats(conn: sqlite3.Connection, vids: list[str], period: str, at: date, tz: tzinfo,

@@ -246,6 +246,19 @@ def test_band_under_5_km_is_null():
     assert stats.stats(c, ["car1"], "week", OCT24, TZ)["style"]["bands"]["50-80"] == {"km": 4.9, "kwh_per_100km": None}
 
 
+def test_band_without_energy_is_not_diluted():
+    c = connect(":memory:")
+    row(c, "trips", ms(2026, 10, 19), styled(10, 90, bands={"80-100": [10_000, 2000]}))
+    row(c, "trips", ms(2026, 10, 20), styled(10, 90, bands={"80-100": [10_000, None]}))  # a trip without energy readings
+    assert stats.stats(c, ["car1"], "week", OCT24, TZ)["style"]["bands"]["80-100"] == {"km": 20.0, "kwh_per_100km": 20.0}
+
+
+def test_band_with_only_energyless_trips_is_null():
+    c = connect(":memory:")
+    row(c, "trips", ms(2026, 10, 19), styled(10, 90, bands={"80-100": [10_000, None]}))
+    assert stats.stats(c, ["car1"], "week", OCT24, TZ)["style"]["bands"]["80-100"] == {"km": 10.0, "kwh_per_100km": None}
+
+
 def test_previous_style():
     c = connect(":memory:")
     row(c, "trips", ms(2026, 10, 12), styled(20, 60, accel=2))

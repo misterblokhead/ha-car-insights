@@ -3,7 +3,7 @@ from bisect import bisect_left, bisect_right
 from dataclasses import asdict
 from typing import Callable
 
-from . import db, route, series, store
+from . import db, route, series, store, style
 from .charges import KEYS as CHARGE_KEYS, Charge, find_charges
 from .kinds import CHARGE, KINDS, TRIP
 from .odometer import chain
@@ -27,18 +27,26 @@ def _trip_wire(t: Trip, zones: Zones, odo: tuple[float | None, float | None]) ->
             "odometer_start_km": odo[0], "odometer_end_km": odo[1]}
 
 
+def _trip_parts(t: Trip, span: list[Sample], zones: Zones, odo: tuple[float | None, float | None]) -> tuple[dict, dict]:
+    """the trip's row and series; its driving events are found once for the row's style and the series"""
+    r = _trip_wire(t, zones, odo)
+    found = style.events(span)
+    return {**r, "style": style.measure(span, r["start_wh"], r["start"], r["distance_m"], found)}, series.trip(span, r["start_wh"], r["start"], found)
+
+
 def _held(c: dict, received_ms: int) -> bool:
     """A recent SoC-estimated charge is re-derived until the car's own value replaces it; one with no car reading before its start
     (start_wh null) can never be refined, so it holds nothing."""
     return c["end"] is not None and c["end"] >= received_ms - ESTIMATE_HOLD_MS and c["energy_source"] == "soc_estimate" and c["start_wh"] is not None
 
 
-def _charge_wire(c: Charge, zones: Zones, spots: Zones) -> dict:
+def _charge_parts(c: Charge, span: list[Sample], zones: Zones, spots: Zones) -> tuple[dict, dict]:
+    """the charge's row and series"""
     d = asdict(c)
     fix = d.pop("fix")
     zone = zones(*fix) if fix else None
     return {**d, "lat": fix and fix[0], "lon": fix and fix[1], "zone": zone, "place": store.place(zone, spots(*fix) if fix else None),
-            "duration_s": round(c.duration_s)}
+            "duration_s": round(c.duration_s)}, series.charge(span, c.start, c.end)
 
 
 class Deriver:
@@ -88,8 +96,8 @@ class Deriver:
         charges that closed or changed since they were last stored, and the (table, start) of those that were already closed before
         (refinements: late data changed them, no new event)."""
         conn = self._conn
-        # shortcut: while a trip or charge is open each batch re-reads the samples since its start (a 2 h drive is ~43k
-        # samples, ~0.1 s), fine until one runs for many hours; checkpoint open segments if it gets slow. An idle vehicle
+        # shortcut: while a trip or charge is open each batch re-reads the samples since its start (a 2 h drive is ~44k
+        # samples, ~0.3 s with its driving style: 5 Hz speed, 1 Hz GPS), fine until one runs for many hours; checkpoint open segments if it gets slow. An idle vehicle
         # reads only new samples, except in its first update after a restart (from its newest closed end).
         # the start-up rebuild runs this in REBUILD_STEP_MS windows (pipeline.rebuild), so the first update of a vehicle never loads all history.
         # shortcut: late data landing after a closed end (inside its P-stop proof window, or after a silence that closed it)
@@ -134,26 +142,24 @@ class Deriver:
                 if trip.quiet_closed:
                     self._quiet[vid] = trip.start
             raw_charges = find_charges(samples, seed, vid in self._cloud, self._capacity(vid))
-            # what differs per kind: what was found, how it becomes a row (a trip in start order: earlier closed trips are already
-            # stored, so chain sees them) and how its series is cut from its samples
-            per_kind = ((TRIP, raw_trips, lambda t: _trip_wire(t, self._zones, chain(conn, vid, t.start, t.distance_m)),
-                         lambda r, span: series.trip(span, r["start_wh"], r["start"])),
-                        (CHARGE, raw_charges, lambda c: _charge_wire(c, self._zones, self._spots),
-                         lambda r, span: series.charge(span, r["start"], r["end"])))
+            # what differs per kind: what was found and how it and its samples become a row and a series (a trip in start order:
+            # earlier closed trips are already stored, so chain sees them)
+            per_kind = ((TRIP, raw_trips, lambda t, span: _trip_parts(t, span, self._zones, chain(conn, vid, t.start, t.distance_m))),
+                        (CHARGE, raw_charges, lambda c, span: _charge_parts(c, span, self._zones, self._spots)))
             stored: dict = {k: [] for k in KINDS}
             new: dict[str, list[dict]] = {k.table: [] for k in KINDS}
             refined: set[tuple[str, int]] = set()
             times = [x.t for x in samples]
             seen: set[tuple[str, int]] = set()
-            for kind, found, to_row, to_series in per_kind:
+            for kind, found, to_parts in per_kind:
                 for x in found:
                     if (kind.table, x.start) in seen:  # a repeated start would break the primary key and roll back every update after
                         log.warning("duplicate %s start %s for %s skipped", kind.table, x.start, vid)
                         continue
                     seen.add((kind.table, x.start))
-                    r = to_row(x)
-                    span = samples[bisect_left(times, r["start"]):None if r["end"] is None else bisect_right(times, r["end"])]
-                    store.insert(conn, kind, vid, r, to_series(r, span), route.from_samples(span) if kind.has_route else None, ALGO)
+                    span = samples[bisect_left(times, x.start):None if x.end is None else bisect_right(times, x.end)]
+                    r, ser = to_parts(x, span)
+                    store.insert(conn, kind, vid, r, ser, route.from_samples(span) if kind.has_route else None, ALGO)
                     r = store.public(r)
                     stored[kind].append(r)
                     if r["end"] is not None and old[kind].get(r["start"]) != r:

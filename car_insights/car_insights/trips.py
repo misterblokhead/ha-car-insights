@@ -35,7 +35,6 @@ class Trip:
     first_fix: tuple[float, float] | None
     last_fix: tuple[float, float] | None
     quiet_closed: bool = False  # closed only by the quiet rule: the backlog may still extend it (Deriver re-derives it)
-    style: dict | None = None  # style.measure: events, speed bands and score
 
 
 def find_trips(samples: list[Sample], seed: dict[str, Any], has_ignition: bool, quiet: bool = False) -> list[Trip]:
@@ -126,7 +125,6 @@ def energy_steps(samples: list[Sample], wh0: float | None, start: int) -> Iterat
 
 
 def _build(seg: list[Sample], wh0: float | None, temp0: float | None, closed: bool) -> Trip:
-    from . import style  # style reads this module's steps
     start, end = seg[0].t, seg[-1].t
     steps = list(distance_steps(seg))
     distance = steps[-1][1] if steps else 0.0
@@ -145,5 +143,5 @@ def _build(seg: list[Sample], wh0: float | None, temp0: float | None, closed: bo
         avg_speed_mps=distance / moving if moving > 0 else None, max_speed_mps=max((v for _, _, v in steps), default=None),
         start_wh=base, end_wh=end_wh, net_wh=net, gross_wh=gross, recup_wh=recup,
         avg_temp_c=sum(temps) / len(temps) if temps else None,
-        first_fix=fixes[0] if fixes else None, last_fix=fixes[-1] if fixes else None, style=style.measure(seg, wh0, start, distance),
+        first_fix=fixes[0] if fixes else None, last_fix=fixes[-1] if fixes else None,
     )
