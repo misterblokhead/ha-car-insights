@@ -3,9 +3,9 @@
   import { hashOf } from "../lib/activity.js";
   import { NA, km, kwh, kwhPer100, consumption, delta } from "../lib/format.js";
   import { dayKey, dayLabel, today } from "../lib/time.js";
-  import { split, tripTitle } from "../lib/detail.js";
+  import { per10, scoreWord, split, tripTitle } from "../lib/detail.js";
   import { eur, per100 as costPer100, uncostedText } from "../lib/costs.js";
-  import { bucketLabel, change, periodLabel, places, statsUrl } from "../lib/stats.js";
+  import { bucketLabel, change, periodLabel, places, statsUrl, styleRows } from "../lib/stats.js";
   import Chart from "../lib/Chart.svelte";
   import Figure from "../lib/ui/Figure.svelte";
   import Segmented from "../lib/ui/Segmented.svelte";
@@ -45,12 +45,12 @@
   });
 
   // "▲ 12 %" against the previous period; null without one. `hint` colours it (more energy used is the warning), never alone
-  const trend = (now, before, hint = false) => {
-    const c = change(now, before);
+  const tag = (c, hint = false) => {
     if (c == null) return null;
     const r = Math.round(c * 100);
     return { dir: Math.sign(r), text: `${Math.abs(r)} %`, hint };
   };
+  const trend = (now, before, hint = false) => tag(change(now, before), hint);
   const per100 = (x) => kwhPer100(x.wh_per_100km);
 
   const t = $derived(data?.totals);
@@ -90,6 +90,9 @@
   const costTrend = $derived(t ? trend(t.cost.total, data.previous.cost.total, true) : null); // more spent is the warning, like more energy
   const hl = $derived(data?.highlights);
   const share = $derived(hl?.gross_wh > 0 ? Math.round((hl.recup_wh / hl.gross_wh) * 100) : null);
+  const style = $derived(data?.style);
+  const sty = $derived(style?.km > 0 ? styleRows(style, data.previous_style) : null);
+  const points = $derived(sty?.points == null ? null : { dir: Math.sign(sty.points), text: sty.points ? `${sty.points < 0 ? "−" : "+"}${Math.abs(sty.points)}` : "same", hint: false }); // points: a percentage of a 0–100 score reads oddly
   const when = (ms) => dayLabel(dayKey(ms), today()); // at render, so a page left open past midnight labels right
   const trip = (x) => hashOf({ kind: "trip", vehicle_id: x.vehicle_id, start: x.start });
 </script>
@@ -195,6 +198,29 @@
             </li>
           </ul>
         </section>
+
+        <section class="d-card sty">
+          <div class="d-head"><h2>Driving style</h2>{#if sty}<span class="d-note">{scoreWord(style.score)}</span>{/if}</div>
+          {#if sty}
+            {#if style.score != null}
+              <div class="big">{style.score}<small> / 100</small>{#if points}<span class="d-note pts">{@render changeTag(points)}</span>{/if}</div>
+            {/if}
+            <dl class="d-rows">
+              {#each sty.events as e (e.k)}
+                {@const tr = tag(e.change, true)}
+                <div><dt>{e.name}</dt><dd>{per10(style[e.k], style.km)}{#if tr} {@render changeTag(tr)}{/if}</dd></div>
+              {/each}
+            </dl>
+            <div class="d-head bandhead"><h2>Consumption by speed</h2><span class="d-note">km/h · kWh/100 km</span></div>
+            <ul class="bands">
+              {#each sty.bands as b (b.name)}
+                <li><span class="bn">{b.name}</span><span class="track"><i class="bar" style:width="{b.share * 100}%"></i></span><span class="bv">{b.value == null ? NA : b.value.toFixed(1)}</span></li>
+              {/each}
+            </ul>
+          {:else}
+            <p class="d-msg">No trips this {period}.</p>
+          {/if}
+        </section>
       </div>
 
       <div class="col">
@@ -250,6 +276,7 @@
   .chartcard { order: 3; }
   .places { order: 4; }
   .hl { order: 5; }
+  .sty { order: 6; }
   @media (min-width: 768px) {
     .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
     .col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
@@ -279,6 +306,14 @@
   .hl a .v::after { content: " ›"; color: var(--muted); }
   .cost { display: flex; flex-wrap: wrap; gap: 0 8px; }
   .hl .d-note { flex-basis: 100%; }
+
+  .pts { margin-left: 8px; font-size: 15px; font-weight: 500; }
+  .bandhead { margin: 14px 0 8px; }
+  .bands li { display: flex; align-items: center; gap: 10px; min-height: 28px; }
+  .bn { flex: none; width: 4.5em; color: var(--muted); }
+  .track { flex: 1; min-width: 0; }
+  .bar { display: block; height: 8px; border-radius: 4px; background: var(--energy); }
+  .bv { flex: none; min-width: 3em; text-align: right; white-space: nowrap; }
 
   .places ul { margin-top: 10px; }
   .places li { display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; min-height: 32px; }
