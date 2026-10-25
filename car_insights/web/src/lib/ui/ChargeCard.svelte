@@ -12,7 +12,7 @@
   const when = $derived(`${span(item.start, item.end)} · ${kw(item.avg_w)}`);
 </script>
 
-<Card href={hashOf(item)} {current} {onclick} kind="charge" title={chargedAt(item.place)} value={added} {unit} {when}>
+<Card href={hashOf(item)} {current} {onclick} kind="charge" title={chargedAt(item.place ?? item.address)} value={added} {unit} {when}>
   {#snippet glyph()}
     <svg viewBox="0 0 24 24"><path d="M13 3 5 14h6l-1 7 8-11h-6z" /></svg>
   {/snippet}

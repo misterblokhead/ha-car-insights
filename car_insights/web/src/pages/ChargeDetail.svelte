@@ -77,7 +77,7 @@
 </script>
 
 <DetailPage url={`api/ui/charges/${encodeURIComponent(vid)}/${start}`} noun="charge" accent="--charge-text" onloaded={loaded}>
-  {#snippet title()}{chargedAt(c.place)}{/snippet}
+  {#snippet title()}{chargedAt(c.place ?? c.address)}{/snippet}
   {#snippet subtitle()}
     <p class="d-sub">{rangeLine(c.start, c.end)}</p>
     {#if c.times_source === "cloud" || estimated}

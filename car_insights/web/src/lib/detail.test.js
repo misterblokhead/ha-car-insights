@@ -72,12 +72,16 @@ test("place names an unknown place", () => {
   assert.equal(place(null), "Unknown");
   assert.equal(place(undefined), "Unknown");
   assert.equal(place("Home"), "Home");
+  assert.equal(place(null, null), "Unknown");
+  assert.equal(place(null, "A 1, B"), "A 1, B");
+  assert.equal(place("Home", "A 1, B"), "Home");
 });
 
 test("chargedAt keeps the card and detail title as they were", () => {
   assert.equal(chargedAt("Work"), "Charged at Work");
   assert.equal(chargedAt(null), "Charged");
   assert.equal(chargedAt(""), "Charged");
+  assert.equal(chargedAt("Kerkstraat 12, Utrecht"), "Charged at Kerkstraat 12, Utrecht");
 });
 
 test("estimate marks an estimated figure, but not a missing one", () => {
@@ -90,6 +94,7 @@ test("estimate marks an estimated figure, but not a missing one", () => {
 test("tripTitle is From → To with unknown places named", () => {
   assert.equal(tripTitle({ from: "Home", to: "Work" }), "Home → Work");
   assert.equal(tripTitle({ from: null, to: undefined }), "Unknown → Unknown");
+  assert.equal(tripTitle({ from: null, to: "Work", from_address: "A 1, B", to_address: "C 2, D" }), "A 1, B → Work");
 });
 
 test("span is start – end, or now for an open end", () => {
@@ -103,6 +108,7 @@ test("routeLabel describes the outline for a screen reader", () => {
   assert.equal(routeLabel(trip), "Route from Home to Work, 26.0 km, 45 min");
   assert.equal(routeLabel({ ...trip, from: null, to: null }), "Route from Unknown to Unknown, 26.0 km, 45 min");
   assert.equal(routeLabel({ ...trip, end: null }), "Route from Home to Work, 26.0 km, still driving");
+  assert.equal(routeLabel({ ...trip, from: null, from_address: "A 1, B" }), "Route from A 1, B to Work, 26.0 km, 45 min");
 });
 
 test("temp rounds to whole degrees, keeps the sign and shows a dash when unknown", () => {

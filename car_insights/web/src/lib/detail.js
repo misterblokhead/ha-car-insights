@@ -44,8 +44,8 @@ export const span = (start, end) => `${clock(start)} – ${end == null ? "now" :
 // "Today · 14:05 – 14:35", "Thu 22 Oct · 14:05 – now"
 export const rangeLine = (start, end, now = Date.now()) => `${dayLabel(dayKey(start), dayKey(now))} · ${span(start, end)}`;
 
-// a place outside every zone
-export const place = (name) => name ?? "Unknown";
+// the name of a zone or charge spot, else the address of the point, else "Unknown"
+export const place = (name, address) => name ?? address ?? "Unknown";
 
 // "Charged at Home"; a charge outside every zone is just "Charged"
 export const chargedAt = (name) => (name ? `Charged at ${name}` : "Charged");
@@ -54,10 +54,10 @@ export const chargedAt = (name) => (name ? `Charged at ${name}` : "Charged");
 export const estimate = (wh, estimated) => (estimated && wh != null ? "~" : "") + kwh(wh);
 
 // "Home → Work"
-export const tripTitle = (t) => `${place(t.from)} → ${place(t.to)}`;
+export const tripTitle = (t) => `${place(t.from, t.from_address)} → ${place(t.to, t.to_address)}`;
 
 // the aria-label of a trip's route outline
-export const routeLabel = (t) => `Route from ${place(t.from)} to ${place(t.to)}, ${km(t.distance_m)}, ${t.end == null ? "still driving" : duration(t.duration_s)}`;
+export const routeLabel = (t) => `Route from ${place(t.from, t.from_address)} to ${place(t.to, t.to_address)}, ${km(t.distance_m)}, ${t.end == null ? "still driving" : duration(t.duration_s)}`;
 
 // "12 °C" outside temperature; a dash when unknown
 export const temp = (c) => (c == null ? NA : `${c.toFixed(0)} °C`);
