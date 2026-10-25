@@ -25,6 +25,7 @@ from .zones import ZoneCache
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
+    logging.getLogger("uvicorn.access").addFilter(ui_api.QuietTiles())  # a filter outlives uvicorn's own logging setup
     opts_path = Path("/data/options.json")
     opts = json.loads(opts_path.read_text()) if opts_path.exists() else {}
     default_wh = float(opts.get("default_capacity_kwh", 60)) * 1000

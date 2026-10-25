@@ -3,6 +3,7 @@ import asyncio
 import dataclasses
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from typing import Annotated, Any, Awaitable, Callable, Literal
 
@@ -21,6 +22,16 @@ log = logging.getLogger(__name__)
 EpochMs = Annotated[int, Query(ge=0, lt=2**62)]  # sqlite integers are 64-bit: anything larger would be a 500, not a 422
 StartMs = Annotated[int, Path(ge=0, lt=2**62)]
 RAW_SPAN_MS = 86_400_000
+TILE_LOG_EVERY_MS = 60_000
+_TILES = ThreadPoolExecutor(max_workers=4, thread_name_prefix="tiles")  # its own pool: a slow tile proxy must not starve the poller or AdminCache
+
+
+class QuietTiles(logging.Filter):
+    """For uvicorn.access: drops the tile requests (their z/x/y say where the map was looking); every other line stays."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        path = record.args[2] if isinstance(record.args, tuple) and len(record.args) > 2 else ""
+        return not str(path).startswith("/api/ui/tiles/")
 
 
 def _not_found() -> HTTPException:
@@ -94,6 +105,7 @@ def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
         if request.client is None or request.client.host not in ingress_hosts or access.viewer_from_headers(request.headers) is None:
             raise HTTPException(403, "forbidden")
 
+    tile_logged = -TILE_LOG_EVERY_MS
     r = APIRouter(prefix="/api/ui", dependencies=[Depends(ingress_guard)])
 
     async def who(request: Request, admin: bool = False) -> Viewer:
@@ -113,6 +125,13 @@ def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
         if v is None:
             raise _not_found()
         return v
+
+    async def scope(request: Request, view: str, at: date | None) -> tuple[list[str], date]:
+        """The viewer's vehicles for `view` and the date a period page is about (today when `at` is not given; a future one is a 422)."""
+        vids, today = vids_of(await who(request), view), local_date(now_ms(), tz)
+        if at is not None and at > today:
+            raise HTTPException(422, "at is in the future")
+        return vids, at or today
 
     def visible(viewer: Viewer, vid: str) -> None:
         if vid not in access.visible_vehicles(conn, viewer):
@@ -184,27 +203,26 @@ def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
 
     @r.get("/stats")
     async def get_stats(request: Request, view: str = "", period: Literal["week", "month", "year"] = "week", at: date | None = None):
-        vids, today = vids_of(await who(request), view), local_date(now_ms(), tz)
-        if at is not None and at > today:
-            raise HTTPException(422, "at is in the future")
-        return stats.stats(conn, vids, period, at or today, tz, (lambda v: db.device_info(conn, v)[0]) if view.startswith("g:") else None, now_ms())
+        vids, day = await scope(request, view, at)
+        return stats.stats(conn, vids, period, day, tz, (lambda v: db.device_info(conn, v)[0]) if view.startswith("g:") else None, now_ms())
 
     @r.get("/map")
     async def get_map(request: Request, view: str = "", period: Literal["week", "month", "year"] = "week", at: date | None = None):
-        vids, today = vids_of(await who(request), view), local_date(now_ms(), tz)
-        if at is not None and at > today:
-            raise HTTPException(422, "at is in the future")
-        return stats.map_items(conn, vids, period, at or today, tz)
+        vids, day = await scope(request, view, at)
+        return stats.map_items(conn, vids, period, day, tz)
 
     @r.get("/tiles/{z}/{x}/{y}.png")
     async def get_tile(request: Request, z: int, x: int, y: int):
+        nonlocal tile_logged
         await who(request)
         if not (0 <= z <= 19 and 0 <= x < 2**z and 0 <= y < 2**z):
             raise _not_found()
         try:
-            png = await asyncio.to_thread(tile, z, x, y)
-        except Exception:
-            log.warning("tile %s/%s/%s failed", z, x, y, exc_info=True)
+            png = await asyncio.get_running_loop().run_in_executor(_TILES, tile, z, x, y)
+        except Exception as err:  # never the tile: its z/x/y say where the map was looking; and at most one line a minute
+            if (now := now_ms()) - tile_logged >= TILE_LOG_EVERY_MS:
+                tile_logged = now
+                log.warning("tile fetch failed: %r", err)
             return Response(status_code=502)
         return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=604800"})
 
