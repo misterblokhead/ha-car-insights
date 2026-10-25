@@ -25,6 +25,16 @@ def test_trip_ends_on_ignition_off():
     assert t.start_wh == 33050 and t.end_wh == 32550 and t.net_wh == t.start_wh - t.end_wh
 
 
+def test_short_battery_flicker_is_not_energy():
+    """the Mégane's level jumps 50-100 Wh up or down for ~0.2 s; such a reading is no real step (Aximote agrees, 2026-10-24)"""
+    wh = [(0, 33050), (60_000, 33000), (60_200, 33100), (60_400, 33000), (70_000, 32900), (70_200, 33000),  # two blips
+          (80_000, 33050), (300_000, 32550), (300_300, 32650)]  # a real 50 Wh rise held 220 s, a third blip; the last reading counts however short
+    samples = [s(0, "gear", 1.0), *drive(0, 120_000, step=200), s(0, "ignition", 4.0), s(400_000, "ignition", 2.0),
+               *(s(t, "battery_wh", v) for t, v in wh)]
+    (t,) = trips(samples)
+    assert (t.gross_wh, t.recup_wh, t.net_wh, t.end_wh) == (450, 50, 400, 32650)  # unfiltered: 750 / 350
+
+
 def test_stop_in_p_with_ignition_on_stays_one_trip():
     samples = [s(0, "gear", 1.0), *drive(0, 60_000), s(60_000, "gear", 4.0),
                *drive(60_000, 330_000, v=0.0, step=30_000),  # samples keep arriving, so the car is not asleep

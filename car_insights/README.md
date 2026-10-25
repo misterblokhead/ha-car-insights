@@ -35,6 +35,8 @@ Rules: a charge is DC when its average power is above 22 kW, else AC. Charging l
 
 The first start of 0.8.0 migrates the database and rebuilds all trips and charges once; the log shows `rebuild of N vehicles took ... s`. Take a Home Assistant backup before updating: 0.7.0 cannot open the migrated database.
 
+Trip gross energy and recuperation ignore a battery reading that changes again within 1 s (the Mégane's level flickers 50-100 Wh for a fraction of a second); net is unchanged. 0.8.2 rebuilds all trips once on its first start for this.
+
 ## Sensors and dashboard
 
 Per vehicle: live sensors, last trip and last charge, month and year totals. Per cost group: month and year totals on a device of its own.
