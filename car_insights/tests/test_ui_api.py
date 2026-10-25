@@ -479,3 +479,14 @@ def test_failed_cost_edits_call_on_costs_zero_times(conn):
     assert c.put(f"{URL}/fixed_costs/{cid}", json={"end": "2025-12-31"}, headers=ADMIN).status_code == 400
     assert c.delete(f"{URL}/fixed_costs/nope", headers=ADMIN).status_code == 404
     assert not calls
+
+
+def test_raw_samples_admin_only_in_range(conn):
+    db.ingest(conn, "car1", "src", [s(NOW - 3000, "battery_wh", 46_600), s(NOW - 2000, "battery_wh", 46_550),
+                                    s(NOW - 2000, "speed", 10.0), s(NOW, "battery_wh", 46_500)], NOW)
+    c, _ = client(conn)
+    q = f"/api/ui/samples/car1?key=battery_wh&start={NOW - 2000}&end={NOW - 1}"
+    assert c.get(q, headers=VIEWER).status_code == 403
+    assert c.get(q, headers=ADMIN).json() == {"key": "battery_wh", "rows": [[NOW - 2000, 46_550]]}
+    assert c.get(f"/api/ui/samples/car1?key=battery_wh&start=0&end={2 * 86_400_000}", headers=ADMIN).status_code == 400
+    assert c.get(f"/api/ui/samples/nope?key=battery_wh&start=0&end=1", headers=ADMIN).status_code == 404
