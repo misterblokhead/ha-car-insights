@@ -80,6 +80,7 @@
             <li><i class="swatch" style:opacity={BAND_OPACITY[i]}></i><span class="n">{b.name}</span><span>{b.kwhPer100 == null ? NA : b.kwhPer100.toFixed(1)}</span><span class="pc">{Math.round(b.share * 100)} %</span></li>
           {/each}
         </ul>
+        {#if style.standing != null}<dl class="d-rows"><div><dt>Standing</dt><dd>{kwh(style.standing)}</dd></div></dl>{/if}
       </section>
     {/if}
 
