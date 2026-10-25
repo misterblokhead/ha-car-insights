@@ -1,5 +1,6 @@
 """The sidebar page's API: answers only Supervisor ingress requests, and only with what the viewer may see."""
 import dataclasses
+import logging
 import time
 from datetime import date, datetime
 from typing import Annotated, Any, Awaitable, Callable, Literal
@@ -14,6 +15,7 @@ from .zones import Zones
 from .kinds import CHARGE, TRIP, Kind
 from .protocol import fix, num
 
+log = logging.getLogger(__name__)
 EpochMs = Annotated[int, Query(ge=0, lt=2**62)]  # sqlite integers are 64-bit: anything larger would be a 500, not a 422
 StartMs = Annotated[int, Path(ge=0, lt=2**62)]
 
@@ -126,7 +128,10 @@ def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
         (a list, None for all, or a function of the result)."""
         out = attempt(fn, *args)
         if spot:
-            relabel()
+            try:
+                relabel()
+            except Exception:  # the write is committed: the answer stays, the names follow at the next zone or spot change
+                log.exception("renaming places after a spot change failed")
         on_costs(vids(out) if callable(vids) else vids)
         return out
 

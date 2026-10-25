@@ -8,8 +8,7 @@ import pytest
 from car_insights import access, costs, db, prices, store
 from car_insights.derive import ESTIMATE_HOLD_MS, Deriver
 from car_insights.kinds import CHARGE, TRIP
-from car_insights import pipeline
-from car_insights.pipeline import REBUILD_STEP_MS, close_quiet, refresh, republish
+from car_insights.pipeline import REBUILD_STEP_MS, close_quiet, rebuild, refresh, republish
 from car_insights.trips import QUIET_MS
 from car_insights.totals_sensors import TotalsSensors
 from car_insights.trip_sensors import TripSensors
@@ -19,10 +18,6 @@ SRC = "phone-0000abcd"
 TZ = timezone.utc
 CAP = lambda vid: 57_000.0
 DAY = 86_400_000
-
-
-def rebuild(deriver, sensors, conn, now, zones=lambda la, lo: "Home", spots=lambda la, lo: None):
-    pipeline.rebuild(deriver, sensors, conn, now, zones, spots)
 
 
 def trip_samples(t0):
@@ -171,31 +166,6 @@ def test_rebuild_purges_stale_rows_itself(env):
     conn.execute("UPDATE trips SET algo=algo-1, distance_m=-1")  # a row the old derivation got wrong
     rebuild(Deriver(conn, lambda la, lo: "Home", CAP), sensors, conn, now)  # the restart
     assert [t["distance_m"] for t in store.closed(conn, TRIP, "car1")] == [1000]
-
-
-def test_rebuild_ends_with_a_relabel_from_the_stored_points(env):
-    conn, mqtt, d, sensors, totals = env
-    now = 10_000_000
-    conn.execute("INSERT INTO vehicles(vehicle_id) VALUES('car1')")
-    db.ingest(conn, "car1", SRC, trip_samples(now - 200_000), now)
-    refresh(d, sensors, totals, conn, CAP, "car1", None, now, TZ)
-    rebuild(Deriver(conn, lambda la, lo: "Work", CAP), sensors, conn, now, zones=lambda la, lo: "Work")  # the zone was renamed while down
-    assert store.closed(conn, TRIP, "car1")[0]["from"] == "Work"
-    assert conn.execute("SELECT COUNT(*) FROM trips").fetchone()[0] == 1  # renamed in place
-
-
-def test_rebuild_does_not_relabel_with_zones_that_never_loaded(env):
-    conn, mqtt, d, sensors, totals = env
-    now = 10_000_000
-    conn.execute("INSERT INTO vehicles(vehicle_id) VALUES('car1')")
-    db.ingest(conn, "car1", SRC, trip_samples(now - 200_000), now)
-    refresh(d, sensors, totals, conn, CAP, "car1", None, now, TZ)
-    class Down:
-        loaded = False  # every fetch failed: it would call every place Unknown
-        def __call__(self, la, lo):
-            return None
-    rebuild(d, sensors, conn, now, zones=Down())
-    assert store.closed(conn, TRIP, "car1")[0]["from"] == "Home"
 
 
 def test_rebuild_logs_duration(env, caplog):
@@ -460,8 +430,8 @@ def test_upgrade_keeps_receipt_and_spot(tmp_path):
     conn = db.connect(path)  # migrates to 7
     db.ingest(conn, "car1", SRC, [s(start, "battery_wh", 20_000.0), s(start + 500, "gps", [52.0, 5.0]), s(start + 1000, "plugged", True),
                                   s(start + 3_600_000, "battery_wh", 25_000.0), s(start + 3_700_000, "plugged", False)], now)
-    spots = lambda la, lo: prices.spot_name_at(conn, la, lo)
-    rebuild(Deriver(conn, lambda la, lo: None, CAP, spots=spots), TripSensors(conn, FakeMqtt(), CAP), conn, now, lambda la, lo: None, spots)
+    deriver = Deriver(conn, lambda la, lo: None, CAP, spots=lambda la, lo: prices.spot_name_at(conn, la, lo))
+    rebuild(deriver, TripSensors(conn, FakeMqtt(), CAP), conn, now)
     [charge] = store.closed(conn, CHARGE, "car1")
     assert charge["place"] == "Plaza" and charge["zone"] is None
     assert costs.charge_cost(prices.book(conn, "car1"), charge)["basis"] == "receipt"

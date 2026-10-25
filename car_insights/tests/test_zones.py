@@ -77,3 +77,23 @@ def test_a_failing_on_change_is_retried_at_the_next_fetch():
     now[0] = 2000
     cache(52.0, 5.0)
     assert calls == [1, 1]
+
+
+def test_refresh_fetches_now_and_announces_a_changed_list():
+    results, changes, fetched = [[HOME]], [], []
+    def fetch():
+        fetched.append(1)
+        if isinstance(results[0], Exception):
+            raise results[0]
+        return results[0]
+    cache = ZoneCache(fetch, on_change=lambda: changes.append(1))
+    cache.refresh()
+    assert changes == [1] and cache(52.0, 5.0) == "Home" and len(fetched) == 1  # the lookup after it uses the list, no second fetch
+    cache.refresh()
+    assert changes == [1]  # the same list
+    results[0] = RuntimeError("down")
+    cache.refresh()
+    assert changes == [1] and cache(52.0, 5.0) == "Home"  # a failed refresh calls nothing and keeps the list
+    results[0] = [Zone("Work", 52.1, 5.1, 150)]
+    cache.refresh()
+    assert changes == [1, 1] and cache(52.0, 5.0) is None

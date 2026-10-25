@@ -427,6 +427,17 @@ def test_spot_routes_relabel_after_the_write_and_before_on_costs(conn):
     assert order == []  # a failed write relabels nothing
 
 
+def test_a_failing_relabel_after_a_spot_write_still_answers(conn, caplog):
+    put(conn, "charges", "car1", 1000, 2000, CHARGE)
+    def boom():
+        raise RuntimeError("boom")
+    c, calls = client(conn, relabel=boom)
+    r = c.post(f"{URL}/spots", json={"vehicle_id": "car1", "start": 1000, "name": "Shop", "per_kwh": 0.3}, headers=ADMIN)
+    assert r.status_code == 200 and len(prices.settings(conn)["spots"]) == 1  # the spot is saved and answered
+    assert calls == [None]  # the cost sensors still follow
+    assert "renaming places after a spot change failed" in caplog.text
+
+
 def test_on_costs_targets(conn):
     put(conn, "charges", "car1", 1000, 2000, CHARGE)
     c, calls = client(conn)

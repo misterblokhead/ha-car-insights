@@ -39,29 +39,29 @@ class ZoneCache:
     def __init__(self, fetch: Callable[[], list[Zone]], ttl_ms: int = 600_000, now_ms: Callable[[], int] = lambda: int(time.time() * 1000),
                  on_change: Callable[[], None] = lambda: None):
         self._fetch, self._ttl, self._now, self._on_change = fetch, ttl_ms, now_ms, on_change
-        self._zones: list[Zone] | None = None  # None until a fetch gets through
+        self._zones: list[Zone] = []
         self._announced: list[Zone] | None = None  # the list on_change last ran for
         self._at: int | None = None
 
-    @property
-    def loaded(self) -> bool:
-        """A fetch has got through: until then the list is empty, which names no place."""
-        return self._zones is not None
+    def refresh(self) -> None:
+        """Fetch the list now; run on_change when it differs from the last one announced."""
+        self._at = self._now()  # a failed fetch counts as an attempt, so a down HA is retried once per ttl, not per lookup
+        try:
+            zones = self._fetch()
+        except Exception:
+            log.exception("zone fetch failed, keeping the last list")
+            return
+        self._zones = zones
+        if zones != self._announced:
+            # shortcut: a relabel inside an update that later rolls back is undone while the list counts as announced (a restart heals it),
+            # and one row mid-build may get its start and end named by different lists; fine while zones change rarely
+            try:
+                self._on_change()
+                self._announced = zones
+            except Exception:  # a lookup (maybe mid-derivation) must not fail for it; the next fetch tries again
+                log.exception("renaming places after a zone change failed")
 
     def __call__(self, lat: float, lon: float) -> str | None:
-        now = self._now()
-        if self._at is None or now - self._at >= self._ttl:
-            self._at = now  # a failed fetch counts as an attempt, so a down HA is retried once per ttl, not per lookup
-            try:
-                zones = self._fetch()
-            except Exception:
-                log.exception("zone fetch failed, keeping the last list")
-            else:
-                self._zones = zones
-                if zones != self._announced:
-                    try:
-                        self._on_change()
-                        self._announced = zones
-                    except Exception:  # a lookup (maybe mid-derivation) must not fail for it; the next fetch tries again
-                        log.exception("renaming places after a zone change failed")
-        return name_at(self._zones or [], lat, lon)
+        if self._at is None or self._now() - self._at >= self._ttl:
+            self.refresh()
+        return name_at(self._zones, lat, lon)

@@ -54,7 +54,8 @@ def main() -> None:
     poller = Poller(conn, [SourceConf(**c) for c in opts.get("sources", [])], lambda ids, a, b: fetch_history(sup_token, ids, a, b),
                     lambda vid, min_t, received: summarize(vid, min_t, received))  # the open trip and summary only matter to the webhook ack
     # before the server and run_daily's first publish: an ALGO bump emptied the rows
-    pipeline.rebuild(deriver, sensors, conn, int(time.time() * 1000), zones, spots)
+    zones.refresh()  # start-up relabel: on success on_change renames the stored rows outside any transaction; on failure nothing changes and the lookup retries after the ttl
+    pipeline.rebuild(deriver, sensors, conn, int(time.time() * 1000))
     uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity).on_ingested, summarize=summarize, background=[poller.run, totals.run_daily, lambda: capacity_learning.run(conn), lambda: pipeline.run_close_quiet(conn, summarize)],
                            ui=ui_api.router(conn, zones, tz, capacity, AdminCache(lambda: ha_users.fetch_users(sup_token)).is_admin, on_settings=totals.publish_groups,
                            relabel=relabel, on_costs=lambda vids: pipeline.republish(sensors, totals, conn, vids)),

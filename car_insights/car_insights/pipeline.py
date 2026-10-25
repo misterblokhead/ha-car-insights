@@ -12,7 +12,6 @@ from .protocol import FUTURE_SLACK_MS
 from .totals_sensors import TotalsSensors
 from .trip_sensors import TripSensors
 from .trips import QUIET_MS
-from .zones import Zones
 
 log = logging.getLogger(__name__)
 
@@ -43,10 +42,9 @@ def refresh(deriver: Deriver, sensors: TripSensors, totals: TotalsSensors, conn:
         received, tz, capacity(vid))
 
 
-def rebuild(deriver: Deriver, sensors: TripSensors, conn: sqlite3.Connection, now_ms: int, zones: Zones, spots: Zones) -> None:
+def rebuild(deriver: Deriver, sensors: TripSensors, conn: sqlite3.Connection, now_ms: int) -> None:
     """At start-up, before the first totals publish: derive every vehicle again, so rows dropped by an ALGO bump are back before its
-    next ingest, then republish its last trip and charge states (a rebuild may have closed one). Ends by naming the places again from
-    the stored points, as the zones are now. No events."""
+    next ingest, then republish its last trip and charge states (a rebuild may have closed one). No events."""
     started = time.monotonic()
     deriver.purge_stale()
     vehicles = conn.execute("SELECT vehicle_id FROM vehicles").fetchall()
@@ -70,8 +68,6 @@ def rebuild(deriver: Deriver, sensors: TripSensors, conn: sqlite3.Connection, no
             sensors.publish(vid, trips[0] if trips else None, charges[0] if charges else None, [], [])
         except Exception:
             log.exception("rebuild of %s failed", vid)
-    if getattr(zones, "loaded", True):  # a zone cache whose fetches all failed names no place: relabelling would blank every one
-        store.relabel(conn, zones, spots)
     log.info("rebuild of %d vehicles took %.1f s", len(vehicles), time.monotonic() - started)
 
 
