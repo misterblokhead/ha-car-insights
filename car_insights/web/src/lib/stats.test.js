@@ -1,10 +1,15 @@
 process.env.TZ = "America/New_York"; // the browser is west of the server
 import test from "node:test";
 import assert from "node:assert/strict";
-import { statsUrl, change, periodLabel, bucketLabel, places } from "./stats.js";
+import { statsUrl, mapUrl, change, periodLabel, bucketLabel, places } from "./stats.js";
 import { setZone } from "./time.js";
 
 setZone("Europe/Amsterdam");
+
+test("mapUrl asks /map for the same view, period and day", () => {
+  assert.equal(mapUrl("v:car1", "week", null), "api/ui/map?view=v%3Acar1&period=week");
+  assert.equal(mapUrl("g:a b", "year", "2026-09-01"), "api/ui/map?view=g%3Aa%20b&period=year&at=2026-09-01");
+});
 
 test("statsUrl sends no at until a date is chosen", () => {
   assert.equal(statsUrl("g:a b", "week", null), "api/ui/stats?view=g%3Aa%20b&period=week");

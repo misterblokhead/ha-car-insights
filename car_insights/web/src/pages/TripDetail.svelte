@@ -1,7 +1,7 @@
 <script>
   import { NA, km, kwh, kwhPer100 } from "../lib/format.js";
   import { eur, tripCostLine } from "../lib/costs.js";
-  import { arrow, compare, deltaText, durationParts, fig, markerAt, rangeLine, split, temp, tripTitle } from "../lib/detail.js";
+  import { arrow, compare, deltaText, durationParts, fig, markerAt, rangeLine, routeLabel, split, temp, tripTitle } from "../lib/detail.js";
   import { consumptionBuckets, tripCharts } from "../lib/series.js";
   import Chart from "../lib/Chart.svelte";
   import DetailPage from "../lib/ui/DetailPage.svelte";
@@ -46,6 +46,7 @@
       <MapView
         lines={[{ points: data.route, kind: "trip" }]}
         dots={[{ lat: a[0], lon: a[1], kind: "trip", role: "start" }, { lat: z[0], lon: z[1], kind: "trip", role: "end" }]}
+        label={routeLabel(t)}
         height={240} />
     {/if}
 

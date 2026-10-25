@@ -47,8 +47,8 @@ export const rangeLine = (start, end, now = Date.now()) => `${dayLabel(dayKey(st
 // the name of a zone or charge spot, else the address of the point, else "Unknown"
 export const place = (name, address) => name ?? address ?? "Unknown";
 
-// "Charged at Home"; a charge outside every zone is just "Charged"
-export const chargedAt = (name) => (name ? `Charged at ${name}` : "Charged");
+// "Charged at Home" (the zone or spot, else the address); a charge with neither is just "Charged"
+export const chargedAt = (c) => ((c.place ?? c.address) ? `Charged at ${c.place ?? c.address}` : "Charged");
 
 // "~24.10 kWh" for a figure the car did not measure; a missing figure stays a plain dash
 export const estimate = (wh, estimated) => (estimated && wh != null ? "~" : "") + kwh(wh);

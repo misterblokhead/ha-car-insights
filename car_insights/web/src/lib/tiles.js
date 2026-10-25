@@ -27,5 +27,6 @@ export function backdrop(points, width, height, pad = 8) {
   }
 }
 
-// relative, so the page asks Home Assistant and never an outside host
-export const tileUrl = ({ z, x, y }) => `api/ui/tiles/${z}/${x}/${y}.png`;
+// relative, so the page asks Home Assistant and never an outside host; Leaflet fills the {z}/{x}/{y} itself
+export const TILE_TEMPLATE = "api/ui/tiles/{z}/{x}/{y}.png";
+export const tileUrl = ({ z, x, y }) => TILE_TEMPLATE.replace("{z}", z).replace("{x}", x).replace("{y}", y);

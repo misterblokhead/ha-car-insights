@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { project, backdrop, tileUrl, MAX_Z } from "./tiles.js";
+import { project, backdrop, tileUrl, TILE_TEMPLATE, MAX_Z } from "./tiles.js";
 
 const near = (a, b, eps) => assert.ok(Math.abs(a - b) < eps, `${a} vs ${b}`);
 const extent = (pts, z, i) => Math.max(...pts.map((p) => project(p[0], p[1], z)[i])) - Math.min(...pts.map((p) => project(p[0], p[1], z)[i]));
@@ -71,4 +71,5 @@ test("no tiles above or below the world", () => {
 
 test("tileUrl is relative, so the page asks Home Assistant", () => {
   assert.equal(tileUrl({ z: 12, x: 2100, y: 1350 }), "api/ui/tiles/12/2100/1350.png");
+  assert.equal(TILE_TEMPLATE, "api/ui/tiles/{z}/{x}/{y}.png"); // the one the map layer uses
 });

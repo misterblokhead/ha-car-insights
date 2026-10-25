@@ -1,6 +1,7 @@
 <script>
   import { get, latest } from "../api.js";
   import { hashOf } from "../activity.js";
+  import { place } from "../detail.js";
   import { mapUrl } from "../stats.js";
   import MapView from "./MapView.svelte";
 
@@ -26,7 +27,7 @@
       if (!ticket.current) return;
       map = {
         lines: d.trips.map((t) => ({ points: t.route, kind: "trip", href: hashOf({ kind: "trip", vehicle_id: t.vid, start: t.start }) })),
-        dots: d.charges.map((c) => ({ lat: c.lat, lon: c.lon, kind: "charge", href: hashOf({ kind: "charge", vehicle_id: c.vid, start: c.start }) })),
+        dots: d.charges.map((c) => ({ lat: c.lat, lon: c.lon, kind: "charge", title: place(c.name), href: hashOf({ kind: "charge", vehicle_id: c.vid, start: c.start }) })),
       };
     } catch {
       if (ticket.current) error = true;
@@ -49,12 +50,8 @@
   {:else if !map}
     <p class="d-msg" aria-busy={seen}>{seen ? "Loading…" : ""}</p>
   {:else if !map.lines.length && !map.dots.length}
-    <p class="d-msg">No trips this {period}</p>
+    <p class="d-msg">Nothing to map this {period}</p>
   {:else}
     <MapView lines={map.lines} dots={map.dots} height={320} />
   {/if}
 </section>
-
-<style>
-  .msg { --accent: var(--trip-text); text-align: center; color: var(--muted); }
-</style>

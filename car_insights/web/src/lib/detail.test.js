@@ -78,10 +78,11 @@ test("place names an unknown place", () => {
 });
 
 test("chargedAt keeps the card and detail title as they were", () => {
-  assert.equal(chargedAt("Work"), "Charged at Work");
-  assert.equal(chargedAt(null), "Charged");
-  assert.equal(chargedAt(""), "Charged");
-  assert.equal(chargedAt("Kerkstraat 12, Utrecht"), "Charged at Kerkstraat 12, Utrecht");
+  assert.equal(chargedAt({ place: "Work", address: "Kerkstraat 12, Utrecht" }), "Charged at Work");
+  assert.equal(chargedAt({ place: null, address: "Kerkstraat 12, Utrecht" }), "Charged at Kerkstraat 12, Utrecht");
+  assert.equal(chargedAt({ address: "Kerkstraat 12, Utrecht" }), "Charged at Kerkstraat 12, Utrecht");
+  assert.equal(chargedAt({ place: null, address: null }), "Charged");
+  assert.equal(chargedAt({ place: "", address: null }), "Charged");
 });
 
 test("estimate marks an estimated figure, but not a missing one", () => {
