@@ -15,13 +15,22 @@ log = logging.getLogger(__name__)
 RUN_DELAY_S = 5  # after local midnight, so the new month's totals are computed when the clock is surely past it
 GROUP_PREFIX = "group_"
 
-# field -> (period, totals key, name, unit, device_class); every totals value is divided by 1000 (m to km, Wh to kWh)
+# field -> (period, totals key, name, unit, device_class); the distance and energy values are divided by 1000 (m to km, Wh to kWh)
 _SENSORS = {f"{p}_{k}": (p, key, f"{p.capitalize()} {k}", unit, dclass) for p in ("month", "year") for k, key, unit, dclass in (
     ("distance", "distance_m", "km", "distance"), ("energy", "net_wh", "kWh", "energy"), ("charged", "charged_wh", "kWh", "energy"))}
+# the euro fields: totals["cost"][key], not divided
+_COSTS = {f"{p}_{k}_cost": (p, k) for p in ("month", "year") for k in ("energy", "fixed", "total")}
+_COST_SENSORS = {f: (f"{p.capitalize()} {k} cost", "EUR", "monetary") for f, (p, k) in _COSTS.items()} | {
+    f"{p}_cost_per_km": (f"{p.capitalize()} cost per km", "EUR/km", None) for p in ("month", "year")}
 
 
 def _state(t: dict) -> dict:
-    return {f: round(t[p][key] / 1000, 2) for f, (p, key, *_) in _SENSORS.items()}
+    out = {f: round(t[p][key] / 1000, 2) for f, (p, key, *_) in _SENSORS.items()}
+    out |= {f: None if t[p]["cost"][k] is None else round(t[p]["cost"][k], 2) for f, (p, k) in _COSTS.items()}
+    for p in ("month", "year"):
+        km, total = t[p]["distance_m"] / 1000, t[p]["cost"]["total"]
+        out[f"{p}_cost_per_km"] = round(total / km, 3) if km and total is not None else None
+    return out
 
 
 class TotalsSensors:
@@ -39,6 +48,9 @@ class TotalsSensors:
             # no state_class on energy: HA rejects measurement there (see TripSensors)
             comp, extra = live.sensor(name, unit, dclass, measurement=dclass != "energy", state_topic="totals",
                                       value_template="{{ value_json.%s }}" % f)
+            out.append((f"homeassistant/{comp}/{key}_{f}/config", json.dumps(live.config(key, f, extra, dev))))
+        for f, (name, unit, dclass) in _COST_SENSORS.items():  # HA rejects state_class measurement on monetary
+            comp, extra = live.sensor(name, unit, dclass, measurement=False, state_topic="totals", value_template="{{ value_json.%s }}" % f)
             out.append((f"homeassistant/{comp}/{key}_{f}/config", json.dumps(live.config(key, f, extra, dev))))
         return out
 
@@ -64,7 +76,7 @@ class TotalsSensors:
             self._publish(key, [r[0] for r in self._conn.execute("SELECT vehicle_id FROM vehicles WHERE cost_group_id=?", (gid,))])
         for gid in self._groups - names.keys():  # an empty retained payload removes the entity and its state
             key = GROUP_PREFIX + gid
-            self._mqtt.publish([*((f"homeassistant/sensor/{key}_{f}/config", "") for f in _SENSORS), (live.topic(key, "totals"), "")])
+            self._mqtt.publish([*((f"homeassistant/sensor/{key}_{f}/config", "") for f in (*_SENSORS, *_COST_SENSORS)), (live.topic(key, "totals"), "")])
         self._groups = set(names)
 
     def _seconds_to_next_run(self) -> float:

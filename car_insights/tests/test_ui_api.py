@@ -1,11 +1,12 @@
 import json
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
+from pytest import approx
 from fastapi.testclient import TestClient
 
-from car_insights import access, db, ui_api
+from car_insights import access, db, prices, ui_api
 from car_insights.api import create_app
 from car_insights.db import connect, json_dumps
 from car_insights.derive import ALGO, Deriver
@@ -38,7 +39,8 @@ def build(conn, **kw):
     zones = lambda lat, lon: "Home"
     cap = lambda vid: CAP.get(vid, 60_000.0)
     calls = []
-    router = ui_api.router(conn, Deriver(conn, zones, cap), zones, TZ, cap, is_admin, lambda: calls.append(1), now_ms=lambda: NOW, **kw)
+    router = ui_api.router(conn, Deriver(conn, zones, cap), zones, TZ, cap, is_admin, lambda: calls.append(1), now_ms=lambda: NOW,
+                           on_costs=lambda vids: calls.append(vids), **kw)  # on_settings appends 1, on_costs its argument
     return create_app(conn, "t" * 64, lambda *a: None, lambda: NOW, ui=router), calls
 
 
@@ -109,8 +111,10 @@ def test_detail_has_series_and_capacity(conn):
     conn.execute("INSERT INTO charge_series VALUES('car1',1000,?)", (json.dumps({"t": [1, 2]}),))
     c, _ = client(conn)
     t = c.get("/api/ui/trips/car1/1000", headers=VIEWER).json()
-    assert t == {"trip": {"start": 1000, "end": 2000}, "series": None, "route": None, "similar": None, "capacity_wh": CAP["car1"]}
+    assert t == {"trip": {"start": 1000, "end": 2000}, "cost": {"energy": None, "fixed": None, "total": None}, "series": None, "route": None, "similar": None, "capacity_wh": CAP["car1"]}
     ch = c.get("/api/ui/charges/car1/1000", headers=VIEWER).json()
+    cost = ch.pop("cost")
+    assert cost["amount"] is None and cost["basis"] is None  # no tariff set: not computable, never 0
     assert ch == {"charge": {"start": 1000, "end": 2000}, "series": {"t": [1, 2]}, "capacity_wh": CAP["car1"], "outside_temp_c": None}
 
 
@@ -215,7 +219,7 @@ def test_overview_without_samples_is_null_not_zero(conn):
 def test_settings_admin_only(conn):
     c, _ = client(conn)
     assert c.get("/api/ui/settings", headers=VIEWER).status_code == 403
-    assert c.get("/api/ui/settings", headers=ADMIN).json() == access.settings(conn)
+    assert c.get("/api/ui/settings", headers=ADMIN).json() == access.settings(conn) | {"prices": prices.settings(conn)}
     for r in (c.post("/api/ui/groups", json={"name": "x"}, headers=VIEWER), c.put("/api/ui/groups/g", json={"name": "x"}, headers=VIEWER),
               c.delete("/api/ui/groups/g", headers=VIEWER),
               c.put("/api/ui/vehicles/car1", json={"group_id": None, "viewers": ["u-viewer"]}, headers=VIEWER)):
@@ -378,3 +382,97 @@ def test_stats_defaults_to_today(conn):
     r = c.get("/api/ui/stats?view=v:car1&period=week", headers=VIEWER).json()
     assert r["period"] == {"start": ms(2026, 10, 19), "end": ms(2026, 10, 26)}
     assert r["totals"]["distance_m"] == 1000 and r["previous"]["distance_m"] == 5000
+
+
+CHARGE = {"added_wh": 20_000, "lat": 52.0, "lon": 5.0}
+URL = "/api/ui"
+
+
+def cost_state(conn):
+    return (prices.settings(conn), conn.execute("SELECT * FROM charge_receipts").fetchall())
+
+
+def test_cost_writes_need_admin(conn):
+    put(conn, "charges", "car1", 1000, 2000, CHARGE)
+    sid = prices.create_spot(conn, "car1", 1000, "Shop", 0.3)
+    cid = prices.add_fixed_cost(conn, "car1", "Lease", 100, "month", date(2026, 1, 1), None)
+    before = cost_state(conn)
+    c, calls = client(conn)
+    rs = [c.put(f"{URL}/prices/ac", json={"valid_from": 0, "per_kwh": 0.4}, headers=VIEWER),
+              c.post(f"{URL}/spots", json={"vehicle_id": "car1", "start": 1000, "name": "X", "per_kwh": 0.4}, headers=VIEWER),
+              c.put(f"{URL}/spots/{sid}", json={"name": "Y"}, headers=VIEWER),
+              c.delete(f"{URL}/spots/{sid}", headers=VIEWER),
+              c.put(f"{URL}/charges/car1/1000/receipt", json={"amount": 5}, headers=VIEWER),
+              c.post(f"{URL}/vehicles/car1/fixed_costs", json={"name": "Z", "amount": 1, "period": "once", "start": "2026-01-01", "end": None}, headers=VIEWER),
+              c.put(f"{URL}/fixed_costs/{cid}", json={"end": "2026-02-01"}, headers=VIEWER),
+              c.delete(f"{URL}/fixed_costs/{cid}", headers=VIEWER),
+              c.put(f"{URL}/vehicles/car1/card", json={"markup_pct": 5, "start_fee": 1}, headers=VIEWER)]
+    assert [r.status_code for r in rs] == [403] * 9
+    assert cost_state(conn) == before and not calls
+
+
+def test_cost_read_flow(conn):
+    put(conn, "charges", "car1", 1000, 2000, CHARGE)
+    c, _ = client(conn)
+    assert c.put(f"{URL}/prices/ac", json={"valid_from": 0, "per_kwh": 0.40}, headers=ADMIN).json() == {}
+    for who in (ADMIN, VIEWER):
+        items = [i for d in c.get(f"{URL}/activity?view=v:car1", headers=who).json()["days"] for i in d["items"]]
+        assert items[0]["cost"] == {"amount": approx(8.8), "basis": "default"}
+        assert c.get(f"{URL}/charges/car1/1000", headers=who).json()["cost"]["kind"] == "ac"
+
+
+def test_trip_detail_cost(conn):
+    put(conn, "trips", "car1", 1000, 2000, {"net_wh": 3000})
+    c, _ = client(conn)
+    c.put(f"{URL}/prices/ac", json={"valid_from": 0, "per_kwh": 0.40}, headers=ADMIN)  # the 1.32 holds only with this tariff
+    assert c.get(f"{URL}/trips/car1/1000", headers=VIEWER).json()["cost"]["energy"] == approx(1.32)
+
+
+def test_settings_lists_prices(conn):
+    c, _ = client(conn)
+    c.put(f"{URL}/prices/ac", json={"valid_from": 0, "per_kwh": 0.40}, headers=ADMIN)
+    assert c.get(f"{URL}/settings", headers=ADMIN).json()["prices"]["ac"][0]["per_kwh"] == 0.40
+
+
+def test_cost_validation(conn):
+    put(conn, "charges", "car1", 1000, 2000, CHARGE)
+    c, calls = client(conn)
+    assert c.put(f"{URL}/prices/ac", json={"valid_from": 0, "per_kwh": 5.01}, headers=ADMIN).status_code == 400
+    assert c.post(f"{URL}/vehicles/car1/fixed_costs", json={"name": "Z", "amount": 1, "period": "week", "start": "2026-01-01", "end": None},
+                  headers=ADMIN).status_code == 400
+    assert c.post(f"{URL}/vehicles/car1/fixed_costs", json={"name": "Z", "amount": 1, "period": "once", "start": "2026-01-01", "end": "9999-12-31"},
+                  headers=ADMIN).status_code == 400
+    assert c.put(f"{URL}/charges/car1/1000/receipt", json={"amount": -1}, headers=ADMIN).status_code == 400
+    nan = c.put(f"{URL}/charges/car1/1000/receipt", content='{"amount": NaN}', headers={**ADMIN, "Content-Type": "application/json"})
+    assert nan.status_code == 400
+    assert c.put(f"{URL}/charges/car1/1000/receipt", json={"amount": True}, headers=ADMIN).status_code == 422  # a JSON boolean is no number
+    assert cost_state(conn) == (prices.settings(conn), []) and prices.settings(conn)["ac"] == [] and prices.settings(conn)["fixed_costs"] == []
+    assert not calls
+
+
+def test_spot_from_charge_without_point(conn):
+    put(conn, "charges", "car1", 1000, 2000, {"lat": None, "lon": None})
+    c, calls = client(conn)
+    body = {"vehicle_id": "car1", "name": "X", "per_kwh": 0.4}
+    assert c.post(f"{URL}/spots", json={**body, "start": 1000}, headers=ADMIN).status_code == 400
+    assert c.post(f"{URL}/spots", json={**body, "start": 999}, headers=ADMIN).status_code == 404
+    assert prices.settings(conn)["spots"] == [] and not calls
+
+
+def test_on_costs_targets(conn):
+    put(conn, "charges", "car1", 1000, 2000, CHARGE)
+    c, calls = client(conn)
+    c.put(f"{URL}/prices/ac", json={"valid_from": 0, "per_kwh": 0.4}, headers=ADMIN)
+    sid = c.post(f"{URL}/spots", json={"vehicle_id": "car1", "start": 1000, "name": "Shop", "per_kwh": 0.3}, headers=ADMIN).json()["id"]
+    c.put(f"{URL}/spots/{sid}", json={"name": "Shop 2"}, headers=ADMIN)
+    c.delete(f"{URL}/spots/{sid}", headers=ADMIN)
+    assert calls == [None] * 4
+    calls.clear()
+    c.put(f"{URL}/charges/car1/1000/receipt", json={"amount": 9.5}, headers=ADMIN)
+    c.put(f"{URL}/vehicles/car1/card", json={"markup_pct": 5, "start_fee": 1}, headers=ADMIN)
+    cid = c.post(f"{URL}/vehicles/car1/fixed_costs", json={"name": "Lease", "amount": 100, "period": "month", "start": "2026-01-01", "end": None},
+                 headers=ADMIN).json()["id"]
+    c.put(f"{URL}/fixed_costs/{cid}", json={"end": "2026-06-30"}, headers=ADMIN)
+    c.delete(f"{URL}/fixed_costs/{cid}", headers=ADMIN)
+    assert calls == [["car1"]] * 5
+    assert c.put(f"{URL}/fixed_costs/{cid}", json={"end": None}, headers=ADMIN).status_code == 404 and len(calls) == 5

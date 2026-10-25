@@ -7,7 +7,7 @@ import pytest
 
 from car_insights import access, db
 from car_insights.derive import ESTIMATE_HOLD_MS, Deriver
-from car_insights.pipeline import REBUILD_STEP_MS, close_quiet, rebuild, refresh
+from car_insights.pipeline import REBUILD_STEP_MS, close_quiet, rebuild, refresh, republish
 from car_insights.trips import QUIET_MS
 from car_insights.totals_sensors import TotalsSensors
 from car_insights.trip_sensors import TripSensors
@@ -154,6 +154,15 @@ def test_rebuild_restores_rows_and_totals_after_an_algo_bump_before_any_ingest(e
     assert len(mqtt.on("car_insights/car1/trip_event")) == 1  # only the original one: a rebuild fires no events
 
 
+def test_rebuild_logs_duration(env, caplog):
+    conn, mqtt, d, sensors, totals = env
+    conn.execute("INSERT INTO vehicles(vehicle_id) VALUES('car1')")
+    with caplog.at_level("INFO", logger="car_insights.pipeline"):
+        rebuild(d, sensors, conn, 10_000_000)
+    msgs = [r.getMessage() for r in caplog.records if r.levelname == "INFO"]
+    assert len(msgs) == 1 and msgs[0].startswith("rebuild of 1 vehicles took")
+
+
 def test_rebuild_survives_one_vehicle_failing(env):
     conn, mqtt, d, sensors, totals = env
     now = 10_000_000
@@ -217,6 +226,32 @@ def test_rebuild_publishes_the_trip_it_closed_but_no_event(env):
     rebuild(Deriver(conn, lambda la, lo: "Home"), sensors, conn, last + QUIET_MS)  # the restart finds the car quiet
     assert mqtt.on("car_insights/car1/last_trip")[-1][0]["end"] == last
     assert mqtt.on("car_insights/car1/trip_event") == []
+
+
+def test_republish(env, caplog):
+    conn, mqtt, d, sensors, totals = env
+    now = 10_000_000
+    for vid in ("car1", "car2"):
+        conn.execute("INSERT INTO vehicles(vehicle_id, name) VALUES(?,?)", (vid, vid))
+        db.ingest(conn, vid, SRC, trip_samples(now - 200_000), now)
+        refresh(d, sensors, totals, vid, now - 200_000, now, TZ)
+    mqtt.msgs.clear()
+    republish(d, sensors, totals, conn, ["car1"])
+    topics = {t for t, _, _ in mqtt.msgs}
+    assert {"car_insights/car1/last_trip", "car_insights/car1/totals"} <= topics
+    assert not [t for t in topics if "car2" in t or t.endswith("_event")]
+    mqtt.msgs.clear()
+    republish(d, sensors, totals, conn, None)
+    assert {"car_insights/car1/last_trip", "car_insights/car2/last_trip", "car_insights/car1/totals", "car_insights/car2/totals"} <= {t for t, _, _ in mqtt.msgs}
+    mqtt.msgs.clear()
+    real = totals.publish_vehicle
+    totals.publish_vehicle = lambda vid: 1 / 0 if vid == "car1" else real(vid)
+    republish(d, sensors, totals, conn, None)  # logged, not raised, and car2 still goes out
+    assert "republish of car1 failed" in caplog.text
+    assert "car_insights/car2/totals" in {t for t, _, _ in mqtt.msgs}
+    totals.publish_groups = lambda: 1 / 0
+    republish(d, sensors, totals, conn, None)
+    assert "republish of the groups failed" in caplog.text
 
 
 def winding_samples(t0, secs, open_=False):

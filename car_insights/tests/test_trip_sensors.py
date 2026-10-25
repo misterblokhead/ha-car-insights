@@ -34,6 +34,36 @@ def test_discovery_once_then_state(env):
     assert retained and state["distance_km"] == 1.2 and state["net_kwh"] == 0.5 and state["consumption"] == 41.67
 
 
+def test_cost_sensor_and_event(env):
+    conn, mqtt, _ = env
+    ts = TripSensors(conn, mqtt, lambda vid: 57_000.0, lambda kind, vid, start: SERIES, cost=lambda kind, vid, row: 1.234)
+    c = {"start": 1000, "end": 4600, "added_wh": 12000.0}
+    ts.publish("car1", trip(1000), c, [trip(1000)], [c])
+    for leaf in ("last_trip_cost", "last_charge_cost"):
+        cfg = json.loads(next(p for t, p, _ in mqtt.msgs if t == f"homeassistant/sensor/car1_{leaf}/config"))
+        assert cfg["device_class"] == "monetary" and cfg["unit_of_measurement"] == "EUR" and "state_class" not in cfg
+    assert mqtt.on("car_insights/car1/last_trip")[0][0]["cost"] == 1.23 and mqtt.on("car_insights/car1/last_charge")[0][0]["cost"] == 1.23
+    assert mqtt.on("car_insights/car1/trip_event")[0][0]["cost"] == 1.23 and mqtt.on("car_insights/car1/charge_event")[0][0]["cost"] == 1.23
+
+
+def test_failing_cost_gives_null_and_still_publishes(env, caplog):
+    conn, mqtt, _ = env
+
+    def boom(kind, vid, row):
+        raise RuntimeError("no price")
+    ts = TripSensors(conn, mqtt, lambda vid: 57_000.0, lambda kind, vid, start: SERIES, cost=boom)
+    with caplog.at_level(logging.ERROR):
+        ts.publish("car1", trip(1000), None, [trip(1000)], [])
+    assert mqtt.on("car_insights/car1/last_trip")[0][0]["cost"] is None and mqtt.on("car_insights/car1/trip_event")[0][0]["cost"] is None
+    assert "cost of trip car1 at 1000 failed" in caplog.text
+
+
+def test_cost_defaults_to_null(env):
+    _, mqtt, ts = env
+    ts.publish("car1", trip(1000), None, [trip(1000)], [])
+    assert mqtt.on("car_insights/car1/last_trip")[0][0]["cost"] is None and mqtt.on("car_insights/car1/trip_event")[0][0]["cost"] is None
+
+
 def test_event_not_retained_per_trip(env):
     _, mqtt, ts = env
     ended = [trip(1000), trip(3000)]
@@ -59,11 +89,13 @@ def test_short_trip_has_no_consumption(env):
 
 def test_charge_state_and_event(env):
     _, mqtt, ts = env
-    c = {"start": 1000, "end": 4600, "place": "Home", "added_wh": 12000.0, "avg_w": 7000.0}
+    c = {"start": 1000, "end": 4600, "place": "Home", "added_wh": 12000.0, "avg_w": 7000.0, "lat": 52.1, "lon": 5.2, "zone": "Work"}
     ts.publish("car1", None, c, [], [c])
     state = mqtt.on("car_insights/car1/last_charge")[0][0]
     assert state["added_kwh"] == 12.0 and state["avg_power_kw"] == 7.0 and state["place"] == "Home"
-    assert mqtt.on("car_insights/car1/charge_event")[0][0]["event_type"] == "ended"
+    ev = mqtt.on("car_insights/car1/charge_event")[0][0]
+    assert ev["event_type"] == "ended" and ev["place"] == "Home"
+    assert not {"lat", "lon", "zone"} & ev.keys()  # the exact GPS point stays out of the event
     assert mqtt.on("car_insights/car1/last_trip") == []
 
 

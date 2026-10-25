@@ -2,6 +2,7 @@
   import { onMount, tick } from "svelte";
   import { get } from "../lib/api.js";
   import { NA, km, kwh, duration } from "../lib/format.js";
+  import { eur, tripCostLine } from "../lib/costs.js";
   import { arrow, compare, deltaText, durationParts, markerAt, per100, rangeLine, split } from "../lib/detail.js";
   import { chargePercents, consumptionBuckets, tripCharts } from "../lib/series.js";
   import Chart from "../lib/Chart.svelte";
@@ -93,6 +94,9 @@
 
     <div class="d-figs">
       {#each figures as f (f.label)}<Figure {...f} />{/each}
+      <Figure label="Cost" value={eur(data.cost.total)}>
+        {#if tripCostLine(data.cost)}<span class="d-note">{tripCostLine(data.cost)}</span>{/if}
+      </Figure>
     </div>
 
     <section class="d-card">

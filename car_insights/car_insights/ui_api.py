@@ -6,9 +6,9 @@ from datetime import date, datetime
 from typing import Annotated, Awaitable, Callable, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from . import access, activity, db, stats
+from . import access, activity, costs, db, prices, stats
 from .access import Viewer
 from .derive import Deriver, Zones
 from .protocol import fix, num
@@ -32,8 +32,51 @@ class _VehicleSettings(BaseModel):
     viewers: list[str]
 
 
+# strict: prices._num would take a JSON true as 1
+Num = Annotated[float, Field(strict=True)]
+Ms = Annotated[int, Field(strict=True, ge=0, lt=2**62)]
+
+
+class _Tariff(BaseModel):
+    valid_from: Ms
+    per_kwh: Num
+    start_fee: Num = 0
+    per_min: Num = 0
+
+
+class _Spot(BaseModel):
+    vehicle_id: str
+    start: Ms
+    name: str
+    per_kwh: Num
+    start_fee: Num = 0
+    per_min: Num = 0
+
+
+class _Receipt(BaseModel):
+    amount: Num | None
+
+
+class _FixedCost(BaseModel):
+    name: str
+    amount: Num
+    period: str
+    start: date
+    end: date | None
+
+
+class _End(BaseModel):
+    end: date | None
+
+
+class _Card(BaseModel):
+    markup_pct: Num
+    start_fee: Num
+
+
 def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], float],
            is_admin: Callable[[str], Awaitable[bool]], on_settings: Callable[[], None] = lambda: None,
+           on_costs: Callable[[list[str] | None], None] = lambda vids: None,
            ingress_hosts: tuple[str, ...] = ("172.30.32.2",), now_ms: Callable[[], int] = lambda: int(time.time() * 1000)) -> APIRouter:
     # handlers are async def with no awaits around the DB work (like /ingest): the event loop serializes access to the connection
     async def ingress_guard(request: Request) -> None:
@@ -66,14 +109,22 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
         if vid not in access.visible_vehicles(conn, viewer):
             raise _not_found()
 
-    def edit(fn, *args) -> dict:
+    def attempt(fn, *args):
         try:
-            fn(*args)
+            return fn(*args)
         except ValueError as e:
             raise HTTPException(400, str(e))
         except KeyError:
             raise _not_found()
+
+    def edit(fn, *args) -> dict:
+        attempt(fn, *args)
         on_settings()
+        return {}
+
+    def cost_edit(fn, *args, vids: list[str] | None = None) -> dict:
+        attempt(fn, *args)
+        on_costs(vids)
         return {}
 
     def has_open(table: str, vid: str) -> bool:
@@ -135,32 +186,38 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
 
     @r.get("/activity")
     async def get_activity(request: Request, view: str = "", before: EpochMs | None = None):
-        return activity.page(conn, vids_of(await who(request), view), before, now_ms(), tz, lambda v: db.device_info(conn, v)[0],
-                             deriver.trip_route, capacity)
+        out = activity.page(conn, vids_of(await who(request), view), before, now_ms(), tz, lambda v: db.device_info(conn, v)[0],
+                            deriver.trip_route, capacity)
+        for d in out["days"]:
+            for i in d["items"]:
+                if i["kind"] == "charge":
+                    c = costs.charge_cost(conn, i["vehicle_id"], i)
+                    i["cost"] = {"amount": c["amount"], "basis": c["basis"]}
+        return out
 
     @r.get("/stats")
     async def get_stats(request: Request, view: str = "", period: Literal["week", "month", "year"] = "week", at: date | None = None):
         vids, today = vids_of(await who(request), view), datetime.fromtimestamp(now_ms() / 1000, tz).date()
         if at is not None and at > today:
             raise HTTPException(422, "at is in the future")
-        return stats.stats(conn, vids, period, at or today, tz, (lambda v: db.device_info(conn, v)[0]) if view.startswith("g:") else None)
+        return stats.stats(conn, vids, period, at or today, tz, (lambda v: db.device_info(conn, v)[0]) if view.startswith("g:") else None, now_ms())
 
     @r.get("/trips/{vid}/{start}")
     async def trip(request: Request, vid: str, start: StartMs):
         row, series = detail("trips", deriver.trip_series, await who(request), vid, start)
-        return {"trip": row, "series": series, "route": deriver.trip_route(vid, start),
+        return {"trip": row, "cost": costs.trip_cost(conn, vid, row, tz), "series": series, "route": deriver.trip_route(vid, start),
                 "similar": stats.similar_trips(conn, vid, row), "capacity_wh": capacity(vid)}
 
     @r.get("/charges/{vid}/{start}")
     async def charge(request: Request, vid: str, start: StartMs):
         row, series = detail("charges", deriver.charge_series, await who(request), vid, start)
-        return {"charge": row, "series": series, "capacity_wh": capacity(vid),
+        return {"charge": row, "cost": costs.charge_cost(conn, vid, row), "series": series, "capacity_wh": capacity(vid),
                 "outside_temp_c": num(db.latest_at_or_before(conn, vid, start, ("outside_temp",)).get("outside_temp"))}
 
     @r.get("/settings")
     async def get_settings(request: Request):
         await who(request, admin=True)
-        return access.settings(conn)
+        return access.settings(conn) | {"prices": prices.settings(conn)}
 
     @r.post("/groups")
     async def create_group(request: Request, body: _Name):
@@ -186,5 +243,56 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
     async def put_vehicle(request: Request, vid: str, body: _VehicleSettings):
         await who(request, admin=True)
         return edit(access.set_vehicle, conn, vid, body.group_id, body.viewers)
+
+    @r.put("/prices/{target}")
+    async def put_price(request: Request, target: str, body: _Tariff):
+        await who(request, admin=True)
+        return cost_edit(prices.set_tariff, conn, target, body.valid_from, body.per_kwh, body.start_fee, body.per_min)
+
+    @r.post("/spots")
+    async def create_spot(request: Request, body: _Spot):
+        await who(request, admin=True)
+        sid = attempt(prices.create_spot, conn, body.vehicle_id, body.start, body.name, body.per_kwh, body.start_fee, body.per_min)
+        on_costs(None)
+        return {"id": sid}
+
+    @r.put("/spots/{sid}")
+    async def rename_spot(request: Request, sid: str, body: _Name):
+        await who(request, admin=True)
+        return cost_edit(prices.rename_spot, conn, sid, body.name)
+
+    @r.delete("/spots/{sid}")
+    async def delete_spot(request: Request, sid: str):
+        await who(request, admin=True)
+        return cost_edit(prices.delete_spot, conn, sid)
+
+    @r.put("/charges/{vid}/{start}/receipt")
+    async def put_receipt(request: Request, vid: str, start: StartMs, body: _Receipt):
+        await who(request, admin=True)
+        return cost_edit(prices.set_receipt, conn, vid, start, body.amount, vids=[vid])
+
+    @r.post("/vehicles/{vid}/fixed_costs")
+    async def add_fixed_cost(request: Request, vid: str, body: _FixedCost):
+        await who(request, admin=True)
+        cid = attempt(prices.add_fixed_cost, conn, vid, body.name, body.amount, body.period, body.start, body.end)
+        on_costs([vid])
+        return {"id": cid}
+
+    @r.put("/fixed_costs/{cid}")
+    async def end_fixed_cost(request: Request, cid: str, body: _End):
+        await who(request, admin=True)
+        on_costs([attempt(prices.end_fixed_cost, conn, cid, body.end)])
+        return {}
+
+    @r.delete("/fixed_costs/{cid}")
+    async def delete_fixed_cost(request: Request, cid: str):
+        await who(request, admin=True)
+        on_costs([attempt(prices.delete_fixed_cost, conn, cid)])
+        return {}
+
+    @r.put("/vehicles/{vid}/card")
+    async def put_card(request: Request, vid: str, body: _Card):
+        await who(request, admin=True)
+        return cost_edit(prices.set_card, conn, vid, body.markup_pct, body.start_fee, vids=[vid])
 
     return r

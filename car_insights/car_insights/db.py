@@ -34,6 +34,13 @@ CREATE TABLE trip_series(vehicle_id TEXT, start INTEGER, json TEXT, PRIMARY KEY(
 CREATE TABLE charge_series(vehicle_id TEXT, start INTEGER, json TEXT, PRIMARY KEY(vehicle_id, start));
 """, """
 CREATE TABLE trip_routes(vehicle_id TEXT, start INTEGER, algo INTEGER, points TEXT, PRIMARY KEY(vehicle_id, start));
+""", """
+CREATE TABLE charge_spots(spot_id TEXT PRIMARY KEY, name TEXT NOT NULL, lat REAL NOT NULL, lon REAL NOT NULL, radius_m REAL NOT NULL DEFAULT 100);
+CREATE TABLE tariffs(target TEXT, valid_from INTEGER, per_kwh REAL NOT NULL, start_fee REAL NOT NULL DEFAULT 0, per_min REAL NOT NULL DEFAULT 0, PRIMARY KEY(target, valid_from));
+CREATE TABLE fixed_costs(cost_id TEXT PRIMARY KEY, vehicle_id TEXT NOT NULL, name TEXT NOT NULL, amount REAL NOT NULL, period TEXT NOT NULL, start TEXT NOT NULL, end TEXT);
+CREATE TABLE charge_receipts(vehicle_id TEXT, start INTEGER, amount REAL NOT NULL, PRIMARY KEY(vehicle_id, start));
+ALTER TABLE vehicles ADD COLUMN card_markup_pct REAL NOT NULL DEFAULT 0;
+ALTER TABLE vehicles ADD COLUMN card_start_fee REAL NOT NULL DEFAULT 0
 """]
 
 

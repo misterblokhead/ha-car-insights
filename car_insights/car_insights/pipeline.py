@@ -43,7 +43,9 @@ def refresh(deriver: Deriver, sensors: TripSensors, totals: TotalsSensors, vid: 
 def rebuild(deriver: Deriver, sensors: TripSensors, conn: sqlite3.Connection, now_ms: int) -> None:
     """At start-up, before the first totals publish: derive every vehicle again, so rows dropped by an ALGO bump are back before
     its next ingest, then republish its last trip and charge states (a rebuild may have closed one). No events."""
-    for (vid,) in conn.execute("SELECT vehicle_id FROM vehicles").fetchall():
+    started = time.monotonic()
+    vehicles = conn.execute("SELECT vehicle_id FROM vehicles").fetchall()
+    for (vid,) in vehicles:
         try:
             first = conn.execute("SELECT MIN(t) FROM samples WHERE vehicle_id=?", (vid,)).fetchone()[0]
             if first is None:
@@ -63,6 +65,22 @@ def rebuild(deriver: Deriver, sensors: TripSensors, conn: sqlite3.Connection, no
             sensors.publish(vid, trips[0] if trips else None, charges[0] if charges else None, [], [])
         except Exception:
             log.exception("rebuild of %s failed", vid)
+    log.info("rebuild of %d vehicles took %.1f s", len(vehicles), time.monotonic() - started)
+
+
+def republish(deriver: Deriver, sensors: TripSensors, totals: TotalsSensors, conn: sqlite3.Connection, vids: list[str] | None) -> None:
+    """After a price changed: the last trip and charge states and the totals of the vehicles (all when None), and every group's. No events."""
+    for vid in vids if vids is not None else [r[0] for r in conn.execute("SELECT vehicle_id FROM vehicles")]:
+        try:
+            trips, charges = deriver.stored_trips(vid, 1), deriver.stored_charges(vid, 1)
+            sensors.publish(vid, trips[0] if trips else None, charges[0] if charges else None, [], [])
+            totals.publish_vehicle(vid)
+        except Exception:
+            log.exception("republish of %s failed", vid)
+    try:
+        totals.publish_groups()
+    except Exception:
+        log.exception("republish of the groups failed")
 
 
 def close_quiet(conn: sqlite3.Connection, summarize: Callable[[str, int | None, int], object], now_ms: int) -> None:

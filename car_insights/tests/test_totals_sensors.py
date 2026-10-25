@@ -1,11 +1,11 @@
 import asyncio
 import json
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from car_insights import access, db, totals_sensors
+from car_insights import access, db, prices, totals_sensors
 from car_insights.totals_sensors import TotalsSensors
 from conftest import FakeMqtt
 
@@ -13,7 +13,7 @@ TZ = ZoneInfo("Europe/Amsterdam")
 NOW = int(datetime(2026, 10, 23, 12, tzinfo=TZ).timestamp() * 1000)
 THIS_MONTH = int(datetime(2026, 10, 5, 12, tzinfo=TZ).timestamp() * 1000)
 LAST_MONTH = int(datetime(2026, 9, 5, 12, tzinfo=TZ).timestamp() * 1000)
-SENSORS = [f"{p}_{k}" for p in ("month", "year") for k in ("distance", "energy", "charged")]
+SENSORS = [f"{p}_{k}" for p in ("month", "year") for k in ("distance", "energy", "charged", "energy_cost", "fixed_cost", "total_cost", "cost_per_km")]
 
 
 def add(conn, vid, group=None, trips=(), charges=()):
@@ -23,7 +23,7 @@ def add(conn, vid, group=None, trips=(), charges=()):
     for start, dist, net in trips:
         conn.execute("INSERT INTO trips VALUES(?,?,?,?,?)", (vid, start, start + 1, 1, json.dumps({"distance_m": dist, "net_wh": net})))
     for start, added in charges:
-        conn.execute("INSERT INTO charges VALUES(?,?,?,?,?)", (vid, start, start + 1, 1, json.dumps({"added_wh": added})))
+        conn.execute("INSERT INTO charges VALUES(?,?,?,?,?)", (vid, start, start + 1, 1, json.dumps({"start": start, "end": start + 1, "added_wh": added})))
 
 
 @pytest.fixture
@@ -37,8 +37,8 @@ def test_vehicle_totals_published_after_close(env):
     add(conn, "car1", trips=[(THIS_MONTH, 10_000.0, 2_000.0), (LAST_MONTH, 5_000.0, 1_000.0)], charges=[(THIS_MONTH, 30_000.0)])
     ts.publish_vehicle("car1")
     st, retained = mqtt.on("car_insights/car1/totals")[-1]
-    assert retained and st == {"month_distance": 10.0, "month_energy": 2.0, "month_charged": 30.0,
-                               "year_distance": 15.0, "year_energy": 3.0, "year_charged": 30.0}
+    assert retained and {k: v for k, v in st.items() if "cost" not in k} == {"month_distance": 10.0, "month_energy": 2.0, "month_charged": 30.0,
+                                                                          "year_distance": 15.0, "year_energy": 3.0, "year_charged": 30.0}
     cfgs = {t: json.loads(p) for t, p, _ in mqtt.msgs if t.startswith("homeassistant/sensor/car1_")}
     assert sorted(cfgs) == sorted(f"homeassistant/sensor/car1_{s}/config" for s in SENSORS)
     d = cfgs["homeassistant/sensor/car1_month_distance/config"]
@@ -49,6 +49,36 @@ def test_vehicle_totals_published_after_close(env):
     n = len(mqtt.msgs)
     ts.publish_vehicle("car1")
     assert len(mqtt.msgs) == n + 1  # discovery is sent once, the state every time
+
+
+def test_cost_fields(env):
+    conn, mqtt, _ = env
+    ts = TotalsSensors(conn, mqtt, TZ, now_ms=lambda: int(datetime(2026, 10, 10, 12, tzinfo=TZ).timestamp() * 1000))
+    add(conn, "car1", trips=[(THIS_MONTH, 50_000.0, 9_000.0)], charges=[(THIS_MONTH, 20_000.0)])
+    add(conn, "car2")
+    prices.set_tariff(conn, "ac", 0, 0.40)
+    prices.add_fixed_cost(conn, "car1", "Insurance", 31.0, "month", date(2026, 10, 1), None)
+    ts.publish_vehicle("car1")
+    ts.publish_vehicle("car2")
+    st = mqtt.on("car_insights/car1/totals")[-1][0]
+    assert (st["month_energy_cost"], st["month_fixed_cost"], st["month_total_cost"], st["month_cost_per_km"]) == (8.8, 10.0, 18.8, 0.376)
+    assert mqtt.on("car_insights/car2/totals")[-1][0]["month_cost_per_km"] is None  # 0 km
+    cfgs = {t: json.loads(p) for t, p, _ in mqtt.msgs if t.startswith("homeassistant/sensor/car1_")}
+    cost = cfgs["homeassistant/sensor/car1_month_total_cost/config"]
+    assert cost["device_class"] == "monetary" and cost["unit_of_measurement"] == "EUR" and "state_class" not in cost
+    per_km = cfgs["homeassistant/sensor/car1_year_cost_per_km/config"]
+    assert per_km["unit_of_measurement"] == "EUR/km" and "device_class" not in per_km and per_km["name"] == "Year cost per km"
+
+
+def test_failing_cost_still_publishes_distance_and_energy(env, monkeypatch, caplog):
+    conn, mqtt, ts = env
+    add(conn, "car1", trips=[(THIS_MONTH, 10_000.0, 2_000.0)], charges=[(THIS_MONTH, 30_000.0)])
+    monkeypatch.setattr("car_insights.costs.period_costs", lambda *a: 1 / 0)
+    ts.publish_vehicle("car1")
+    st = mqtt.on("car_insights/car1/totals")[-1][0]
+    assert st["month_distance"] == 10.0 and st["year_charged"] == 30.0
+    assert all(st[f] is None for f in ("month_energy_cost", "month_fixed_cost", "year_total_cost", "month_cost_per_km", "year_cost_per_km"))
+    assert "totals cost failed" in caplog.text
 
 
 def test_vehicle_totals_zero_when_nothing_in_period(env):

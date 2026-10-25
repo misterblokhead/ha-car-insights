@@ -3,6 +3,7 @@
   import { hashOf } from "../lib/activity.js";
   import { NA, km, kwh, kwh100, delta, dayKey, dayLabel } from "../lib/format.js";
   import { split } from "../lib/detail.js";
+  import { eur, per100 as costPer100, uncostedText } from "../lib/costs.js";
   import { bucketLabel, change, isCurrent, periodLabel, places, shift } from "../lib/stats.js";
   import Chart from "../lib/Chart.svelte";
   import Figure from "../lib/ui/Figure.svelte";
@@ -85,11 +86,19 @@
   const segments = $derived(data ? places(data.by_place) : []);
   const tint = (s, i) => (s.other ? "--muted" : PLACE[i % PLACE.length]);
 
+  const costTrend = $derived(t ? trend(t.cost.total, data.previous.cost.total, true) : null); // more spent is the warning, like more energy
   const hl = $derived(data?.highlights);
   const share = $derived(hl?.gross_wh > 0 ? Math.round((hl.recup_wh / hl.gross_wh) * 100) : null);
   const when = (ms) => dayLabel(dayKey(ms), today);
   const trip = (x) => hashOf({ kind: "trip", vehicle_id: x.vehicle_id, start: x.start });
 </script>
+
+{#snippet changeTag(tr)}
+  <span class="trend" class:up={tr.hint && tr.dir > 0} class:down={tr.hint && tr.dir < 0}>
+    {#if tr.dir}<span aria-hidden="true">{tr.dir > 0 ? "▲" : "▼"}</span><span class="sr">{tr.dir > 0 ? "up" : "down"}</span>{/if}
+    {tr.text}
+  </span>
+{/snippet}
 
 <div class="page">
   <h1>Statistics</h1>
@@ -122,12 +131,7 @@
                 {#if f.count || f.trend}
                   <span class="sub">
                     {#if f.count}<span>{f.count}</span>{/if}
-                    {#if f.trend}
-                      <span class="trend" class:up={f.trend.hint && f.trend.dir > 0} class:down={f.trend.hint && f.trend.dir < 0}>
-                        {#if f.trend.dir}<span aria-hidden="true">{f.trend.dir > 0 ? "▲" : "▼"}</span><span class="sr">{f.trend.dir > 0 ? "up" : "down"}</span>{/if}
-                        {f.trend.text}
-                      </span>
-                    {/if}
+                    {#if f.trend}{@render changeTag(f.trend)}{/if}
                   </span>
                 {/if}
               </Figure>
@@ -143,7 +147,7 @@
               {#each data.per_vehicle as v (v.id)}
                 <li>
                   <b>{v.name}</b>
-                  <span class="d-note facts"><span>{km(v.totals.distance_m)}</span><span>{per100Text(v.totals)}</span><span>{kwh(v.totals.net_wh)} used</span><span>{kwh(v.totals.charged_wh)} charged</span></span>
+                  <span class="d-note facts"><span>{km(v.totals.distance_m)}</span><span>{per100Text(v.totals)}</span><span>{kwh(v.totals.net_wh)} used</span><span>{kwh(v.totals.charged_wh)} charged</span><span>{eur(v.totals.cost.total)} cost</span></span>
                 </li>
               {/each}
             </ul>
@@ -179,7 +183,15 @@
                 {#if share != null}<span class="d-note">{share} % of the {kwh(hl.gross_wh)} used before recuperation</span>{/if}
               </div>
             </li>
-            <li><div><span class="k">Cost</span><span class="v soon">Arrives with part 3</span></div></li>
+            <li>
+              <div>
+                <span class="k">Cost</span><span class="v">{eur(t.cost.total)}</span>
+                <span class="d-note cost">
+                  {eur(t.cost.energy)} charging · {eur(t.cost.fixed)} fixed{#if t.distance_m} · {costPer100(t.cost.total, t.distance_m)}{/if}{#if t.cost.uncosted > 0} · {uncostedText(t.cost.uncosted)}{/if}
+                  {#if costTrend}{@render changeTag(costTrend)}{/if}
+                </span>
+              </div>
+            </li>
           </ul>
         </section>
       </div>
@@ -269,7 +281,7 @@
   .hl .v { margin-left: auto; font-weight: 600; text-align: right; white-space: nowrap; }
   .hl a .v { color: var(--trip-text); }
   .hl a .v::after { content: " ›"; color: var(--muted); }
-  .hl .soon { font-weight: 400; color: var(--muted); }
+  .cost { display: flex; flex-wrap: wrap; gap: 0 8px; }
   .hl .d-note { flex-basis: 100%; }
 
   .places { --p3: #AF52DE; --p4: #5AC8FA; }

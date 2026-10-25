@@ -1,18 +1,26 @@
 <script>
   import { onMount, tick } from "svelte";
-  import { get } from "../lib/api.js";
+  import { get, send } from "../lib/api.js";
+  import { refresh } from "../lib/activity.svelte.js";
   import { NA, km, kwh, kw } from "../lib/format.js";
   import { durationParts, kwLabel, rangeLine, split } from "../lib/detail.js";
+  import { chargeBasis, costLabel } from "../lib/costs.js";
   import { chargeCharts, chargePercents, chargeSpeed } from "../lib/series.js";
   import Chart from "../lib/Chart.svelte";
   import Figure from "../lib/ui/Figure.svelte";
   import ChargeBar from "../lib/ui/ChargeBar.svelte";
   import "../lib/detail.css";
 
-  let { vid, start } = $props();
+  let { vid, start, isAdmin = false } = $props();
   let data = $state(null);
   let error = $state(null);
   let title = $state();
+  // admin edits of the cost: the receipt box, the "save as location" form, and the server's refusal text
+  let receipt = $state("");
+  let spot = $state(null); // null while the form is closed
+  let note = $state("");
+  let saving = $state(false);
+  const canSpot = $derived(data?.cost?.spot == null && c?.lat != null);
 
   const c = $derived(data?.charge);
   const estimated = $derived(c?.energy_source === "soc_estimate");
@@ -47,9 +55,34 @@
     error = null;
     try {
       data = await get(`api/ui/charges/${encodeURIComponent(vid)}/${start}`);
+      receipt = data.cost?.basis === "receipt" ? String(data.cost.amount) : "";
     } catch (e) {
       error = e;
     }
+  }
+
+  // run an edit, then show the charge again (and the list's cost under it)
+  async function edit(fn) {
+    note = "";
+    saving = true;
+    let ok = true;
+    try {
+      await fn();
+    } catch (e) {
+      ok = false;
+      note = e.detail || `Could not save (${e.message})`;
+    }
+    await load();
+    refresh();
+    saving = false;
+    return ok;
+  }
+  const setReceipt = (amount) => edit(() => send("PUT", `api/ui/charges/${encodeURIComponent(vid)}/${c.start}/receipt`, { amount }));
+  async function saveSpot(e) {
+    e.preventDefault();
+    const { name, per_kwh, start_fee, per_min } = spot;
+    const body = { vehicle_id: vid, start: c.start, name, per_kwh: Number(per_kwh), start_fee: Number(start_fee), per_min: Number(per_min) };
+    if (await edit(() => send("POST", "api/ui/spots", body))) spot = null;
   }
 
   onMount(() => {
@@ -94,6 +127,33 @@
     <div class="d-figs three">
       {#each figures as f (f.label)}<Figure {...f} />{/each}
     </div>
+
+    <section class="d-card">
+      <div class="d-head"><h2>Cost</h2><b class="amount">{costLabel(data.cost)}</b></div>
+      {#if c.end != null || data.cost.amount != null}<p class="d-note">{chargeBasis(data.cost)}</p>{/if}
+      {#if isAdmin}
+        <form class="edit" onsubmit={(e) => { e.preventDefault(); setReceipt(Number(receipt)); }}>
+          <label>Actual amount (€)<input type="number" min="0" step="0.01" inputmode="decimal" required bind:value={receipt} /></label>
+          <button class="d-btn" type="submit" disabled={saving}>Save</button>
+          {#if data.cost.basis === "receipt"}<button class="d-btn" type="button" disabled={saving} onclick={() => setReceipt(null)}>Clear</button>{/if}
+        </form>
+        {#if canSpot}
+          {#if spot}
+            <form class="edit" onsubmit={saveSpot}>
+              <label class="wide">Location name<input bind:value={spot.name} required maxlength="40" /></label>
+              <label>€/kWh<input type="number" min="0" step="any" inputmode="decimal" required bind:value={spot.per_kwh} /></label>
+              <label>Start fee<input type="number" min="0" step="any" inputmode="decimal" placeholder="0" bind:value={spot.start_fee} /></label>
+              <label>€/min<input type="number" min="0" step="any" inputmode="decimal" placeholder="0" bind:value={spot.per_min} /></label>
+              <button class="d-btn" type="submit" disabled={saving}>Save location</button>
+              <button class="d-btn" type="button" onclick={() => (spot = null)}>Cancel</button>
+            </form>
+          {:else}
+            <button class="d-btn" type="button" onclick={() => (spot = { name: "", per_kwh: "", start_fee: "", per_min: "" })}>Save as charge location</button>
+          {/if}
+        {/if}
+        {#if note}<p class="note" role="alert">{note}</p>{/if}
+      {/if}
+    </section>
 
     <section class="d-card">
       <div class="d-head"><h2>Charging speed</h2><span class="d-note">kW against charge level</span></div>
@@ -161,6 +221,15 @@
   .stats > span:nth-child(2) { align-items: center; }
   .stats > span:last-child { align-items: flex-end; }
   b { font-weight: 600; }
+  .edit { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-top: 12px; }
+  .edit label { display: flex; flex: 1 1 6.5em; flex-direction: column; min-width: 0; font-size: 13px; color: var(--muted); }
+  .edit .wide { flex-basis: 12em; }
+  .edit input { box-sizing: border-box; width: 100%; min-height: 44px; padding: 0 10px; border: 0; border-radius: var(--radius-ctl); background: var(--fill); color: var(--fg); font: inherit; }
+  .edit input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .d-btn:disabled { opacity: 0.35; cursor: default; }
+  .note { margin: 8px 0 0; color: #b00020; }
+  @media (prefers-color-scheme: dark) { .note { color: #ff8a80; } }
+  .amount { font-size: 22px; letter-spacing: -0.01em; }
   .foot { margin: 0; }
   .foot div:first-child { border-top: 0; }
   .source { margin-top: 8px; }

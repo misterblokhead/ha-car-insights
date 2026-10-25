@@ -1,4 +1,7 @@
+import logging
 from datetime import date, datetime, time, tzinfo
+
+log = logging.getLogger(__name__)
 
 
 def _midnight_ms(d: date, tz: tzinfo) -> int:
@@ -11,7 +14,8 @@ def period_starts(now_ms: int, tz: tzinfo) -> tuple[int, int]:
     return _midnight_ms(today.replace(day=1), tz), _midnight_ms(today.replace(month=1, day=1), tz)
 
 
-def _one(conn, vids: list[str], since: int) -> dict:
+def _one(conn, vids: list[str], since: int, now_ms: int, tz: tzinfo) -> dict:
+    from .costs import period_costs  # costs imports this module
     q = ",".join("?" * len(vids))
     # json null counts as 0 in the sums only
     d, n, nt = conn.execute(
@@ -20,9 +24,14 @@ def _one(conn, vids: list[str], since: int) -> dict:
     a, nc = conn.execute(
         f"SELECT COALESCE(SUM(json_extract(json,'$.added_wh')),0), COUNT(*)"
         f" FROM charges WHERE vehicle_id IN ({q}) AND end IS NOT NULL AND start >= ?", (*vids, since)).fetchone()
-    return {"distance_m": float(d), "net_wh": float(n), "charged_wh": float(a), "trips": nt, "charges": nc}
+    try:
+        cost = period_costs(conn, vids, since, now_ms + 1, tz, now_ms)
+    except Exception:  # a cost problem is a null, never lost distance and energy
+        log.exception("totals cost failed")
+        cost = {"energy": None, "fixed": None, "total": None, "uncosted": None}
+    return {"distance_m": float(d), "net_wh": float(n), "charged_wh": float(a), "trips": nt, "charges": nc, "cost": cost}
 
 
 def totals(conn, vids: list[str], now_ms: int, tz: tzinfo) -> dict:
     month, year = period_starts(now_ms, tz)
-    return {"month": _one(conn, vids, month), "year": _one(conn, vids, year)}
+    return {"month": _one(conn, vids, month, now_ms, tz), "year": _one(conn, vids, year, now_ms, tz)}

@@ -11,7 +11,7 @@ from . import db
 from .db import connect
 from .mqtt_out import MqttOut
 from .poller import Poller, SourceConf
-from . import ha_users, pipeline, ui_api
+from . import costs, ha_users, pipeline, prices, ui_api
 from .derive import Deriver
 from .ha_users import AdminCache
 from .publisher import Publisher
@@ -36,8 +36,11 @@ def main() -> None:
 
     zones = ZoneCache(lambda: fetch_zones(sup_token))
     # a zone added, moved or renamed reaches stored trips and charges through a rebuild at the next start
-    deriver = Deriver(conn, zones, capacity, rebuild=zones_changed(lambda: fetch_zones(sup_token), Path("/data/zones.json")))
-    sensors = TripSensors(conn, mqtt, capacity, lambda kind, vid, start: getattr(deriver, f"{kind}_series")(vid, start))
+    deriver = Deriver(conn, zones, capacity, rebuild=zones_changed(lambda: fetch_zones(sup_token), Path("/data/zones.json")),
+                      spots=lambda lat, lon: prices.spot_name_at(conn, lat, lon))
+    # tz is assigned below; the cost lambda reads it only when called
+    sensors = TripSensors(conn, mqtt, capacity, lambda kind, vid, start: getattr(deriver, f"{kind}_series")(vid, start),
+                          cost=lambda kind, vid, row: costs.trip_cost(conn, vid, row, tz)["total"] if kind == "trip" else costs.charge_cost(conn, vid, row)["amount"])
     tz = fetch_time_zone(sup_token)
     totals = TotalsSensors(conn, mqtt, tz)
 
@@ -48,7 +51,8 @@ def main() -> None:
                     lambda vid, min_t, received: summarize(vid, min_t, received))  # the open trip and summary only matter to the webhook ack
     pipeline.rebuild(deriver, sensors, conn, int(time.time() * 1000))  # before the server and run_daily's first publish: an ALGO bump emptied the rows
     uvicorn.run(create_app(conn, token, Publisher(conn, mqtt, capacity).on_ingested, summarize=summarize, background=[poller.run, totals.run_daily, lambda: pipeline.run_close_quiet(conn, summarize)],
-                           ui=ui_api.router(conn, deriver, zones, tz, capacity, AdminCache(lambda: ha_users.fetch_users(sup_token)).is_admin, on_settings=totals.publish_groups),
+                           ui=ui_api.router(conn, deriver, zones, tz, capacity, AdminCache(lambda: ha_users.fetch_users(sup_token)).is_admin, on_settings=totals.publish_groups,
+                           on_costs=lambda vids: pipeline.republish(deriver, sensors, totals, conn, vids)),
                            web_dir=Path("/app/web")),
                 host="0.0.0.0", port=8099)
 
