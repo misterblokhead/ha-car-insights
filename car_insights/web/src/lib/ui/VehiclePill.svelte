@@ -1,9 +1,11 @@
 <script>
   import { tick } from "svelte";
   import { fade } from "svelte/transition";
+  import { cssMs } from "../motion.js";
 
   let { options, value = $bindable("") } = $props();
 
+  const FADE = cssMs("--fade");
   let open = $state(false);
   let root = $state(), button = $state(), menu = $state();
   const current = $derived(options.find((o) => o.value === value));
@@ -52,7 +54,7 @@
       <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
     </button>
     {#if open}
-      <div class="menu chrome" role="menu" aria-label="Vehicle" tabindex="-1" bind:this={menu} onkeydown={keydown} transition:fade={{ duration: 150 }}>
+      <div class="menu chrome" role="menu" aria-label="Vehicle" tabindex="-1" bind:this={menu} onkeydown={keydown} transition:fade={{ duration: FADE }}>
         {#each options as o (o.value)}
           <button role="menuitemradio" aria-checked={o.value === value} tabindex="-1" onclick={() => pick(o.value)}>
             <span>{o.label}</span>

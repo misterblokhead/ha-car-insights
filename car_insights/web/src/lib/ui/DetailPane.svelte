@@ -10,6 +10,7 @@
   import { onMount } from "svelte";
   import { fade } from "svelte/transition";
   import { createSpring } from "../spring.js";
+  import { animate, cssMs } from "../motion.js";
   import { shouldClose, velocity } from "../gesture.js";
   import { screen } from "../media.svelte.js";
 
@@ -18,7 +19,7 @@
   // (from 1080 px) a column beside the list; those two only cross-fade. Reduced motion: opacity only.
   let { id, onclose, prev = null, next = null, children } = $props();
 
-  const FADE = 150, EDGE = 24, SLOP = 8;
+  const EDGE = 24, SLOP = 8, FADE = cssMs("--fade");
   const overlay = $derived(!screen.split);
   const slide = $derived(!screen.wide && !screen.reducedMotion);
   const spring = createSpring({ response: 0.35, damping: 1 });
@@ -28,46 +29,39 @@
   let held = $state(false);
   let leaving = $state(false);
   let el = $state();
-  let raf = 0;
+  let closing = 0;
   let drag = null;
 
-  // Advances the spring every frame until it settles; a layer that settled off screen is closed.
-  function run() {
-    cancelAnimationFrame(raf);
-    busy = true;
-    let last = 0;
-    const tick = (now) => {
-      let settled = spring.step(Math.min((now - (last || now - 16)) / 1000, 0.05));
-      last = now;
-      if (!settled && Math.abs(spring.value - spring.target) < 1 && Math.abs(spring.velocity) < 30) { // the last pixel is not worth a second of busy layer
-        Object.assign(spring, { value: spring.target, velocity: 0 });
-        settled = true;
-      }
-      x = spring.value;
-      if (!settled) return void (raf = requestAnimationFrame(tick));
+  // Settled off screen: close. The last pixel is not worth a second of busy layer, hence the snap.
+  const motion = animate(spring, {
+    snap: { distance: 1, speed: 30 },
+    onFrame: (v) => (x = v),
+    onSettle() {
       busy = false;
       if (spring.target > 0) onclose();
-    };
-    raf = requestAnimationFrame(tick);
+    },
+  });
+  function slideTo(target, velocity) {
+    busy = true;
+    motion.to(target, velocity);
   }
 
   onMount(() => {
     spring.value = x;
-    if (startsOff) {
-      spring.set(0);
-      run();
-    }
-    return () => cancelAnimationFrame(raf);
+    if (startsOff) slideTo(0);
+    return () => {
+      motion.stop();
+      clearTimeout(closing);
+    };
   });
 
   function close() {
     if (leaving) return;
     if (slide) {
-      spring.set(el.offsetWidth); // keeps the velocity the layer has now
-      run();
+      slideTo(el.offsetWidth); // keeps the velocity the layer has now
     } else {
       leaving = true;
-      setTimeout(onclose, FADE);
+      closing = setTimeout(onclose, FADE);
     }
   }
 
@@ -93,7 +87,7 @@
   };
   // A press only becomes a swipe after SLOP px of horizontal travel, so a tap on the back button stays a tap; a moving layer is taken at once.
   function hold(e) {
-    cancelAnimationFrame(raf);
+    motion.stop();
     el.setPointerCapture(e.pointerId);
     drag.live = true;
     busy = held = true;
@@ -125,8 +119,7 @@
     drag = null;
     held = false;
     const width = el.offsetWidth;
-    spring.set(shouldClose(x, v, width) ? width : 0, { velocity: v });
-    run();
+    slideTo(shouldClose(x, v, width) ? width : 0, v);
   }
 
   // the list (and on a phone the tab bar and switcher) cannot be reached or read under the layer

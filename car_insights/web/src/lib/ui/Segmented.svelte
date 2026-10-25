@@ -1,5 +1,6 @@
 <script>
   import { createSpring } from "../spring.js";
+  import { animate } from "../motion.js";
   import { screen } from "../media.svelte.js";
 
   let { options, value = $bindable(""), label } = $props();
@@ -7,6 +8,7 @@
   const name = $props.id();
   const PAD = 2;
   const spring = createSpring({ response: 0.35, damping: 1 });
+  const motion = animate(spring, { onFrame: (v) => (x = v) });
   let width = $state(0);
   let x = $state(0);
   let placed = false; // the first measured position is taken, not animated to
@@ -20,16 +22,8 @@
       x = target;
       return;
     }
-    spring.set(target);
-    let raf = 0, last = 0;
-    const tick = (now) => {
-      const settled = spring.step(Math.min((now - (last || now - 16)) / 1000, 0.05));
-      last = now;
-      x = spring.value;
-      if (!settled) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    motion.to(target);
+    return motion.stop;
   });
 </script>
 
