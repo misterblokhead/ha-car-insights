@@ -105,11 +105,11 @@ def test_detail_has_series_and_capacity(conn):
     charge = seed_charge(conn, "car1", 1000, 2000, series={"t": [1, 2]})
     c, _ = client(conn)
     t = c.get("/api/ui/trips/car1/1000", headers=VIEWER).json()
-    assert t == {"trip": row, "cost": {"energy": None, "fixed": None, "total": None}, "series": None, "route": None, "similar": None, "capacity_wh": CAP["car1"]}
+    assert t == {"trip": row | {"start_pct": None, "end_pct": None, "wh_per_100km": None}, "cost": {"energy": None, "fixed": None, "total": None}, "series": None, "route": None, "similar": None, "capacity_wh": CAP["car1"]}
     ch = c.get("/api/ui/charges/car1/1000", headers=VIEWER).json()
     cost = ch.pop("cost")
     assert cost["amount"] is None and cost["basis"] is None  # no tariff set: not computable, never 0
-    assert ch == {"charge": charge, "series": {"t": [1, 2]}, "capacity_wh": CAP["car1"], "outside_temp_c": None}
+    assert ch == {"charge": charge | {"start_pct": None, "end_pct": None}, "series": {"t": [1, 2]}, "capacity_wh": CAP["car1"], "outside_temp_c": None}
 
 
 def test_trip_detail_route_and_similar(conn):
@@ -327,8 +327,19 @@ def test_stats_defaults_to_today(conn):
     put(conn, "trips", "car1", ms(2026, 10, 18), ms(2026, 10, 18, 1), {"distance_m": 5000})
     c, _ = client(conn)
     r = c.get("/api/ui/stats?view=v:car1&period=week", headers=VIEWER).json()
-    assert r["period"] == {"start": ms(2026, 10, 19), "end": ms(2026, 10, 26)}
+    assert (r["period"]["start"], r["period"]["end"]) == (ms(2026, 10, 19), ms(2026, 10, 26))
     assert r["totals"]["distance_m"] == 1000 and r["previous"]["distance_m"] == 5000
+
+
+def test_stats_without_at(conn):
+    c, _ = client(conn)
+    r = c.get("/api/ui/stats?view=v:car1&period=week", headers=VIEWER).json()  # NOW is Friday 2026-10-23
+    assert r["period"] == {"start": ms(2026, 10, 19), "end": ms(2026, 10, 26), "first": "2026-10-19", "prev_at": "2026-10-18", "next_at": None}
+    r = c.get("/api/ui/stats?view=v:car1&period=month&at=2026-09-15", headers=VIEWER).json()
+    assert (r["period"]["first"], r["period"]["prev_at"], r["period"]["next_at"]) == ("2026-09-01", "2026-08-31", "2026-10-01")
+    r = c.get("/api/ui/stats?view=v:car1&period=month", headers=VIEWER).json()
+    assert (r["period"]["first"], r["period"]["next_at"]) == ("2026-10-01", None)
+    assert c.get("/api/ui/stats?view=v:car1&period=week&at=2026-10-24", headers=VIEWER).status_code == 422
 
 
 CHARGE = {"added_wh": 20_000, "lat": 52.0, "lon": 5.0}

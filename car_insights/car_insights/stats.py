@@ -31,6 +31,7 @@ def stats(conn: sqlite3.Connection, vids: list[str], period: str, at: date, tz: 
     first, after = span(period, at)
     lo, hi = period_bounds(period, at, tz)
     plo, phi = period_bounds(period, first - timedelta(days=1), tz)
+    today = None if now_ms is None else local_date(now_ms, tz)
     now_ms = hi if now_ms is None else now_ms  # None: the period has ended
     # buckets are days, or months for a year; a trip belongs to the one it started in (local time)
     key = (lambda d: d.replace(day=1)) if period == "year" else (lambda d: d)
@@ -52,7 +53,9 @@ def stats(conn: sqlite3.Connection, vids: list[str], period: str, at: date, tz: 
     places = [{"place": p, "wh": wh} for p, wh in store.charged_by_place(conn, vids, lo, hi)]
     places.sort(key=lambda p: (-p["wh"], p["place"] is None, p["place"] or ""))
     return {
-        "period": {"start": lo, "end": hi},
+        # the days the page steps to: none after the present (a None `now_ms` is the past: always one)
+        "period": {"start": lo, "end": hi, "first": first.isoformat(), "prev_at": (first - timedelta(days=1)).isoformat(),
+                   "next_at": None if today is not None and after > today else after.isoformat()},
         "totals": sums(conn, vids, lo, hi, tz, now_ms),
         "previous": sums(conn, vids, plo, phi, tz, now_ms),
         "buckets": [{"start": midnight_ms(d, tz), "distance_m": m, "net_wh": wh, "wh_per_100km": wh_per_100km(m, wh)} for d, (m, wh) in buckets.items()],

@@ -100,7 +100,7 @@ def test_previous_period_totals():
     s = stats.stats(c, ["car1"], "week", OCT24, TZ)
     assert plain(s["previous"]) == {"distance_m": 1000, "net_wh": 100, "charged_wh": 5000, "trips": 1, "charges": 1}
     assert plain(s["totals"]) == {"distance_m": 3000, "net_wh": 300, "charged_wh": 0, "trips": 1, "charges": 0}
-    assert s["period"] == {"start": ms(2026, 10, 19), "end": ms(2026, 10, 26)}
+    assert s["period"] == {"start": ms(2026, 10, 19), "end": ms(2026, 10, 26), "first": "2026-10-19", "prev_at": "2026-10-18", "next_at": "2026-10-26"}
     # the month before January is December of the year before; the boundary instant belongs to the later period
     row(c, "trips", ms(2025, 12, 31, 23, 59), {"distance_m": 7})
     row(c, "trips", ms(2026, 1, 1), {"distance_m": 9})

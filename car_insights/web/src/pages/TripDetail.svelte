@@ -1,10 +1,10 @@
 <script>
   import { onMount, tick } from "svelte";
   import { get } from "../lib/api.js";
-  import { NA, km, kwh, duration } from "../lib/format.js";
+  import { NA, km, kwh, kwhPer100, duration } from "../lib/format.js";
   import { eur, tripCostLine } from "../lib/costs.js";
-  import { arrow, compare, deltaText, durationParts, markerAt, per100, rangeLine, split } from "../lib/detail.js";
-  import { chargePercents, consumptionBuckets, tripCharts } from "../lib/series.js";
+  import { arrow, compare, deltaText, durationParts, markerAt, rangeLine, split } from "../lib/detail.js";
+  import { consumptionBuckets, tripCharts } from "../lib/series.js";
   import Chart from "../lib/Chart.svelte";
   import Figure from "../lib/ui/Figure.svelte";
   import RouteOutline from "../lib/ui/RouteOutline.svelte";
@@ -22,8 +22,7 @@
   const speed = $derived(data ? tripCharts(data.series)?.speed : null);
   const avg = $derived(t && t.avg_speed_mps != null ? t.avg_speed_mps * 3.6 : null);
   const max = $derived(t?.max_speed_mps == null ? null : t.max_speed_mps * 3.6);
-  const used = $derived(t ? per100(t) : null);
-  const pc = $derived(t ? chargePercents(t, data.capacity_wh) : null);
+  const used = $derived(t ? kwhPer100(t.wh_per_100km) : null);
   const cmp = $derived(t ? compare(t, data.similar) : null);
 
   const fig = (label, [value, unit]) => ({ label, value, unit });
@@ -155,7 +154,7 @@
 
     <section class="d-card">
       <dl class="d-rows foot">
-        <div><dt>Battery</dt><dd>{arrow(whole(pc.from), whole(pc.to), "%")}</dd></div>
+        <div><dt>Battery</dt><dd>{arrow(whole(t.start_pct), whole(t.end_pct), "%")}</dd></div>
         <div><dt>Outside temperature</dt><dd>{t.avg_temp_c == null ? NA : `${t.avg_temp_c.toFixed(0)} °C`}</dd></div>
         <div><dt>Odometer</dt><dd>{arrow(whole(t.odometer_start_km), whole(t.odometer_end_km), "km")}</dd></div>
       </dl>

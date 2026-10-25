@@ -1,5 +1,5 @@
 // Pure helpers of the trip and charge detail pages (no runes, so node --test can import them).
-import { NA, kwh100, delta, dayKey, dayLabel, time } from "./format.js";
+import { NA, kwhPer100, delta, dayKey, dayLabel, time } from "./format.js";
 
 // "12.3 km" -> ["12.3", "km"]; a value without a unit (the missing "–") keeps an empty unit
 export function split(text) {
@@ -14,9 +14,6 @@ export function durationParts(s) {
   return [min >= 60 ? `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")}` : String(min), "min"];
 }
 
-// kWh/100 km of a trip; null for a hop under 100 m, which gives a meaningless figure
-export const per100 = (trip) => (trip.distance_m >= 100 ? kwh100(trip.net_wh, trip.distance_m) : null);
-
 const pair = (mine, usual) => (mine == null || usual == null ? null : { mine, usual, delta: mine - usual });
 
 // This trip against the average of its earlier trips on the same route (the `similar` of the API); each measure is null when either side is unknown.
@@ -24,7 +21,7 @@ export function compare(trip, similar) {
   if (!similar) return null;
   return {
     duration: pair(trip.duration_s == null ? null : trip.duration_s / 60, similar.avg_duration_s == null ? null : similar.avg_duration_s / 60),
-    consumption: pair(per100(trip), similar.avg_wh_per_100km == null ? null : similar.avg_wh_per_100km / 1000),
+    consumption: pair(kwhPer100(trip.wh_per_100km), similar.avg_wh_per_100km == null ? null : similar.avg_wh_per_100km / 1000),
   };
 }
 

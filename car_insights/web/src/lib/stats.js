@@ -3,22 +3,9 @@ const DAY = 86400000;
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
 const parts = (d) => d.split("-").map(Number);
-const monday = (d) => iso(Date.parse(`${d}T00:00:00Z`) - ((new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7) * DAY);
 
-// n periods later (negative: earlier); a day past the end of the target month is clamped to its last day.
-export function shift(period, at, n) {
-  if (period === "week") return iso(Date.parse(`${at}T00:00:00Z`) + 7 * n * DAY);
-  const [y, m, d] = parts(at);
-  const index = period === "year" ? y * 12 + m - 1 + 12 * n : y * 12 + m - 1 + n;
-  const [ny, nm] = [Math.floor(index / 12), index % 12];
-  const last = new Date(Date.UTC(ny, nm + 1, 0)).getUTCDate();
-  return `${ny}-${String(nm + 1).padStart(2, "0")}-${String(Math.min(d, last)).padStart(2, "0")}`;
-}
-
-export function isCurrent(period, at, today) {
-  if (period === "week") return monday(at) === monday(today);
-  return at.slice(0, period === "year" ? 4 : 7) === today.slice(0, period === "year" ? 4 : 7);
-}
+// The statistics request; without `at` the server answers for today in its own time zone.
+export const statsUrl = (view, period, at) => `api/ui/stats?view=${encodeURIComponent(view)}&period=${period}${at ? `&at=${at}` : ""}`;
 
 // (now − before) / before; null without a baseline.
 export const change = (now, before) => (now == null || !before ? null : (now - before) / before);

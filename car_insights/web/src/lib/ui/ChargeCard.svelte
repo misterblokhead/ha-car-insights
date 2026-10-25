@@ -4,10 +4,8 @@
   import { costLabel } from "../costs.js";
   import ChargeBar from "./ChargeBar.svelte";
 
-  // capacity: the vehicle's battery in Wh, for the charge percentages
-  let { item, capacity, current = false } = $props();
-  const level = (wh) => (wh == null || !capacity ? null : (wh / capacity) * 100);
-  const from = $derived(level(item.start_wh)), to = $derived(level(item.end_wh));
+  let { item, current = false } = $props();
+  const from = $derived(item.start_pct), to = $derived(item.end_pct);
   const [added, unit] = $derived(`${item.energy_source === "soc_estimate" && item.added_wh != null ? "~" : ""}${kwh(item.added_wh)}`.split(" "));
   const when = $derived(`${time(item.start)} – ${item.end == null ? "now" : time(item.end)} · ${kw(item.avg_w)}`);
 </script>

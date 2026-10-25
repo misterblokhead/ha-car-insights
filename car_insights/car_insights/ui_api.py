@@ -191,13 +191,14 @@ def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
     @r.get("/trips/{vid}/{start}")
     async def trip(request: Request, vid: str, start: StartMs):
         row, series = detail(TRIP, await who(request), vid, start)
-        return {"trip": row, "cost": costs.trip_cost(conn, vid, row, tz), "series": series, "route": store.route(conn, vid, start),
-                "similar": stats.similar_trips(conn, vid, row), "capacity_wh": capacity(vid)}
+        return {"trip": activity.with_figures("trip", row, capacity(vid)), "cost": costs.trip_cost(conn, vid, row, tz), "series": series,
+                "route": store.route(conn, vid, start), "similar": stats.similar_trips(conn, vid, row), "capacity_wh": capacity(vid)}
 
     @r.get("/charges/{vid}/{start}")
     async def charge(request: Request, vid: str, start: StartMs):
         row, series = detail(CHARGE, await who(request), vid, start)
-        return {"charge": row, "cost": costs.charge_cost(prices.book(conn, vid), row), "series": series, "capacity_wh": capacity(vid),
+        return {"charge": activity.with_figures("charge", row, capacity(vid)), "cost": costs.charge_cost(prices.book(conn, vid), row),
+                "series": series, "capacity_wh": capacity(vid),
                 "outside_temp_c": num(db.latest_at_or_before(conn, vid, start, ("outside_temp",)).get("outside_temp"))}
 
     @r.get("/settings")

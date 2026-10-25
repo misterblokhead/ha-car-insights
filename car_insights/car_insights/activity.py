@@ -3,8 +3,17 @@ from datetime import datetime
 from typing import Callable
 
 from . import route as route_mod, store
+from .figures import pct, wh_per_100km
 from .kinds import KINDS
 from .periods import midnight_ms
+
+
+def with_figures(kind: str, row: dict, capacity_wh: float | None) -> dict:
+    """The row with the figures the server owns: consumption of a trip, and the battery percentages of both kinds."""
+    out = {**row, "start_pct": pct(row.get("start_wh"), capacity_wh), "end_pct": pct(row.get("end_wh"), capacity_wh)}
+    if kind == "trip":
+        out["wh_per_100km"] = wh_per_100km(row.get("distance_m"), row.get("net_wh"))
+    return out
 
 
 def page(conn, vids: list[str], before: int | None, now_ms: int, tz, name: Callable[[str], str],
@@ -38,7 +47,7 @@ def page(conn, vids: list[str], before: int | None, now_ms: int, tz, name: Calla
         if start < cut:
             out["next"] = cut
             break
-        item = {**row, "kind": kind, "vehicle_id": v, "vehicle_name": name(v)}
+        item = {**with_figures(kind, row, out["capacity_wh"][v]), "kind": kind, "vehicle_id": v, "vehicle_name": name(v)}
         if kind == "trip":
             pts = store.route(conn, v, start)
             item["route"] = None if pts is None else route_mod.card(pts)

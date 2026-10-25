@@ -44,12 +44,6 @@ export function chargeCharts(s) {
   };
 }
 
-// Real (unclamped) percentages of capacity; each is null when an input is unknown.
-export function chargePercents(c, capacity_wh) {
-  const p = (wh) => (wh == null || !capacity_wh ? null : (wh / capacity_wh) * 100);
-  return { added: p(c.added_wh), from: p(c.start_wh), to: p(c.end_wh) };
-}
-
 // Energy per `step` km of distance: [x = bucket end km, net/gross/recup kWh used in that bucket]. Null without distance rows.
 export function consumptionBuckets(s, step = 0.5) {
   if (!s || !s.rows) return null;

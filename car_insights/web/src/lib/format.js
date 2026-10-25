@@ -48,8 +48,9 @@ export function daySummary({ distance_m, net_wh, charged_wh }) {
   return parts.join(" · ");
 }
 
-// Consumption in kWh per 100 km; null without both inputs or without distance.
-export const kwh100 = (net_wh, distance_m) => (net_wh == null || !distance_m ? null : (net_wh / 1000 / distance_m) * 100000);
+// The server's consumption (Wh per 100 km, null when it means nothing) in kWh per 100 km, and as text.
+export const kwhPer100 = (wh) => (wh == null ? null : wh / 1000);
+export const consumption = (wh) => num(kwhPer100(wh), (v) => `${v.toFixed(1)} kWh/100 km`);
 
 // "+1.1 kWh/100", "−3 min" (true minus sign).
 export const delta = (value, unit, digits = 0) =>

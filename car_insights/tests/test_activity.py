@@ -133,3 +133,17 @@ def test_first_page_reads_only_recent_rows(conn):
     assert sorted(((i["start"], i["kind"]) for d in got["days"] for i in d["items"]), key=lambda r: (-r[0], r[1])) == want
     assert all("LIMIT" in q or "start>=?" in q or "end IS NULL" in q or "trip_routes" in q for q in seen)  # a route is read per shown trip
     assert sum(i["end"] is None for d in got["days"] for i in d["items"]) == 2  # both open rows are there
+
+
+def test_items_carry_consumption_and_battery_percent(conn):
+    put(conn, "trips", "car1", at(2026, 10, 25, 8), at(2026, 10, 25, 9), {"distance_m": 60, "net_wh": 30, "start_wh": 40_000, "end_wh": 39_000})
+    put(conn, "trips", "car1", at(2026, 10, 25, 6), at(2026, 10, 25, 7), {"distance_m": 20_000, "net_wh": 5_000})
+    put(conn, "charges", "car1", at(2026, 10, 25, 10), at(2026, 10, 25, 11), {"start_wh": 30_000, "end_wh": 61_000})
+    put(conn, "charges", "car1", at(2026, 10, 25, 12), None)
+    items = {(i["kind"], i["start"]): i for i in page(conn)["days"][0]["items"]}
+    short, long_ = items[("trip", at(2026, 10, 25, 8))], items[("trip", at(2026, 10, 25, 6))]
+    assert short["wh_per_100km"] is None and (short["start_pct"], short["end_pct"]) == (80.0, 78.0)
+    assert long_["wh_per_100km"] == 25_000 and long_["start_pct"] is None
+    charge, open_charge = items[("charge", at(2026, 10, 25, 10))], items[("charge", at(2026, 10, 25, 12))]
+    assert (charge["start_pct"], charge["end_pct"]) == (60.0, 100.0)  # 61 kWh on a 50 kWh car is clamped
+    assert open_charge["start_pct"] is None and open_charge["end_pct"] is None

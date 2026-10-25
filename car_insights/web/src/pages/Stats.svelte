@@ -1,10 +1,10 @@
 <script>
   import { get } from "../lib/api.js";
   import { hashOf } from "../lib/activity.js";
-  import { NA, km, kwh, kwh100, delta, dayKey, dayLabel } from "../lib/format.js";
+  import { NA, km, kwh, kwhPer100, consumption, delta, dayKey, dayLabel } from "../lib/format.js";
   import { split } from "../lib/detail.js";
   import { eur, per100 as costPer100, uncostedText } from "../lib/costs.js";
-  import { bucketLabel, change, isCurrent, periodLabel, places, shift } from "../lib/stats.js";
+  import { bucketLabel, change, periodLabel, places, statsUrl } from "../lib/stats.js";
   import Chart from "../lib/Chart.svelte";
   import Figure from "../lib/ui/Figure.svelte";
   import Segmented from "../lib/ui/Segmented.svelte";
@@ -14,17 +14,16 @@
 
   const PERIODS = [{ value: "week", label: "Week" }, { value: "month", label: "Month" }, { value: "year", label: "Year" }];
   const PLACE = ["--charge", "--trip", "--energy", "--p3", "--p4"];
-  const today = dayKey(Date.now()); // the browser's day; if the server's differs by one, its 422 shows as the error line
+  const today = dayKey(Date.now()); // only labels the days of the highlights
   let period = $state("week");
-  let at = $state(today);
+  let at = $state(null); // null: the server's today
   let data = $state(null);
   let error = $state(false);
   let loading = $state(true);
   let seq = 0;
 
   // switching the period starts at the present again
-  const setPeriod = (p) => ((period = p), (at = today));
-  const current = $derived(isCurrent(period, at, today));
+  const setPeriod = (p) => ((period = p), (at = null));
 
   // the newest request wins; the data on screen stays (dimmed) until the next arrives
   async function load() {
@@ -32,7 +31,7 @@
     loading = true;
     error = false;
     try {
-      const d = await get(`api/ui/stats?view=${encodeURIComponent(view)}&period=${period}&at=${at}`);
+      const d = await get(statsUrl(view, period, at));
       if (n === seq) data = d;
     } catch {
       if (n === seq) error = true;
@@ -49,8 +48,7 @@
     const r = Math.round(c * 100);
     return { dir: Math.sign(r), text: `${Math.abs(r)} %`, hint };
   };
-  const per100 = (x) => kwh100(x.net_wh, x.distance_m);
-  const per100Text = (x) => (per100(x) == null ? NA : `${per100(x).toFixed(1)} kWh/100 km`);
+  const per100 = (x) => kwhPer100(x.wh_per_100km);
 
   const t = $derived(data?.totals);
   const tiles = $derived.by(() => {
@@ -70,7 +68,7 @@
   // bars: distance per bucket on the left axis, consumption as a line on the right
   const buckets = $derived(data?.buckets ?? []);
   const labels = $derived(buckets.map((b) => bucketLabel(period, b.start)));
-  const line = $derived(buckets.map((b) => kwh100(b.net_wh, b.distance_m)));
+  const line = $derived(buckets.map((b) => kwhPer100(b.wh_per_100km)));
   const xaxis = $derived({
     // a month names its 1st and every 5th day so the labels do not touch
     splits: labels.map((l, i) => i).filter((i) => period !== "month" || labels[i] === "1" || Number(labels[i]) % 5 === 0),
@@ -81,7 +79,7 @@
     ...(line.some((v) => v != null) ? [{ label: "kWh/100 km", values: line, scale: "y2", color: "--energy" }] : []),
   ]);
   const unit = $derived(period === "year" ? "month" : "day");
-  const chartLabel = $derived(t ? `Distance per ${unit}: ${km(t.distance_m)} in total, average ${per100Text(t)}` : "");
+  const chartLabel = $derived(t ? `Distance per ${unit}: ${km(t.distance_m)} in total, average ${consumption(t.wh_per_100km)}` : "");
 
   const segments = $derived(data ? places(data.by_place) : []);
   const tint = (s, i) => (s.other ? "--muted" : PLACE[i % PLACE.length]);
@@ -105,11 +103,11 @@
   <div class="seg"><Segmented options={PERIODS} bind:value={() => period, setPeriod} label="Period" /></div>
 
   <div class="nav">
-    <button onclick={() => (at = shift(period, at, -1))} aria-label="Previous {period}">
+    <button onclick={() => (at = data.period.prev_at)} disabled={!data} aria-label="Previous {period}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
     </button>
     <h2 aria-live="polite">{data ? periodLabel(period, data.period.start, data.period.end) : ""}</h2>
-    <button onclick={() => (at = shift(period, at, 1))} disabled={current} aria-label="Next {period}">
+    <button onclick={() => (at = data.period.next_at)} disabled={!data?.period.next_at} aria-label="Next {period}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
     </button>
   </div>
@@ -147,7 +145,7 @@
               {#each data.per_vehicle as v (v.id)}
                 <li>
                   <b>{v.name}</b>
-                  <span class="d-note facts"><span>{km(v.totals.distance_m)}</span><span>{per100Text(v.totals)}</span><span>{kwh(v.totals.net_wh)} used</span><span>{kwh(v.totals.charged_wh)} charged</span><span>{eur(v.totals.cost.total)} cost</span></span>
+                  <span class="d-note facts"><span>{km(v.totals.distance_m)}</span><span>{consumption(v.totals.wh_per_100km)}</span><span>{kwh(v.totals.net_wh)} used</span><span>{kwh(v.totals.charged_wh)} charged</span><span>{eur(v.totals.cost.total)} cost</span></span>
                 </li>
               {/each}
             </ul>

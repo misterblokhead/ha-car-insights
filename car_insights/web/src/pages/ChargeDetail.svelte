@@ -5,7 +5,7 @@
   import { NA, km, kwh, kw } from "../lib/format.js";
   import { durationParts, kwLabel, rangeLine, split } from "../lib/detail.js";
   import { chargeBasis, costLabel } from "../lib/costs.js";
-  import { chargeCharts, chargePercents, chargeSpeed } from "../lib/series.js";
+  import { chargeCharts, chargeSpeed } from "../lib/series.js";
   import Chart from "../lib/Chart.svelte";
   import Figure from "../lib/ui/Figure.svelte";
   import ChargeBar from "../lib/ui/ChargeBar.svelte";
@@ -24,7 +24,6 @@
 
   const c = $derived(data?.charge);
   const estimated = $derived(c?.energy_source === "soc_estimate");
-  const pc = $derived(c ? chargePercents(c, data.capacity_wh) : null);
   const charts = $derived(data ? chargeCharts(data.series) : null);
   const speed = $derived(data ? chargeSpeed(data.series, data.capacity_wh) : null);
   // the speed curve against a rising level: the points in level order
@@ -117,10 +116,10 @@
     <section class="d-card hero">
       <span class="d-note">Added</span>
       <span class="big">{added[0]}{#if added[1]}{" "}<small>{added[1]}</small>{/if}</span>
-      <ChargeBar from={pc.from} to={pc.to} full />
+      <ChargeBar from={c.start_pct} to={c.end_pct} full />
       <div class="levels">
-        <span><span class="d-note">Start</span><b>{level(c.start_wh, pc.from)}</b></span>
-        <span class="end"><span class="d-note">End</span><b>{level(c.end_wh, pc.to)}</b></span>
+        <span><span class="d-note">Start</span><b>{level(c.start_wh, c.start_pct)}</b></span>
+        <span class="end"><span class="d-note">End</span><b>{level(c.end_wh, c.end_pct)}</b></span>
       </div>
     </section>
 
