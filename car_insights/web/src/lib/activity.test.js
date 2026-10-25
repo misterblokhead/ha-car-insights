@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { visible, neighbours, hashOf, replaceDays } from "./activity.js";
+import { visible, neighbours, hashOf, replaceDays, linkAction } from "./activity.js";
 
 const trip = (start, vid = "a") => ({ kind: "trip", vehicle_id: vid, start });
 const charge = (start, vid = "a") => ({ kind: "charge", vehicle_id: vid, start });
@@ -63,4 +63,9 @@ test("replaceDays: fresh days replace the same dates, older days stay, newest fi
   assert.deepEqual(out[1].items, [trip(300)]); // the stale 23rd is gone
   assert.equal(out[2], days[1]);
   assert.deepEqual(replaceDays([], fresh), fresh);
+});
+
+test("linkAction replaces the open detail, else pushes from the list", () => {
+  assert.equal(linkAction({ detailOpen: true }), "replace");
+  assert.equal(linkAction({ detailOpen: false }), "push");
 });

@@ -1,6 +1,7 @@
 <script>
-  import { get } from "./lib/api.js";
+  import { get, latest } from "./lib/api.js";
   import { parse } from "./lib/routes.js";
+  import { setZone } from "./lib/time.js";
   import Shell from "./lib/ui/Shell.svelte";
   import Activity from "./pages/Activity.svelte";
   import Settings from "./pages/Settings.svelte";
@@ -20,9 +21,13 @@
   ]);
 
   // groups made on the Settings page show up in the switcher when the user leaves it
+  const viewsRequest = latest();
   async function reloadViews() {
+    const ticket = viewsRequest.next();
     try {
-      views = await get("api/ui/views");
+      const v = await get("api/ui/views");
+      if (!ticket.current) return;
+      views = v;
       if (!options.some((o) => o.value === view)) view = options[0]?.value || "";
     } catch {} // keep the lists we have
   }
@@ -54,7 +59,9 @@
 
   (async () => {
     try {
-      [me, views] = await Promise.all([get("api/ui/me"), get("api/ui/views")]);
+      const [m, v] = await Promise.all([get("api/ui/me"), get("api/ui/views")]);
+      setZone(m?.tz); // before `me` is set, so no page renders a date in the browser's zone; no name keeps it
+      [me, views] = [m, v];
       let saved = "";
       try { saved = localStorage.getItem(KEY) || ""; } catch {}
       const values = options.map((o) => o.value);
@@ -84,5 +91,5 @@
 {/if}
 
 <style>
-  .msg { padding: 12px; color: var(--muted); }
+  .msg { padding: 12px; text-align: start; }
 </style>

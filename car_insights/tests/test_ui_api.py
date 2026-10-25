@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -73,9 +73,20 @@ def test_missing_user_header_forbidden(conn):
     assert c.get("/api/ui/overview?view=v:car1", headers={"X-Remote-User-Name": "x"}).status_code == 403
 
 
+def test_me_has_ha_time_zone(conn):
+    c, _ = client(conn)
+    assert c.get("/api/ui/me", headers=VIEWER).json()["tz"] == "Europe/Amsterdam"
+
+
+def test_me_has_no_time_zone_name_on_a_fixed_offset(conn):
+    router = ui_api.router(conn, lambda lat, lon: "Home", timezone(timedelta(hours=1)), lambda vid: 60_000.0, is_admin, now_ms=lambda: NOW)
+    c = TestClient(create_app(conn, "t" * 64, lambda *a: None, lambda: NOW, ui=router), client=("172.30.32.2", 50000))
+    assert c.get("/api/ui/me", headers=VIEWER).json()["tz"] is None
+
+
 def test_me_and_seen_user_recorded(conn):
     c, _ = client(conn)
-    assert c.get("/api/ui/me", headers=VIEWER).json() == {"user_id": "u-viewer", "name": "viewer", "is_admin": False}
+    assert c.get("/api/ui/me", headers=VIEWER).json() == {"user_id": "u-viewer", "name": "viewer", "is_admin": False, "tz": "Europe/Amsterdam"}
     assert c.get("/api/ui/me", headers=ADMIN).json()["is_admin"] is True
     assert conn.execute("SELECT user_id, last_seen_ms FROM seen_users ORDER BY user_id").fetchall() == [("u-admin", NOW), ("u-viewer", NOW)]
     assert [v["id"] for v in c.get("/api/ui/views", headers=VIEWER).json()["vehicles"]] == ["car1", "car2"]

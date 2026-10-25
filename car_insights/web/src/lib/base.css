@@ -1,0 +1,55 @@
+/* Global styles shared by the pages and components; components keep only their own layout in scoped CSS. A detail page sets --accent
+   (its trip or charge colour) on its root: .btn and the focus ring read it and default to the trip colours. */
+
+/* surfaces */
+.card, .d-card { background: var(--card); border: var(--edge); border-radius: var(--radius-card); }
+.chrome { background: var(--chrome); -webkit-backdrop-filter: var(--chrome-filter); backdrop-filter: var(--chrome-filter); }
+
+/* controls: pointer, disabled, press feedback (.press) and the focus ring; a place that needs another offset or radius says so in its own CSS */
+button, select, input[type="checkbox"] { cursor: pointer; }
+:is(button, select, input):disabled { opacity: 0.35; cursor: default; }
+:is(.press, .btn, .d-btn) { transition: transform 100ms; }
+:is(.press, .btn, .d-btn):active:not(:disabled) { transform: scale(var(--press-scale)); }
+.d-title:focus { outline: none; }
+:is(a, button, input, select, .d-title):focus-visible { outline: 2px solid var(--accent, var(--trip)); outline-offset: 2px; }
+.btn, .d-btn {
+  min-height: 44px; min-width: 44px; padding: 0 20px; border: 0; border-radius: var(--radius-ctl); background: var(--fill);
+  color: var(--accent, var(--trip-text)); font: inherit; font-weight: 600;
+}
+
+/* text: .muted is the colour; .caption (and .d-note, the label of a .field) the 13 px size with it */
+.muted, .caption, .d-note, .field { color: var(--muted); }
+.caption, .d-note, .field { font-size: 13px; }
+.page-title { margin: 0 0 12px; font-size: var(--fs-title); font-weight: 700; letter-spacing: -0.01em; }
+.big { font-size: 28px; font-weight: 600; line-height: 1.1; letter-spacing: -0.01em; white-space: nowrap; }
+.big small { font-size: 15px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.icon { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; } /* the size is the component's */
+.msg, .d-msg { text-align: center; color: var(--muted); }
+.msg { padding: 24px 0; }
+.msg p { margin: 0 0 8px; }
+.d-msg { margin: 0; padding: 16px 0; }
+
+/* a labelled input of an edit form */
+.field { display: flex; flex: 1 1 6.5em; flex-direction: column; min-width: 0; }
+.field.wide { flex-basis: 12em; }
+
+/* detail pages and Statistics */
+.d-stack { display: flex; flex-direction: column; gap: 12px; padding-top: 4px; }
+.d-title { margin: 0; font-size: 24px; font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.d-title:focus-visible { outline-offset: 4px; border-radius: 4px; }
+.d-sub { margin: 4px 0 0; color: var(--muted); }
+.d-note { margin: 0; }
+.d-card { padding: 14px; }
+.d-card h2 { margin: 0; font-size: var(--fs-body); font-weight: 600; }
+.d-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+.d-head .d-note { white-space: nowrap; }
+.d-figs { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(150px, 8em), 1fr)); gap: 8px; }  /* em: one column at large text sizes */
+.d-figs.three { grid-template-columns: repeat(auto-fit, minmax(max(96px, 6.4em), 1fr)); }
+.d-rows { display: flex; flex-direction: column; margin: 8px 0 0; }
+.d-rows div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.d-rows dt { color: var(--muted); }
+.d-rows dd { margin: 0; text-align: right; }
+.d-rows.foot { margin: 0; } /* the last card of a detail page: its rows, no rule above the first */
+.d-rows.foot div:first-child { border-top: 0; }
+.d-link { color: var(--accent); font-weight: 600; }

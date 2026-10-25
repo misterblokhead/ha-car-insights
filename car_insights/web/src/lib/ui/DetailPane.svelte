@@ -10,6 +10,7 @@
   import { onMount } from "svelte";
   import { fade } from "svelte/transition";
   import { createSpring } from "../spring.js";
+  import { animate, cssMs } from "../motion.js";
   import { shouldClose, velocity } from "../gesture.js";
   import { screen } from "../media.svelte.js";
 
@@ -18,7 +19,7 @@
   // (from 1080 px) a column beside the list; those two only cross-fade. Reduced motion: opacity only.
   let { id, onclose, prev = null, next = null, children } = $props();
 
-  const FADE = 150, EDGE = 24, SLOP = 8;
+  const EDGE = 24, SLOP = 8, FADE = cssMs("--fade");
   const overlay = $derived(!screen.split);
   const slide = $derived(!screen.wide && !screen.reducedMotion);
   const spring = createSpring({ response: 0.35, damping: 1 });
@@ -28,46 +29,39 @@
   let held = $state(false);
   let leaving = $state(false);
   let el = $state();
-  let raf = 0;
+  let closing = 0;
   let drag = null;
 
-  // Advances the spring every frame until it settles; a layer that settled off screen is closed.
-  function run() {
-    cancelAnimationFrame(raf);
-    busy = true;
-    let last = 0;
-    const tick = (now) => {
-      let settled = spring.step(Math.min((now - (last || now - 16)) / 1000, 0.05));
-      last = now;
-      if (!settled && Math.abs(spring.value - spring.target) < 1 && Math.abs(spring.velocity) < 30) { // the last pixel is not worth a second of busy layer
-        Object.assign(spring, { value: spring.target, velocity: 0 });
-        settled = true;
-      }
-      x = spring.value;
-      if (!settled) return void (raf = requestAnimationFrame(tick));
+  // Settled off screen: close. The last pixel is not worth a second of busy layer, hence the snap.
+  const motion = animate(spring, {
+    snap: { distance: 1, speed: 30 },
+    onFrame: (v) => (x = v),
+    onSettle() {
       busy = false;
       if (spring.target > 0) onclose();
-    };
-    raf = requestAnimationFrame(tick);
+    },
+  });
+  function slideTo(target, velocity) {
+    busy = true;
+    motion.to(target, velocity);
   }
 
   onMount(() => {
     spring.value = x;
-    if (startsOff) {
-      spring.set(0);
-      run();
-    }
-    return () => cancelAnimationFrame(raf);
+    if (startsOff) slideTo(0);
+    return () => {
+      motion.stop();
+      clearTimeout(closing);
+    };
   });
 
   function close() {
     if (leaving) return;
     if (slide) {
-      spring.set(el.offsetWidth); // keeps the velocity the layer has now
-      run();
+      slideTo(el.offsetWidth); // keeps the velocity the layer has now
     } else {
       leaving = true;
-      setTimeout(onclose, FADE);
+      closing = setTimeout(onclose, FADE);
     }
   }
 
@@ -93,7 +87,7 @@
   };
   // A press only becomes a swipe after SLOP px of horizontal travel, so a tap on the back button stays a tap; a moving layer is taken at once.
   function hold(e) {
-    cancelAnimationFrame(raf);
+    motion.stop();
     el.setPointerCapture(e.pointerId);
     drag.live = true;
     busy = held = true;
@@ -125,8 +119,7 @@
     drag = null;
     held = false;
     const width = el.offsetWidth;
-    spring.set(shouldClose(x, v, width) ? width : 0, { velocity: v });
-    run();
+    slideTo(shouldClose(x, v, width) ? width : 0, v);
   }
 
   // the list (and on a phone the tab bar and switcher) cannot be reached or read under the layer
@@ -146,17 +139,17 @@
 <svelte:window onkeydown={key} />
 
 {#snippet body()}
-  <header class="bar">
-    <button class="back" onclick={close}>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg>
+  <header class="bar chrome">
+    <button class="back press" onclick={close}>
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg>
       {screen.wide ? "Close" : "Activity"}
     </button>
     <span class="steps">
-      <button aria-label="Previous activity" disabled={!prev} onclick={() => go(prev)}>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 15 7-7 7 7" /></svg>
+      <button class="press" aria-label="Previous activity" disabled={!prev} onclick={() => go(prev)}>
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 15 7-7 7 7" /></svg>
       </button>
-      <button aria-label="Next activity" disabled={!next} onclick={() => go(next)}>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 9 7 7 7-7" /></svg>
+      <button class="press" aria-label="Next activity" disabled={!next} onclick={() => go(next)}>
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 9 7 7 7-7" /></svg>
       </button>
     </span>
   </header>
@@ -187,7 +180,7 @@
     position: fixed; inset: 0 0 0 var(--sidebar); z-index: 30; overflow-y: auto; overscroll-behavior: contain;
     background: var(--bg); touch-action: pan-y; /* horizontal drags reach the swipe, vertical ones scroll */
   }
-  .layer.phone { left: 0; box-shadow: -8px 0 24px rgba(0, 0, 0, 0.14); }
+  .layer.phone { left: 0; box-shadow: var(--shadow-sheet); }
   .layer.busy { touch-action: none; will-change: transform; }
   .layer.held { user-select: none; }
   .column { position: sticky; top: 24px; max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain; }
@@ -198,19 +191,15 @@
   .bar {
     position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; align-items: center;
     padding: calc(env(safe-area-inset-top) + 4px) 8px 4px;
-    background: var(--chrome); -webkit-backdrop-filter: var(--chrome-filter); backdrop-filter: var(--chrome-filter);
     border-bottom: var(--edge);
   }
   .steps { display: flex; }
   button {
     min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 2px; padding: 0 8px;
-    border: 0; border-radius: var(--radius-ctl); background: none; color: var(--trip-text); font: inherit; font-size: 17px; cursor: pointer;
-    transition: transform 100ms;
+    border: 0; border-radius: var(--radius-ctl); background: none; color: var(--trip-text); font: inherit; font-size: 17px;
   }
-  button:active:not(:disabled) { transform: scale(var(--press-scale)); }
-  button:disabled { opacity: 0.35; cursor: default; }
-  button:focus-visible { outline: 2px solid var(--trip); outline-offset: -2px; }
-  svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  button:focus-visible { outline-offset: -2px; }
+  svg { width: 22px; height: 22px; stroke-width: 2.2; }
 
   .content { display: grid; padding: 8px 16px calc(32px + env(safe-area-inset-bottom)); }
   .column .content { padding: 8px 4px 32px; }

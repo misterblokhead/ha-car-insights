@@ -1,5 +1,6 @@
-// Pure helpers of the trip and charge detail pages (no runes, so node --test can import them).
-import { NA, kwhPer100, delta, dayKey, dayLabel, time } from "./format.js";
+// Trip and charge labels and figures shared by the cards, the detail pages and Statistics (no runes, so node --test can import them).
+import { NA, km, kwh, duration, kwhPer100, delta } from "./format.js";
+import { clock, dayKey, dayLabel } from "./time.js";
 
 // "12.3 km" -> ["12.3", "km"]; a value without a unit (the missing "–") keeps an empty unit
 export function split(text) {
@@ -37,5 +38,29 @@ export const kwLabel = (kw) => (kw == null ? NA : `${kw < 0 ? "−" : ""}${Math.
 // "74 → 69 %"; a missing end is a dash, and nothing known at all is a single dash
 export const arrow = (a, b, unit) => (a == null && b == null ? NA : `${a ?? NA} → ${b ?? NA} ${unit}`);
 
+// "14:05 – 14:35", "14:05 – now"
+export const span = (start, end) => `${clock(start)} – ${end == null ? "now" : clock(end)}`;
+
 // "Today · 14:05 – 14:35", "Thu 22 Oct · 14:05 – now"
-export const rangeLine = (start, end, now = Date.now()) => `${dayLabel(dayKey(start), dayKey(now))} · ${time(start)} – ${end == null ? "now" : time(end)}`;
+export const rangeLine = (start, end, now = Date.now()) => `${dayLabel(dayKey(start), dayKey(now))} · ${span(start, end)}`;
+
+// a place outside every zone
+export const place = (name) => name ?? "Unknown";
+
+// "Charged at Home"; a charge outside every zone is just "Charged"
+export const chargedAt = (name) => (name ? `Charged at ${name}` : "Charged");
+
+// "~24.10 kWh" for a figure the car did not measure; a missing figure stays a plain dash
+export const estimate = (wh, estimated) => (estimated && wh != null ? "~" : "") + kwh(wh);
+
+// "Home → Work"
+export const tripTitle = (t) => `${place(t.from)} → ${place(t.to)}`;
+
+// the aria-label of a trip's route outline
+export const routeLabel = (t) => `Route from ${place(t.from)} to ${place(t.to)}, ${km(t.distance_m)}, ${t.end == null ? "still driving" : duration(t.duration_s)}`;
+
+// "12 °C" outside temperature; a dash when unknown
+export const temp = (c) => (c == null ? NA : `${c.toFixed(0)} °C`);
+
+// the props of one Figure tile from a label and a [value, unit] pair
+export const fig = (label, [value, unit]) => ({ label, value, unit });

@@ -8,7 +8,7 @@
 </script>
 
 {#if vehicles.length}
-  <ul>
+  <ul class="card">
     {#each vehicles as v (v.id)}
       <li>
         <i style:background={COLOR[v.status] ?? COLOR.parked}></i>
@@ -16,7 +16,7 @@
         <span class="vals">
           {pct(v.soc_percent)} · {km(v.range_m)}
           {#if v.status === "charging"}
-            <svg viewBox="0 0 24 24" role="img" aria-label="Plugged in"><path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4" /></svg>
+            <svg class="icon" viewBox="0 0 24 24" role="img" aria-label="Plugged in"><path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4" /></svg>
           {/if}
         </span>
       </li>
@@ -25,11 +25,11 @@
 {/if}
 
 <style>
-  ul { list-style: none; margin: 0; padding: 4px 14px; background: var(--card); border: var(--edge); border-radius: var(--radius-card); }
+  ul { list-style: none; margin: 0; padding: 4px 14px; }
   li { display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; min-height: 40px; } /* wraps at large text sizes */
   i { flex: none; width: 10px; height: 10px; border-radius: 50%; }
   .where { flex: 1 1 8em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
   b { color: var(--fg); font-weight: 600; }
   .vals { flex: none; margin-left: auto; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-  svg { width: 16px; height: 16px; fill: none; stroke: var(--charge-text); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  svg { width: 16px; height: 16px; stroke: var(--charge-text); stroke-width: 2; }
 </style>

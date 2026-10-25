@@ -4,10 +4,12 @@
 
 <script>
   import { untrack } from "svelte";
-  import { get } from "../lib/api.js";
-  import { feed, hashOf, load, more, neighbours, refresh, visible } from "../lib/activity.svelte.js";
-  import { dayLabel, daySummary } from "../lib/format.js";
+  import { get, latest } from "../lib/api.js";
+  import { feed, hashOf, linkAction, load, more, neighbours, refresh, visible } from "../lib/activity.svelte.js";
+  import { daySummary } from "../lib/format.js";
+  import { dayLabel } from "../lib/time.js";
   import { screen } from "../lib/media.svelte.js";
+  import { cssMs } from "../lib/motion.js";
   import ChargeCard from "../lib/ui/ChargeCard.svelte";
   import LiveStrip from "../lib/ui/LiveStrip.svelte";
   import Segmented from "../lib/ui/Segmented.svelte";
@@ -33,14 +35,12 @@
   const around = $derived(detail ? neighbours(feed.days, feed.filter, detail.kind, detail.vid, detail.start) : { prev: null, next: null });
   const isOpen = (item) => detail?.kind === item.kind && detail.vid === item.vehicle_id && detail.start === item.start;
 
-  const followed = (e) => e.button === 0 && !e.defaultPrevented && !(e.metaKey || e.ctrlKey || e.shiftKey);
   // a card clicked while a detail is open replaces it, so closing is still one step back to the list
   const picked = (e) => {
-    const a = followed(e) && listEl?.contains(e.target) && e.target.closest("a[href^='#/']");
-    if (!a) return;
-    if (detail) {
+    if (e.button !== 0 || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    if (linkAction({ detailOpen: !!detail }) === "replace") {
       e.preventDefault();
-      location.replace(a.getAttribute("href"));
+      location.replace(e.currentTarget.getAttribute("href"));
     } else fromList = true;
   };
   // back to the list: one step back when it is the entry before, else replace the detail (a link opened cold)
@@ -61,22 +61,26 @@
     last = "";
   });
 
+  const liveRequest = latest();
   async function live() {
+    const ticket = liveRequest.next();
     try {
-      vehicles = (await get(`api/ui/overview?view=${encodeURIComponent(view)}`)).vehicles;
+      const d = await get(`api/ui/overview?view=${encodeURIComponent(view)}`);
+      if (ticket.current) vehicles = d.vehicles;
     } catch {} // the strip keeps what it shows
   }
 
   $effect(() => {
     load(view);
     live();
+    return liveRequest.reset; // another view (or leaving the page) drops the reply still on its way
   });
 
   $effect(() => {
     const f = feed.filter;
     if (f === untrack(() => shown)) return void (out = false); // back to the shown filter before the swap
     out = true;
-    const half = parseFloat(getComputedStyle(listEl).transitionDuration) * 1000 || 75; // computed, so always in seconds
+    const half = cssMs("--fade") / 2; // the list fades out in half of --fade
     const t = setTimeout(() => ((shown = f), (out = false)), half);
     return () => clearTimeout(t);
   });
@@ -106,11 +110,9 @@
   });
 </script>
 
-<svelte:window onclick={picked} />
-
 <div class="split" class:two={screen.split && detail}>
 <div class="page" class:wide={screen.wide}>
-  <h1>Activity</h1>
+  <h1 class="page-title">Activity</h1>
   <LiveStrip {vehicles} />
   <div class="filter"><Segmented options={FILTERS} bind:value={feed.filter} label="Show" /></div>
 
@@ -118,14 +120,14 @@
     {#each days as day (day.date)}
       {@const summary = daySummary(day.summary)}
       <section>
-        <h2>{dayLabel(day.date, feed.today)}{#if summary}<span>{" · "}{summary}</span>{/if}</h2>
+        <h2 class="chrome">{dayLabel(day.date, feed.today)}{#if summary}<span>{" · "}{summary}</span>{/if}</h2>
         <ul>
           {#each day.items as item (`${item.kind}/${item.vehicle_id}/${item.start}`)}
             <li>
               {#if item.kind === "trip"}
-                <TripCard {item} current={isOpen(item)} />
+                <TripCard {item} current={isOpen(item)} onclick={picked} />
               {:else}
-                <ChargeCard {item} current={isOpen(item)} />
+                <ChargeCard {item} current={isOpen(item)} onclick={picked} />
               {/if}
             </li>
           {/each}
@@ -140,7 +142,7 @@
   {#if feed.error}
     <div class="msg" role="alert">
       <p>Couldn't load your activity.</p>
-      <button onclick={() => (feed.days.length ? more() : load(view))}>Retry</button>
+      <button class="btn" onclick={() => (feed.days.length ? more() : load(view))}>Retry</button>
     </div>
   {:else if feed.loading}
     <p class="msg" aria-busy="true">Loading…</p>
@@ -164,25 +166,15 @@
   .split.two { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 24px; align-items: start; } /* only while a detail is open; the list is a single column otherwise */
   .page { --bleed: 16px; max-width: 760px; }
   .page.wide { --bleed: 24px; }
-  h1 { margin: 0 0 12px; font-size: var(--fs-title); font-weight: 700; letter-spacing: -0.01em; }
   .filter { margin: 12px 0 4px; }
   .list { transition: opacity calc(var(--fade) / 2); }
   .list.out { opacity: 0; }
   h2 {
     position: sticky; top: 0; z-index: 2; margin: 0 calc(-1 * var(--bleed)); padding: 14px var(--bleed) 6px;
     font-size: var(--fs-body); font-weight: 600;
-    background: var(--chrome); -webkit-backdrop-filter: var(--chrome-filter); backdrop-filter: var(--chrome-filter);
     border-bottom: var(--edge);
   }
   h2 span { font-weight: 400; color: var(--muted); }
   li { scroll-margin-block: 56px; } /* clear of the sticky day header */
   ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; container-type: inline-size; } /* the cards size to the list, not the screen */
-  .msg { padding: 24px 0; text-align: center; color: var(--muted); }
-  .msg p { margin: 0 0 8px; }
-  button {
-    min-height: 44px; min-width: 44px; padding: 0 20px; border: 0; border-radius: var(--radius-ctl);
-    background: var(--fill); color: var(--trip-text); font: inherit; font-weight: 600; cursor: pointer; transition: transform 100ms;
-  }
-  button:active { transform: scale(var(--press-scale)); }
-  button:focus-visible { outline: 2px solid var(--trip); outline-offset: 2px; }
 </style>

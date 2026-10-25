@@ -18,6 +18,8 @@ The add-on adds a **Car Insights** entry to the Home Assistant sidebar (ingress,
 
 Pages are addressed by hash: `#/activity`, `#/trips/<vehicle>/<start>`, `#/charges/<vehicle>/<start>`, `#/stats` and `#/settings`; the older `#/overview` and `#/charges` list links go to Activity. The route outline is drawn from the trip's stored GPS points as a plain line without a map (no map tiles are loaded from outside; a map arrives with part 4). Below 768 px wide the tabs sit in a bar at the bottom and a detail slides in as a page; from 768 px they move to a sidebar and, on Activity, the detail opens beside the list.
 
+Dates on the page follow Home Assistant's time zone.
+
 Admin status is read server-side from Home Assistant's user list (the `system-admin` group, via the Core websocket; cached for a minute), never from request headers; when the list cannot be read nobody is treated as admin. The page's API is internal and answers only Supervisor ingress requests.
 
 ## Costs

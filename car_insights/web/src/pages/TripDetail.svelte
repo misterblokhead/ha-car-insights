@@ -1,92 +1,53 @@
 <script>
-  import { onMount, tick } from "svelte";
-  import { get } from "../lib/api.js";
-  import { NA, km, kwh, kwhPer100, duration } from "../lib/format.js";
+  import { NA, km, kwh, kwhPer100 } from "../lib/format.js";
   import { eur, tripCostLine } from "../lib/costs.js";
-  import { arrow, compare, deltaText, durationParts, markerAt, rangeLine, split } from "../lib/detail.js";
+  import { arrow, compare, deltaText, durationParts, fig, markerAt, rangeLine, routeLabel, split, temp, tripTitle } from "../lib/detail.js";
   import { consumptionBuckets, tripCharts } from "../lib/series.js";
   import Chart from "../lib/Chart.svelte";
+  import DetailPage from "../lib/ui/DetailPage.svelte";
   import Figure from "../lib/ui/Figure.svelte";
   import RouteOutline from "../lib/ui/RouteOutline.svelte";
-  import "../lib/detail.css";
 
   let { vid, start } = $props();
-  let data = $state(null);
-  let error = $state(null);
-  let title = $state();
   let routeWidth = $state(0);
 
-  const t = $derived(data?.trip);
-  const from = $derived(t?.from ?? "Unknown"), to = $derived(t?.to ?? "Unknown");
-  const buckets = $derived(data ? consumptionBuckets(data.series, 0.5) : null);
-  const speed = $derived(data ? tripCharts(data.series)?.speed : null);
-  const avg = $derived(t && t.avg_speed_mps != null ? t.avg_speed_mps * 3.6 : null);
-  const max = $derived(t?.max_speed_mps == null ? null : t.max_speed_mps * 3.6);
-  const used = $derived(t ? kwhPer100(t.wh_per_100km) : null);
-  const cmp = $derived(t ? compare(t, data.similar) : null);
-
-  const fig = (label, [value, unit]) => ({ label, value, unit });
-  const figures = $derived(
-    t
-      ? [
-          fig("Distance", split(km(t.distance_m))),
-          fig("Duration", durationParts(t.duration_s)),
-          fig("Energy used", split(kwh(t.net_wh))),
-          fig("Average", used == null ? [NA, ""] : [used.toFixed(1), "kWh/100 km"]),
-          fig("Average speed", avg == null ? [NA, ""] : [avg.toFixed(0), "km/h"]),
-          fig("Recuperated", split(kwh(t.recup_wh))),
-        ]
-      : [],
-  );
-  const rows = $derived(
-    cmp
-      ? [
-          { name: "Time", m: cmp.duration, unit: "min", digits: 0, text: (v) => `${Math.round(v)} min` },
-          { name: "Energy", m: cmp.consumption, unit: "kWh/100 km", digits: 1, text: (v) => `${v.toFixed(1)} kWh/100 km` },
-        ].filter((r) => r.m)
-      : [],
-  );
   // numbers for the "a → b" lines; null when unknown
   const wh = (v) => (v == null ? null : (v / 1000).toFixed(2));
   const whole = (v) => (v == null ? null : v.toFixed(0));
   const kmh = (v) => (v == null ? NA : `${Math.round(v)} km/h`);
-
-  async function load() {
-    error = null;
-    try {
-      data = await get(`api/ui/trips/${encodeURIComponent(vid)}/${start}`);
-    } catch (e) {
-      error = e;
-    }
-  }
-
-  onMount(() => {
-    load();
-    tick().then(() => title?.focus({ preventScroll: true })); // after the pane has moved to <body>
-  });
 </script>
 
-<article class="d-stack" style="--accent: var(--trip-text)">
-  <header>
-    <h1 class="d-title" tabindex="-1" bind:this={title}>
-      {#if t}{from} → {to}{:else if error?.status === 404}Not available{:else if error}Couldn't load this trip{:else}Trip{/if}
-    </h1>
-    {#if t}<p class="d-sub">{rangeLine(t.start, t.end)}</p>{/if}
-  </header>
-
-  {#if error?.status === 404}
-    <p class="d-msg">This trip is not available. <a class="d-link" href="#/activity">Back to activity</a></p>
-  {:else if error}
-    <p class="d-msg" role="alert"><button class="d-btn" onclick={load}>Retry</button></p>
-  {:else if !t}
-    <p class="d-msg" aria-busy="true">Loading…</p>
-  {:else}
+<DetailPage url={`api/ui/trips/${encodeURIComponent(vid)}/${start}`} noun="trip" accent="--trip-text">
+  {#snippet title({ trip: t })}{tripTitle(t)}{/snippet}
+  {#snippet subtitle({ trip: t })}<p class="d-sub">{rangeLine(t.start, t.end)}</p>{/snippet}
+  {#snippet body(data)}
+    {@const t = data.trip}
+    {@const buckets = consumptionBuckets(data.series, 0.5)}
+    {@const speed = tripCharts(data.series)?.speed}
+    {@const avg = t.avg_speed_mps != null ? t.avg_speed_mps * 3.6 : null}
+    {@const max = t.max_speed_mps == null ? null : t.max_speed_mps * 3.6}
+    {@const used = kwhPer100(t.wh_per_100km)}
+    {@const cmp = compare(t, data.similar)}
+    {@const figures = [
+      fig("Distance", split(km(t.distance_m))),
+      fig("Duration", durationParts(t.duration_s)),
+      fig("Energy used", split(kwh(t.net_wh))),
+      fig("Average", used == null ? [NA, ""] : [used.toFixed(1), "kWh/100 km"]),
+      fig("Average speed", avg == null ? [NA, ""] : [avg.toFixed(0), "km/h"]),
+      fig("Recuperated", split(kwh(t.recup_wh))),
+    ]}
+    {@const rows = cmp
+      ? [
+          { name: "Time", m: cmp.duration, unit: "min", digits: 0, text: (v) => `${Math.round(v)} min` },
+          { name: "Energy", m: cmp.consumption, unit: "kWh/100 km", digits: 1, text: (v) => `${v.toFixed(1)} kWh/100 km` },
+        ].filter((r) => r.m)
+      : []}
     {#if data.route?.length >= 2}
       <!-- the box is measured, then the outline is fitted to it -->
       <div class="d-card route" bind:clientWidth={routeWidth}>
         {#if routeWidth}
           <RouteOutline points={data.route} width={routeWidth - 28} height={120}
-            label="Route from {from} to {to}, {km(t.distance_m)}, {t.end == null ? "still driving" : duration(t.duration_s)}" />
+            label={routeLabel(t)} />
         {/if}
       </div>
     {/if}
@@ -137,7 +98,7 @@
     {#if rows.length}
       <section class="d-card">
         <h2>Compared with your usual route</h2>
-        <p class="d-note">{from} → {to}, {data.similar.n} earlier {data.similar.n === 1 ? "trip" : "trips"}</p>
+        <p class="d-note">{tripTitle(t)}, {data.similar.n} earlier {data.similar.n === 1 ? "trip" : "trips"}</p>
         {#each rows as r (r.name)}
           {@const text = deltaText(r.m.delta, r.unit, r.digits)}
           <div class="cmp">
@@ -155,17 +116,15 @@
     <section class="d-card">
       <dl class="d-rows foot">
         <div><dt>Battery</dt><dd>{arrow(whole(t.start_pct), whole(t.end_pct), "%")}</dd></div>
-        <div><dt>Outside temperature</dt><dd>{t.avg_temp_c == null ? NA : `${t.avg_temp_c.toFixed(0)} °C`}</dd></div>
+        <div><dt>Outside temperature</dt><dd>{temp(t.avg_temp_c)}</dd></div>
         <div><dt>Odometer</dt><dd>{arrow(whole(t.odometer_start_km), whole(t.odometer_end_km), "km")}</dd></div>
       </dl>
     </section>
-  {/if}
-</article>
+  {/snippet}
+</DetailPage>
 
 <style>
   .route { display: grid; place-items: center; min-height: 148px; }
-  .foot { margin: 0; }
-  .foot div:first-child { border-top: 0; }
   .cmp { margin-top: 14px; }
   .line { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 12px; margin-bottom: 10px; }
   .line b { font-weight: 600; color: var(--muted); white-space: nowrap; }

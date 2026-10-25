@@ -19,3 +19,12 @@ export async function send(method, path, body) {
 }
 
 export const get = (path) => send("GET", path);
+
+// Latest reply wins: `const ticket = next()` before a request, and after the await only a reply whose `ticket.current` is still true
+// may write state (its loading/error updates included). `reset()` supersedes the ticket in flight without starting a request.
+export function latest() {
+  let t = { current: false };
+  const reset = () => (t.current = false);
+  const next = () => (reset(), (t = { current: true }));
+  return { next, reset };
+}

@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { split, durationParts, compare, markerAt, deltaText, kwLabel, arrow, rangeLine } from "./detail.js";
+import { split, durationParts, compare, markerAt, deltaText, kwLabel, arrow, rangeLine, place, chargedAt, estimate, routeLabel, tripTitle, span, temp, fig } from "./detail.js";
+import { clock, setZone } from "./time.js";
+
+setZone("Europe/Amsterdam");
 
 test("split separates the value from its unit", () => {
   assert.deepEqual(split("12.3 km"), ["12.3", "km"]);
@@ -60,7 +63,57 @@ test("arrow shows both ends, a missing one as a dash, and nothing when both are 
 });
 
 test("rangeLine names the day and says now for an open end", () => {
-  const at = new Date(2026, 9, 22, 14, 5).getTime();
+  const at = Date.UTC(2026, 9, 22, 12, 5); // 14:05 in Amsterdam
   assert.match(rangeLine(at, null, at + 1000), /^Today · .+ – now$/);
   assert.match(rangeLine(at, at + 600000, at + 86400000 * 3), /^Thu 22 Oct · .+ – .+$/);
+});
+
+test("place names an unknown place", () => {
+  assert.equal(place(null), "Unknown");
+  assert.equal(place(undefined), "Unknown");
+  assert.equal(place("Home"), "Home");
+});
+
+test("chargedAt keeps the card and detail title as they were", () => {
+  assert.equal(chargedAt("Work"), "Charged at Work");
+  assert.equal(chargedAt(null), "Charged");
+  assert.equal(chargedAt(""), "Charged");
+});
+
+test("estimate marks an estimated figure, but not a missing one", () => {
+  assert.equal(estimate(24100, true), "~24.10 kWh");
+  assert.equal(estimate(24100, false), "24.10 kWh");
+  assert.equal(estimate(null, true), "–");
+  assert.equal(estimate(undefined, true), "–");
+});
+
+test("tripTitle is From → To with unknown places named", () => {
+  assert.equal(tripTitle({ from: "Home", to: "Work" }), "Home → Work");
+  assert.equal(tripTitle({ from: null, to: undefined }), "Unknown → Unknown");
+});
+
+test("span is start – end, or now for an open end", () => {
+  const at = Date.UTC(2026, 9, 22, 12, 5);
+  assert.equal(span(at, null), `${clock(at)} – now`);
+  assert.equal(span(at, at + 600000), `${clock(at)} – ${clock(at + 600000)}`);
+});
+
+test("routeLabel describes the outline for a screen reader", () => {
+  const trip = { from: "Home", to: "Work", distance_m: 26000, end: 5000, duration_s: 2700 };
+  assert.equal(routeLabel(trip), "Route from Home to Work, 26.0 km, 45 min");
+  assert.equal(routeLabel({ ...trip, from: null, to: null }), "Route from Unknown to Unknown, 26.0 km, 45 min");
+  assert.equal(routeLabel({ ...trip, end: null }), "Route from Home to Work, 26.0 km, still driving");
+});
+
+test("temp rounds to whole degrees, keeps the sign and shows a dash when unknown", () => {
+  assert.equal(temp(12.4), "12 °C");
+  assert.equal(temp(0), "0 °C");
+  assert.equal(temp(-3.6), "-4 °C");
+  assert.equal(temp(null), "–");
+  assert.equal(temp(undefined), "–");
+});
+
+test("fig builds a Figure's props from a label and a [value, unit] pair", () => {
+  assert.deepEqual(fig("Distance", ["12.3", "km"]), { label: "Distance", value: "12.3", unit: "km" });
+  assert.deepEqual(fig("Average", ["–", ""]), { label: "Average", value: "–", unit: "" });
 });

@@ -2,31 +2,24 @@
 .settings h2, .settings h3, .settings legend { margin: 20px 0 6px 14px; padding: 0; font-size: 13px; font-weight: 400; color: var(--muted); }
 .settings h2 + .note { margin-top: -2px; }
 .settings fieldset { min-width: 0; margin: 14px 0 0; padding: 0; border: 0; }
-.settings .list { background: var(--card); border: var(--edge); border-radius: var(--radius-card); overflow: hidden; }
+.settings .list { overflow: hidden; }
 .settings .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; box-sizing: border-box; min-height: 44px; margin: 0; padding: 0 14px; }
 .settings .row + .row { border-top: 1px solid var(--line); }
 .settings .split { justify-content: space-between; cursor: pointer; }
 .settings .grow { flex: 1 1 8em; min-width: 0; }
-.settings .empty, .settings .msg, .settings .note, .settings .muted { color: var(--muted); }
-.settings .note { margin: 0 14px 8px; font-size: 13px; }
-.settings .msg { padding: 24px 0; text-align: center; }
-.settings .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.settings .note { margin: 0 14px 8px; }
 .settings :is(input, select, button) { font: inherit; color: var(--fg); background: none; border: 0; }
 .settings input:not([type="checkbox"]) { width: 100%; box-sizing: border-box; min-height: 44px; padding: 0; }
 .settings input::placeholder { color: var(--muted); opacity: 1; }
-.settings select { min-height: 44px; max-width: 100%; cursor: pointer; }
-.settings input[type="checkbox"] { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--trip); cursor: pointer; }
-.settings button { min-height: 44px; min-width: 44px; padding: 0 8px; font-weight: 600; color: var(--trip-text); cursor: pointer; transition: transform 100ms; }
+.settings select { min-height: 44px; max-width: 100%; }
+.settings input[type="checkbox"] { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--trip); }
+.settings button { min-height: 44px; min-width: 44px; padding: 0 8px; font-weight: 600; color: var(--trip-text); }
 .settings button.danger { color: var(--warn-text); }
-.settings button:active:not(:disabled) { transform: scale(var(--press-scale)); }
-.settings :is(button, select, input):disabled { opacity: 0.35; cursor: default; }
-.settings :is(input, select, button):focus-visible { outline: 2px solid var(--trip); outline-offset: -2px; border-radius: 6px; } /* inside: the list clips its rows */
+.settings :is(input, select, button):focus-visible { outline-offset: -2px; border-radius: 6px; } /* inside: the list clips its rows */
 /* a number beside its label, and the labelled fields of an edit row */
 .settings .split input[type="number"] { width: 7em; text-align: right; }
 .settings .fields { padding-block: 8px; gap: 8px; }
-.settings .fields label { display: flex; flex: 1 1 6.5em; flex-direction: column; min-width: 0; font-size: 13px; color: var(--muted); }
 .settings .fields :is(input, select) { padding: 0 8px; background: var(--fill); border-radius: var(--radius-ctl); }
-.settings .fields .wide { flex-basis: 12em; }
 .settings .split > span { padding-block: 6px; } /* two-line rows */
 .settings .inline { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; } /* a label beside its date input */
 .settings .inline input { width: auto; }
