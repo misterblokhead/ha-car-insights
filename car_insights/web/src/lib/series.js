@@ -73,6 +73,7 @@ export function consumptionBuckets(s, step = 0.5) {
 }
 
 // Charging power (kW) against charge level (%): from the car's energy, else the cloud's level smoothed.
+const CAR_SPAN_MS = 120000;
 export function chargeSpeed(series, capacity_wh) {
   if (!capacity_wh) return null;
   const power = (pts, wh) => { // [t_ms, v] → [{ x: midpoint %, kw }]
@@ -89,7 +90,10 @@ export function chargeSpeed(series, capacity_wh) {
     const kw = p.map((q) => q.kw);
     return { x: p.map((q) => q.x), kw, source, min: Math.min(...kw), max: Math.max(...kw) };
   };
-  const car = power(series?.car_kwh ?? [], (v) => v * 1000);
+  // the car reports energy in 50 Wh steps: over a few seconds one step reads as tens of kW, over 2 min as about ±1.5 kW
+  const spaced = [];
+  for (const p of series?.car_kwh ?? []) if (!spaced.length || p[0] - spaced.at(-1)[0] >= CAR_SPAN_MS) spaced.push(p);
+  const car = power(spaced, (v) => v * 1000);
   if (car.length >= 3) return result(car, "car");
   const cloud = power(series?.cloud_soc ?? [], (v) => (v / 100) * capacity_wh);
   if (cloud.length < 3) return null;
