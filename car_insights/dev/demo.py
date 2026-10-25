@@ -41,7 +41,7 @@ def zones(lat: float, lon: float) -> str | None:
 
 
 def relabel(conn) -> None:
-    store.relabel(conn, zones, lambda lat, lon: prices.spot_name_at(conn, lat, lon))
+    store.relabel(conn, zones, prices.spot_namer(conn))
 
 
 def plan(vid: str, day) -> list[tuple[int, int, str, str]]:

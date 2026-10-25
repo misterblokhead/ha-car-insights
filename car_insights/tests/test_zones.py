@@ -1,3 +1,7 @@
+import asyncio
+
+import pytest
+
 from car_insights.zones import Zone, ZoneCache, name_at
 
 HOME = Zone("Home", 52.0, 5.0, 100)
@@ -15,85 +19,108 @@ def test_name_at_nearest_centre_wins():
     assert name_at([HOME, big], 52.0 + 50 * DLAT, 5.0) == "Town"
 
 
-def test_cache_keeps_last_list_on_error():
-    now, results = [0], [[HOME]]
+def _source(*lists):
+    """a fetch that answers the given lists in turn (an Exception is raised), and counts its calls"""
+    calls, it = [], iter(lists)
     def fetch():
-        r = results[0]
+        calls.append(1)
+        r = next(it)
         if isinstance(r, Exception):
             raise r
         return r
-    cache = ZoneCache(fetch, ttl_ms=1000, now_ms=lambda: now[0])
-    assert cache(52.0, 5.0) == "Home"
-    results[0], now[0] = RuntimeError("down"), 5000
-    assert cache(52.0, 5.0) == "Home"  # stale but the fetch failed: last list stays
-    results[0] = []
-    now[0] = 5500  # a failed fetch still counts as an attempt, so no retry before the ttl
-    assert cache(52.0, 5.0) == "Home"
-    now[0] = 6100
+    return fetch, calls
+
+
+def test_a_lookup_never_fetches_and_never_announces():
+    fetch, calls = _source([HOME])
+    changes = []
+    cache = ZoneCache(fetch, on_change=lambda: changes.append(1))
+    assert cache(52.0, 5.0) is None and not cache.loaded  # nothing fetched yet: no zones
+    assert calls == [] and changes == []
+    cache.refresh()
+    assert cache(52.0, 5.0) == "Home" and cache(52.0, 5.0) == "Home"
+    assert calls == [1] and changes == [1]
+
+
+def test_refresh_keeps_the_last_list_on_error():
+    fetch, calls = _source([HOME], RuntimeError("down"), [])
+    cache = ZoneCache(fetch)
+    cache.refresh()
+    cache.refresh()
+    assert cache(52.0, 5.0) == "Home" and cache.loaded  # the fetch failed: the last list stays
+    cache.refresh()
     assert cache(52.0, 5.0) is None
 
 
+def test_a_failed_first_fetch_is_not_loaded():
+    fetch, _ = _source(RuntimeError("down"), [HOME])
+    changes = []
+    cache = ZoneCache(fetch, on_change=lambda: changes.append(1))
+    cache.refresh()
+    assert not cache.loaded and changes == []
+    cache.refresh()
+    assert cache.loaded and changes == [1]
+
+
 def test_on_change_only_for_a_new_list():
-    now, results, changes = [0], [[HOME]], []
-    def fetch():
-        r = results[0]
-        if isinstance(r, Exception):
-            raise r
-        return r
-    cache = ZoneCache(fetch, ttl_ms=1000, now_ms=lambda: now[0], on_change=lambda: changes.append(1))
-    cache(52.0, 5.0)
+    work = Zone("Work", 52.1, 5.1, 150)
+    fetch, _ = _source([HOME], [HOME], [HOME, work], RuntimeError("down"), [HOME, work])
+    changes = []
+    cache = ZoneCache(fetch, on_change=lambda: changes.append(1))
+    cache.refresh()
     assert changes == [1]  # the first list counts
-    now[0] = 1000
-    cache(52.0, 5.0)
+    cache.refresh()
     assert changes == [1]  # fetched again, the same
-    results[0], now[0] = [HOME, Zone("Work", 52.1, 5.1, 150)], 2000
-    cache(52.0, 5.0)
+    cache.refresh()
     assert changes == [1, 1]
-    results[0], now[0] = RuntimeError("down"), 3000
-    assert cache(52.0, 5.0) == "Home"
-    assert changes == [1, 1]  # a failed fetch keeps the list and relabels nothing
-    results[0], now[0] = [HOME, Zone("Work", 52.1, 5.1, 150)], 4000
-    cache(52.0, 5.0)
+    cache.refresh()
+    assert cache(52.0, 5.0) == "Home" and changes == [1, 1]  # a failed fetch keeps the list and relabels nothing
+    cache.refresh()
     assert changes == [1, 1]  # back up with the list it had
 
 
 def test_on_change_runs_with_the_new_list_in_place():
     seen = []
     cache = ZoneCache(lambda: [HOME], on_change=lambda: seen.append(cache(52.0, 5.0)))
-    cache(52.0, 5.0)
+    cache.refresh()
     assert seen == ["Home"]  # a relabel asks the cache itself, and gets the list that changed
 
 
+def test_on_change_can_be_set_after_construction():
+    seen = []
+    cache = ZoneCache(lambda: [HOME])
+    cache.on_change = lambda: seen.append(1)
+    cache.refresh()
+    assert seen == [1]
+
+
 def test_a_failing_on_change_is_retried_at_the_next_fetch():
-    now, calls = [0], []
+    calls = []
     def on_change():
         calls.append(1)
         if len(calls) == 1:
             raise RuntimeError("busy")
-    cache = ZoneCache(lambda: [HOME], ttl_ms=1000, now_ms=lambda: now[0], on_change=on_change)
-    assert cache(52.0, 5.0) == "Home"  # the lookup itself still works
-    now[0] = 1000
-    cache(52.0, 5.0)
-    now[0] = 2000
-    cache(52.0, 5.0)
+    cache = ZoneCache(lambda: [HOME], on_change=on_change)
+    cache.refresh()
+    assert cache(52.0, 5.0) == "Home"  # the list is in place whatever on_change did
+    cache.refresh()
+    cache.refresh()
     assert calls == [1, 1]
 
 
-def test_refresh_fetches_now_and_announces_a_changed_list():
-    results, changes, fetched = [[HOME]], [], []
-    def fetch():
-        fetched.append(1)
-        if isinstance(results[0], Exception):
-            raise results[0]
-        return results[0]
-    cache = ZoneCache(fetch, on_change=lambda: changes.append(1))
-    cache.refresh()
-    assert changes == [1] and cache(52.0, 5.0) == "Home" and len(fetched) == 1  # the lookup after it uses the list, no second fetch
-    cache.refresh()
-    assert changes == [1]  # the same list
-    results[0] = RuntimeError("down")
-    cache.refresh()
-    assert changes == [1] and cache(52.0, 5.0) == "Home"  # a failed refresh calls nothing and keeps the list
-    results[0] = [Zone("Work", 52.1, 5.1, 150)]
-    cache.refresh()
-    assert changes == [1, 1] and cache(52.0, 5.0) is None
+def test_run_refreshes_once_per_interval(monkeypatch):
+    fetch, calls = _source([HOME], [HOME], [HOME])
+    sleeps = []
+    async def sleep(s):
+        sleeps.append(s)
+        if len(sleeps) == 3:
+            raise asyncio.CancelledError
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(ZoneCache(fetch, ttl_ms=5000).run())
+    assert len(calls) == 3 and sleeps == [5, 5, 5]  # the default interval is the ttl
+    sleeps.clear()
+    fetch, _ = _source([HOME], [HOME], [HOME])
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(ZoneCache(fetch).run(interval_s=7))
+    assert sleeps == [7, 7, 7]

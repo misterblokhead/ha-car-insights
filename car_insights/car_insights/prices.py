@@ -3,10 +3,11 @@ import math
 import uuid
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Callable
 
 from . import db, store
 from .kinds import CHARGE
-from .zones import Zone, name_at
+from .zones import Zone, Zones, name_at
 
 SPOT_RADIUS_M = 100
 _PERIODS = ("month", "quarter", "year", "once")
@@ -50,9 +51,18 @@ def _spot_in(rows: list[tuple], lat: float, lon: float) -> tuple[str, str] | Non
     return None if sid is None else next((s, n) for s, n, *_ in rows if s == sid)
 
 
+def _spot_rows(conn) -> list[tuple]:
+    return conn.execute("SELECT spot_id, name, lat, lon, radius_m FROM charge_spots").fetchall()
+
+
+def spot_namer(conn) -> Zones:
+    """(lat, lon) -> the name of the spot holding the point, over the spots as they are now: one query however often it is asked."""
+    rows = _spot_rows(conn)
+    return lambda lat, lon: (hit := _spot_in(rows, lat, lon)) and hit[1]
+
+
 def spot_name_at(conn, lat: float, lon: float) -> str | None:
-    hit = _spot_in(conn.execute("SELECT spot_id, name, lat, lon, radius_m FROM charge_spots").fetchall(), lat, lon)
-    return hit and hit[1]
+    return spot_namer(conn)(lat, lon)
 
 
 def create_spot(conn, vid: str, start: int, name: str, per_kwh: float, start_fee: float = 0, per_min: float = 0) -> str:
@@ -160,9 +170,15 @@ def book(conn, vid: str) -> Book:
     for target, *row in conn.execute("SELECT target, valid_from, per_kwh, start_fee, per_min FROM tariffs ORDER BY valid_from DESC"):
         tariffs.setdefault(target, []).append(_tariff_row(row))
     c = conn.execute("SELECT card_markup_pct, card_start_fee FROM vehicles WHERE vehicle_id=?", (vid,)).fetchone()
-    return Book(tariffs, conn.execute("SELECT spot_id, name, lat, lon, radius_m FROM charge_spots").fetchall(),
+    return Book(tariffs, _spot_rows(conn),
                 conn.execute("SELECT start, amount FROM charge_receipts WHERE vehicle_id=? ORDER BY start DESC", (vid,)).fetchall(),
                 (float(c[0]), float(c[1])) if c else (0.0, 0.0))
+
+
+def books(conn) -> Callable[[str], Book]:
+    """A vehicle's book, loaded on its first ask: one pass over many charges loads each vehicle's prices once."""
+    cache: dict[str, Book] = {}
+    return lambda vid: cache.get(vid) or cache.setdefault(vid, book(conn, vid))
 
 
 def _tariffs(conn, target: str) -> list[dict]:

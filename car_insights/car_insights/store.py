@@ -132,7 +132,7 @@ def ended(conn: sqlite3.Connection, kind: Kind, vid: str, lo: int, hi: int | Non
 def rows_after(conn: sqlite3.Connection, kind: Kind, vid: str, w: int) -> dict[int, dict]:
     """start -> row of the rows that are open or end after `w`: what a window starting at `w` derives again."""
     rows = conn.execute(f"SELECT {_sel(kind)} FROM {kind.table} WHERE vehicle_id=? AND (end IS NULL OR end>?)", (vid, w))
-    return {r[0]: _row(kind, r) for r in rows}
+    return {d["start"]: d for d in (_row(kind, r) for r in rows)}
 
 
 def straddling(conn: sqlite3.Connection, vid: str, w: int) -> list[int]:
@@ -218,10 +218,9 @@ def place(zone: str | None, spot: str | None) -> str | None:
 
 def relabel(conn: sqlite3.Connection, zones: Zones, spots: Zones) -> int:
     """Name every row again from its stored points: a trip's two ends by `zones`, a charge's zone by `zones` and its place by `place`.
-    Rows without a point are left alone; returns the rows changed. A savepoint, so it also runs inside a caller's transaction."""
+    Rows without a point are left alone; returns the rows changed. One transaction, so call it outside one."""
     changed = 0
-    conn.execute("SAVEPOINT relabel")
-    try:
+    with db.tx(conn):
         for vid, start, from_lat, from_lon, to_lat, to_lon in trip_points(conn):
             frm, to = (None if lat is None else zones(lat, lon) for lat, lon in ((from_lat, from_lon), (to_lat, to_lon)))
             changed += conn.execute("UPDATE trips SET from_place=?, to_place=? WHERE vehicle_id=? AND start=?"
@@ -231,9 +230,4 @@ def relabel(conn: sqlite3.Connection, zones: Zones, spots: Zones) -> int:
             name = place(zone, None if zone else spots(lat, lon))
             changed += conn.execute("UPDATE charges SET zone=?, place=? WHERE vehicle_id=? AND start=? AND (zone IS NOT ? OR place IS NOT ?)",
                                     (zone, name, vid, start, zone, name)).rowcount
-        conn.execute("RELEASE relabel")
-    except BaseException:
-        conn.execute("ROLLBACK TO relabel")
-        conn.execute("RELEASE relabel")
-        raise
     return changed

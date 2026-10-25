@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from datetime import tzinfo
 from typing import Callable, Sequence
 
-from . import db, periods, route, store, summary
+from . import db, periods, prices, route, store, summary
 from .derive import ESTIMATE_HOLD_MS, Deriver
-from .kinds import CHARGE, TRIP
+from .kinds import CHARGE, KINDS, TRIP
 from .protocol import FUTURE_SLACK_MS, Sample
 from .totals_sensors import TotalsSensors
 from .trip_sensors import TripSensors
@@ -32,7 +32,7 @@ class App:
     tz: tzinfo
     capacity: Callable[[str], float]
     zones: Zones
-    spots: Zones
+    zones_loaded: Callable[[], bool] = lambda: True  # False until a zone list has been fetched: before it, places must not be renamed
 
 
 def late_min_t(samples: Sequence[Sample], received: int) -> int | None:
@@ -40,14 +40,19 @@ def late_min_t(samples: Sequence[Sample], received: int) -> int | None:
     return min((x.t for x in samples if received - LATE_WINDOW_MS <= x.t <= received + FUTURE_SLACK_MS), default=None)
 
 
+def _publish_last(app: App, vid: str, fresh: tuple[bool, bool] = (True, True), recent: tuple[list, list] = ([], [])) -> None:
+    """Publish the newest closed trip and charge of a vehicle as its states (a kind that is not `fresh` is left alone), and `recent` as events."""
+    last = [next(iter(store.closed(app.conn, k, vid, 1)), None) if f else None for k, f in zip(KINDS, fresh)]
+    app.sensors.publish(vid, *last, *recent)
+
+
 def ingested(app: App, vid: str, min_t: int | None, received: int) -> None:
     """After an ingest: re-derive and publish what closed."""
     trips, charges, refined = app.deriver.update(vid, min_t, received)
-    last_trips, last_charges = store.closed(app.conn, TRIP, vid, 1), store.closed(app.conn, CHARGE, vid, 1)
     # a refinement (late data changed an already closed row) updates the state sensors but is no new event
     recent = [[w for w in closed if w["end"] >= received - EVENT_MAX_AGE_MS and (kind.table, w["start"]) not in refined]
               for kind, closed in ((TRIP, trips), (CHARGE, charges))]
-    app.sensors.publish(vid, last_trips[0] if trips else None, last_charges[0] if charges else None, *recent)
+    _publish_last(app, vid, (bool(trips), bool(charges)), recent)
     if trips or charges or refined:  # the month and year totals follow every close and every refinement
         app.totals.publish_vehicle(vid)
         if app.totals.in_group(vid):
@@ -68,14 +73,16 @@ def reply(app: App, vid: str, received: int) -> tuple[dict | None, dict]:
 
 
 def relabel(app: App) -> None:
-    """A zone list that changed, or a charge spot: past trips and charges take the new names."""
-    store.relabel(app.conn, app.zones, app.spots)
+    """A zone list that changed, or a charge spot: past trips and charges take the new names, and the states that show one are published
+    again. Never inside a transaction; does nothing before a zone list has loaded (the first one relabels everything anyway)."""
+    if app.zones_loaded() and store.relabel(app.conn, app.zones, prices.spot_namer(app.conn)) > 0:
+        republish(app, None)
 
 
 def rebuild(app: App, now_ms: int) -> None:
     """At start-up, before the first totals publish: derive every vehicle again, so rows dropped by an ALGO bump are back before its
     next ingest, then republish its last trip and charge states (a rebuild may have closed one). No events."""
-    conn, deriver, sensors = app.conn, app.deriver, app.sensors
+    conn, deriver = app.conn, app.deriver
     started = time.monotonic()
     deriver.purge_stale()
     vehicles = conn.execute("SELECT vehicle_id FROM vehicles").fetchall()
@@ -95,8 +102,7 @@ def rebuild(app: App, now_ms: int) -> None:
             for m in [*range(first + REBUILD_STEP_MS, now_ms, REBUILD_STEP_MS), now_ms]:
                 deriver.update(vid, None if cut is None else cut - ESTIMATE_HOLD_MS, m)
                 cut = m + FUTURE_SLACK_MS
-            trips, charges = store.closed(conn, TRIP, vid, 1), store.closed(conn, CHARGE, vid, 1)
-            sensors.publish(vid, trips[0] if trips else None, charges[0] if charges else None, [], [])
+            _publish_last(app, vid)
         except Exception:
             log.exception("rebuild of %s failed", vid)
     log.info("rebuild of %d vehicles took %.1f s", len(vehicles), time.monotonic() - started)
@@ -107,8 +113,7 @@ def republish(app: App, vids: list[str] | None) -> None:
     conn = app.conn
     for vid in vids if vids is not None else [r[0] for r in conn.execute("SELECT vehicle_id FROM vehicles")]:
         try:
-            trips, charges = store.closed(conn, TRIP, vid, 1), store.closed(conn, CHARGE, vid, 1)
-            app.sensors.publish(vid, trips[0] if trips else None, charges[0] if charges else None, [], [])
+            _publish_last(app, vid)
             app.totals.publish_vehicle(vid)
         except Exception:
             log.exception("republish of %s failed", vid)

@@ -1,6 +1,6 @@
+import asyncio
 import logging
 import math
-import time
 from dataclasses import dataclass
 from typing import Callable
 
@@ -29,39 +29,39 @@ def name_at(zones: list[Zone], lat: float, lon: float) -> str | None:
 
 
 class ZoneCache:
-    """Callable (lat, lon) -> zone name, refetching the zone list when it is older than ttl_ms.
+    """Callable (lat, lon) -> zone name over the last list that got through; a lookup only reads. `run` refetches every `ttl_ms`.
     `on_change` runs after a fetch whose list differs from the last one that got through (the first fetch included), so places can
     be renamed; a failed fetch keeps the list and calls nothing.
 
-    shortcut: a refetch blocks the event loop (at most every ttl_ms, 10 s timeout), move it to a thread if that ever shows.
+    shortcut: a refetch blocks the event loop (every ttl_ms, 10 s timeout), move it to a thread if that ever shows.
     """
 
-    def __init__(self, fetch: Callable[[], list[Zone]], ttl_ms: int = 600_000, now_ms: Callable[[], int] = lambda: int(time.time() * 1000),
-                 on_change: Callable[[], None] = lambda: None):
-        self._fetch, self._ttl, self._now, self._on_change = fetch, ttl_ms, now_ms, on_change
+    def __init__(self, fetch: Callable[[], list[Zone]], ttl_ms: int = 600_000, on_change: Callable[[], None] = lambda: None):
+        self._fetch, self._ttl = fetch, ttl_ms
+        self.on_change = on_change  # public: the app that renames places is built from this cache, so it is set after
         self._zones: list[Zone] = []
         self._announced: list[Zone] | None = None  # the list on_change last ran for
-        self._at: int | None = None
+        self.loaded = False  # a fetch has succeeded: before it, no place may be renamed (an empty list would blank them)
 
     def refresh(self) -> None:
         """Fetch the list now; run on_change when it differs from the last one announced."""
-        self._at = self._now()  # a failed fetch counts as an attempt, so a down HA is retried once per ttl, not per lookup
         try:
             zones = self._fetch()
         except Exception:
             log.exception("zone fetch failed, keeping the last list")
             return
-        self._zones = zones
+        self._zones, self.loaded = zones, True
         if zones != self._announced:
-            # shortcut: a relabel inside an update that later rolls back is undone while the list counts as announced (a restart heals it),
-            # and one row mid-build may get its start and end named by different lists; fine while zones change rarely
             try:
-                self._on_change()
+                self.on_change()
                 self._announced = zones
-            except Exception:  # a lookup (maybe mid-derivation) must not fail for it; the next fetch tries again
+            except Exception:  # the next fetch tries again
                 log.exception("renaming places after a zone change failed")
 
-    def __call__(self, lat: float, lon: float) -> str | None:
-        if self._at is None or self._now() - self._at >= self._ttl:
+    async def run(self, interval_s: float | None = None) -> None:
+        while True:
             self.refresh()
+            await asyncio.sleep(self._ttl / 1000 if interval_s is None else interval_s)
+
+    def __call__(self, lat: float, lon: float) -> str | None:
         return name_at(self._zones, lat, lon)

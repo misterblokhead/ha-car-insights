@@ -256,17 +256,19 @@ def test_relabel_names_a_charge_outside_every_zone_after_its_spot(conn):
     assert [store.row(conn, CHARGE, "car1", s)["place"] for s in (0, 10)] == [None, None]
 
 
-def test_relabel_runs_inside_a_transaction_and_rolls_back_on_error(conn):
-    """a zone list can change in the middle of a derivation, which holds a transaction"""
+def test_relabel_is_one_transaction_that_rolls_back_on_error(conn):
     seed_charge(conn, "car1", 0, 5, lat=52.0, lon=5.0, zone="Old", place="Old")
-    with db.tx(conn):
-        assert store.relabel(conn, lambda lat, lon: "New", lambda lat, lon: None) == 1
-    assert store.row(conn, CHARGE, "car1", 0)["zone"] == "New" and not conn.in_transaction
-    def boom(lat, lon):
-        raise RuntimeError("boom")
+    seed_charge(conn, "car1", 10, 15, lat=52.1, lon=5.0, zone="Old", place="Old")
+    seen = []
+    def zones(lat, lon):
+        seen.append(conn.in_transaction)
+        if len(seen) == 2:
+            raise RuntimeError("boom")
+        return "New"
     with pytest.raises(RuntimeError):
-        store.relabel(conn, boom, lambda lat, lon: None)
-    assert store.row(conn, CHARGE, "car1", 0)["zone"] == "New" and not conn.in_transaction
+        store.relabel(conn, zones, lambda lat, lon: None)
+    assert seen == [True, True] and not conn.in_transaction
+    assert [store.row(conn, CHARGE, "car1", s)["zone"] for s in (0, 10)] == ["Old", "Old"]  # the first rename went with it
 
 
 def test_relabel_skips_rows_without_gps(conn):

@@ -105,6 +105,20 @@ def test_create_spot_from_charge(c):
     assert prices.book(c, "car1").tariff_at(sid, 10_000)["per_kwh"] == 0.35
 
 
+def test_spot_namer_and_books_query_once(c):
+    charge(c, 10_000, lat=52.1, lon=5.2)
+    prices.create_spot(c, "car1", 10_000, "Plaza", 0.35)
+    queries = []
+    c.set_trace_callback(queries.append)
+    name = prices.spot_namer(c)
+    assert [name(52.1, 5.2) for _ in range(3)] == ["Plaza"] * 3 and name(52.5, 5.5) is None
+    assert len(queries) == 1  # one load, however many points are asked
+    queries.clear()
+    books = prices.books(c)
+    assert books("car1") is books("car1") and books("car1") is not books("car2")
+    assert len([q for q in queries if "FROM tariffs" in q]) == 2  # a book per vehicle, once
+
+
 def test_create_spot_needs_point_and_charge(c):
     charge(c, 10_000)
     with pytest.raises(ValueError, match="no GPS point"):

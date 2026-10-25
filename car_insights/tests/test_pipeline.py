@@ -2,6 +2,7 @@ import json
 import math
 import sqlite3
 from datetime import timezone
+from functools import partial
 
 import pytest
 
@@ -11,6 +12,7 @@ from car_insights.kinds import CHARGE, TRIP
 from car_insights import pipeline, summary
 from car_insights.pipeline import REBUILD_STEP_MS, App, close_quiet, ingested, rebuild, reply, republish
 from car_insights.trips import QUIET_MS
+from car_insights.zones import Zone, ZoneCache
 from car_insights.totals_sensors import TotalsSensors
 from car_insights.trip_sensors import TripSensors
 from conftest import FakeMqtt, ms, s, v6_database
@@ -28,7 +30,7 @@ def trip_samples(t0):
 
 def make_app(env, deriver=None):
     conn, _, d, sensors, totals = env
-    return App(conn, deriver or d, sensors, totals, TZ, CAP, lambda la, lo: "Home", lambda la, lo: None)
+    return App(conn, deriver or d, sensors, totals, TZ, CAP, lambda la, lo: "Home")
 
 
 def refresh(app, vid, min_t, received):
@@ -290,6 +292,62 @@ def test_republish(env, caplog):
     assert "republish of the groups failed" in caplog.text
 
 
+def zoned_app(env, lists):
+    """an app whose zone cache answers `lists` in turn (an Exception is raised); the derivation asks the same cache"""
+    conn = env[0]
+    it = iter(lists)
+    def fetch():
+        r = next(it)
+        if isinstance(r, Exception):
+            raise r
+        return r
+    cache = ZoneCache(fetch)
+    app = App(conn, Deriver(conn, cache, CAP), env[3], env[4], TZ, CAP, cache, lambda: cache.loaded)
+    cache.on_change = partial(pipeline.relabel, app)
+    return app, cache
+
+
+def test_a_renamed_zone_republishes_the_last_trip(env):
+    conn, mqtt, *_ = env
+    now = 10_000_000
+    app, zones = zoned_app(env, [[Zone("Home", 52.0, 5.0, 100)], [Zone("Garage", 52.0, 5.0, 100)]])
+    conn.execute("INSERT INTO vehicles(vehicle_id, name) VALUES('car1','car1')")
+    zones.refresh()
+    db.ingest(conn, "car1", SRC, trip_samples(now - 200_000), now)
+    refresh(app, "car1", now - 200_000, now)
+    assert mqtt.on("car_insights/car1/last_trip")[-1][0]["from"] == "Home"
+    mqtt.msgs.clear()
+    zones.refresh()  # the zone is renamed: stored rows follow, and so does the state
+    assert store.closed(conn, TRIP, "car1", 1)[0]["from"] == "Garage"
+    assert mqtt.on("car_insights/car1/last_trip")[-1][0]["from"] == "Garage"
+    assert mqtt.on("car_insights/car1/trip_event") == []  # no event for a rename
+
+
+def test_a_relabel_that_changes_nothing_publishes_nothing(env):
+    conn, mqtt, *_ = env
+    now = 10_000_000
+    app, zones = zoned_app(env, [[Zone("Home", 52.0, 5.0, 100)], [Zone("Home", 52.0, 5.0, 100), Zone("Work", 52.5, 5.5, 100)]])
+    zones.refresh()
+    db.ingest(conn, "car1", SRC, trip_samples(now - 200_000), now)
+    refresh(app, "car1", now - 200_000, now)
+    mqtt.msgs.clear()
+    zones.refresh()  # a new zone no stored point lies in
+    assert mqtt.msgs == []
+
+
+def test_no_relabel_before_a_zone_list_has_loaded(env):
+    conn, mqtt, *_ = env
+    now = 10_000_000
+    db.ingest(conn, "car1", SRC, trip_samples(now - 200_000), now)
+    refresh(make_app(env), "car1", now - 200_000, now)  # the trip is named Home
+    app, zones = zoned_app(env, [RuntimeError("down"), [Zone("Work", 52.5, 5.5, 100)]])
+    zones.refresh()
+    pipeline.relabel(app)  # a spot route after a start-up with no zone list
+    assert store.closed(conn, TRIP, "car1", 1)[0]["from"] == "Home"
+    zones.refresh()  # the list arrives: now every place follows it
+    assert store.closed(conn, TRIP, "car1", 1)[0]["from"] is None
+
+
 def winding_samples(t0, secs, open_=False):
     """a trip drifting north on a wiggling track: one gps fix a second, so the stored route has far more than 48 points"""
     gps = [s(t0 + 1000 * i, "gps", [52.0 + 0.0001 * i, 5.0 + 0.001 * math.sin(i / 4)]) for i in range(secs)]
@@ -384,7 +442,7 @@ def assert_rebuilt_like_one_pass(conn, now):
     copy = sqlite3.connect(":memory:")
     conn.backup(copy)
     d = Deriver(conn, lambda la, lo: "Home")
-    rebuild(App(conn, d, TripSensors(conn, FakeMqtt(), CAP), TotalsSensors(conn, FakeMqtt(), TZ), TZ, CAP, lambda la, lo: "Home", lambda la, lo: None), now)
+    rebuild(App(conn, d, TripSensors(conn, FakeMqtt(), CAP), TotalsSensors(conn, FakeMqtt(), TZ), TZ, CAP, lambda la, lo: "Home"), now)
     Deriver(copy, lambda la, lo: "Home").update("car1", None, now)
     for table in ("trips", "charges", "trip_series", "charge_series", "trip_routes"):
         a, b = (c.execute(f"SELECT * FROM {table} ORDER BY start").fetchall() for c in (conn, copy))
@@ -454,7 +512,7 @@ def test_upgrade_keeps_receipt_and_spot(tmp_path):
     db.ingest(conn, "car1", SRC, [s(start, "battery_wh", 20_000.0), s(start + 500, "gps", [52.0, 5.0]), s(start + 1000, "plugged", True),
                                   s(start + 3_600_000, "battery_wh", 25_000.0), s(start + 3_700_000, "plugged", False)], now)
     deriver = Deriver(conn, lambda la, lo: None, CAP, spots=lambda la, lo: prices.spot_name_at(conn, la, lo))
-    rebuild(App(conn, deriver, TripSensors(conn, FakeMqtt(), CAP), TotalsSensors(conn, FakeMqtt(), TZ), TZ, CAP, lambda la, lo: None, lambda la, lo: None), now)
+    rebuild(App(conn, deriver, TripSensors(conn, FakeMqtt(), CAP), TotalsSensors(conn, FakeMqtt(), TZ), TZ, CAP, lambda la, lo: None), now)
     [charge] = store.closed(conn, CHARGE, "car1")
     assert charge["place"] == "Plaza" and charge["zone"] is None
     assert costs.charge_cost(prices.book(conn, "car1"), charge)["basis"] == "receipt"

@@ -86,7 +86,7 @@ def test_poller_calls_ingested_only(monkeypatch):
     conn = connect(":memory:")
     d = Deriver(conn, lambda la, lo: None)
     app = App(conn, d, TripSensors(conn, FakeMqtt(), lambda vid: 57_000.0), TotalsSensors(conn, FakeMqtt(), timezone.utc), timezone.utc,
-              lambda vid: 57_000.0, lambda la, lo: None, lambda la, lo: None)
+              lambda vid: 57_000.0, lambda la, lo: None)
     built = []
     monkeypatch.setattr(summary, "build", lambda *a, **k: built.append(1))
     p = Poller(conn, [CONF], Fetch(FULL), partial(ingested, app), lambda: NOW)
