@@ -13,6 +13,9 @@ MOVING_MPS = 0.2778  # 1 km/h
 MAX_SPEED_STEP_MS = 5_000  # a speed sample stands for at most this long
 NOISE_DISTANCE_M = 100
 NOISE_DURATION_S = 60
+# a battery_wh reading replaced within this is no step: the Mégane's level flickers 50-100 Wh for ~0.2 s
+# (2026-10-24 trip: 1 s gives 7.0 / 2.2 kWh gross / recup, Aximote 7 / 2.1; unfiltered 15.65 / 10.85)
+WH_FLICKER_MS = 1_000
 
 
 @dataclass
@@ -94,7 +97,8 @@ def distance_steps(samples: list[Sample]) -> Iterator[tuple[int, float, float]]:
 
 
 def _wh_readings(samples: list[Sample], wh0: float | None, start: int) -> tuple[float | None, list[tuple[int, float]]]:
-    """the base wh and the later readings; a reading at the start instant is the base, not a step"""
+    """the base wh and the later readings; a reading at the start instant is the base, not a step;
+    a reading replaced within WH_FLICKER_MS is dropped, the last one always stays"""
     base, readings = wh0, []
     for s in samples:
         if s.k == "battery_wh" and (v := num(s.v)) is not None:
@@ -102,7 +106,7 @@ def _wh_readings(samples: list[Sample], wh0: float | None, start: int) -> tuple[
                 base = v
             else:
                 readings.append((s.t, v))
-    return base, readings
+    return base, [r for r, nxt in zip(readings, readings[1:]) if nxt[0] - r[0] >= WH_FLICKER_MS] + readings[-1:]
 
 
 def energy_steps(samples: list[Sample], wh0: float | None, start: int) -> Iterator[tuple[int, float, float, float]]:

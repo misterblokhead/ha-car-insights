@@ -19,6 +19,7 @@ from .protocol import fix, num
 log = logging.getLogger(__name__)
 EpochMs = Annotated[int, Query(ge=0, lt=2**62)]  # sqlite integers are 64-bit: anything larger would be a 500, not a 422
 StartMs = Annotated[int, Path(ge=0, lt=2**62)]
+RAW_SPAN_MS = 86_400_000
 
 
 def _not_found() -> HTTPException:
@@ -193,6 +194,16 @@ def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
         return {"charge": with_figures(CHARGE, row, capacity(vid)), "cost": costs.charge_cost(prices.book(conn, vid), row),
                 "series": series, "capacity_wh": capacity(vid),
                 "outside_temp_c": num(db.latest_at_or_before(conn, vid, start, ("outside_temp",)).get("outside_temp"))}
+
+    @r.get("/samples/{vid}")
+    async def raw_samples(request: Request, vid: str, key: str, start: EpochMs, end: EpochMs):
+        """admin only: one key's stored samples with start <= t <= end, at most a day, for checking derived figures"""
+        await who(request, admin=True)
+        if db.vehicle(conn, vid) is None:
+            raise _not_found()
+        if not 0 <= end - start <= RAW_SPAN_MS:
+            raise HTTPException(400, "span must be 0 to 1 day")
+        return {"key": key, "rows": [[x.t, x.v] for x in db.samples_after(conn, vid, start - 1, end, (key,))]}
 
     @r.get("/settings")
     async def get_settings(request: Request):
