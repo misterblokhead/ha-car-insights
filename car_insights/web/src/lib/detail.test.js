@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { split, durationParts, compare, markerAt, deltaText, kwLabel, arrow, rangeLine, place, chargedAt, estimate, routeLabel } from "./detail.js";
+import { split, durationParts, compare, markerAt, deltaText, kwLabel, arrow, rangeLine, place, chargedAt, estimate, routeLabel, temp, fig } from "./detail.js";
 
 test("split separates the value from its unit", () => {
   assert.deepEqual(split("12.3 km"), ["12.3", "km"]);
@@ -87,4 +87,17 @@ test("routeLabel describes the outline for a screen reader", () => {
   assert.equal(routeLabel(trip), "Route from Home to Work, 26.0 km, 45 min");
   assert.equal(routeLabel({ ...trip, from: null, to: null }), "Route from Unknown to Unknown, 26.0 km, 45 min");
   assert.equal(routeLabel({ ...trip, end: null }), "Route from Home to Work, 26.0 km, still driving");
+});
+
+test("temp rounds to whole degrees, keeps the sign and shows a dash when unknown", () => {
+  assert.equal(temp(12.4), "12 °C");
+  assert.equal(temp(0), "0 °C");
+  assert.equal(temp(-3.6), "-4 °C");
+  assert.equal(temp(null), "–");
+  assert.equal(temp(undefined), "–");
+});
+
+test("fig builds a Figure's props from a label and a [value, unit] pair", () => {
+  assert.deepEqual(fig("Distance", ["12.3", "km"]), { label: "Distance", value: "12.3", unit: "km" });
+  assert.deepEqual(fig("Average", ["–", ""]), { label: "Average", value: "–", unit: "" });
 });

@@ -51,3 +51,9 @@ export const estimate = (text, estimated) => (estimated ? "~" : "") + text;
 
 // the aria-label of a trip's route outline
 export const routeLabel = (t) => `Route from ${place(t.from)} to ${place(t.to)}, ${km(t.distance_m)}, ${t.end == null ? "still driving" : duration(t.duration_s)}`;
+
+// "12 °C" outside temperature; a dash when unknown
+export const temp = (c) => (c == null ? NA : `${c.toFixed(0)} °C`);
+
+// the props of one Figure tile from a label and a [value, unit] pair
+export const fig = (label, [value, unit]) => ({ label, value, unit });
