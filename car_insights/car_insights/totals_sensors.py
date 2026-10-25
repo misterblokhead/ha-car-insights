@@ -6,8 +6,8 @@ import time
 from datetime import datetime, time as dtime, timedelta, tzinfo
 from typing import Callable
 
-from . import db, live
-from .publisher import Sink
+from . import db, ha_mqtt
+from .ha_mqtt import Sink
 from .totals import totals
 
 log = logging.getLogger(__name__)
@@ -43,23 +43,19 @@ class TotalsSensors:
         self._groups: set[str] = set()  # groups whose entities exist in HA
 
     def _discovery(self, key: str, dev: dict) -> list[tuple[str, str]]:
-        out = []
-        for f, (_, _, name, unit, dclass) in _SENSORS.items():
-            # no state_class on energy: HA rejects measurement there (see TripSensors)
-            comp, extra = live.sensor(name, unit, dclass, measurement=dclass != "energy", state_topic="totals",
-                                      value_template="{{ value_json.%s }}" % f)
-            out.append((f"homeassistant/{comp}/{key}_{f}/config", json.dumps(live.config(key, f, extra, dev))))
-        for f, (name, unit, dclass) in _COST_SENSORS.items():  # HA rejects state_class measurement on monetary
-            comp, extra = live.sensor(name, unit, dclass, measurement=False, state_topic="totals", value_template="{{ value_json.%s }}" % f)
-            out.append((f"homeassistant/{comp}/{key}_{f}/config", json.dumps(live.config(key, f, extra, dev))))
-        return out
+        # no state_class on energy: HA rejects measurement there (see TripSensors)
+        specs = {f: ha_mqtt.sensor(name, unit, dclass, measurement=dclass != "energy", state_topic="totals", value_template="{{ value_json.%s }}" % f)
+                 for f, (_, _, name, unit, dclass) in _SENSORS.items()}
+        specs |= {f: ha_mqtt.sensor(name, unit, dclass, measurement=False, state_topic="totals", value_template="{{ value_json.%s }}" % f)
+                  for f, (name, unit, dclass) in _COST_SENSORS.items()}  # HA rejects state_class measurement on monetary
+        return ha_mqtt.discovery(key, dev, specs)
 
     def _publish(self, key: str, vids: list[str]) -> None:
-        self._mqtt.publish([(live.topic(key, "totals"), json.dumps(_state(totals(self._conn, vids, self._now_ms(), self._tz))))])
+        self._mqtt.publish([(ha_mqtt.topic(key, "totals"), json.dumps(_state(totals(self._conn, vids, self._now_ms(), self._tz))))])
 
     def publish_vehicle(self, vid: str) -> None:
         if vid not in self._announced:
-            self._mqtt.publish(self._discovery(vid, live.device(vid, *db.device_info(self._conn, vid))))
+            self._mqtt.publish(self._discovery(vid, ha_mqtt.device(vid, *db.device_info(self._conn, vid))))
             self._announced.add(vid)
         self._publish(vid, [vid])
 
@@ -72,11 +68,11 @@ class TotalsSensors:
         names = dict(self._conn.execute("SELECT group_id, name FROM cost_groups"))
         for gid, name in names.items():
             key = GROUP_PREFIX + gid
-            self._mqtt.publish(self._discovery(key, live.device(key, name, None, None)))
+            self._mqtt.publish(self._discovery(key, ha_mqtt.device(key, name, None, None)))
             self._publish(key, [r[0] for r in self._conn.execute("SELECT vehicle_id FROM vehicles WHERE cost_group_id=?", (gid,))])
         for gid in self._groups - names.keys():  # an empty retained payload removes the entity and its state
             key = GROUP_PREFIX + gid
-            self._mqtt.publish([*((f"homeassistant/sensor/{key}_{f}/config", "") for f in (*_SENSORS, *_COST_SENSORS)), (live.topic(key, "totals"), "")])
+            self._mqtt.publish([*((f"homeassistant/sensor/{key}_{f}/config", "") for f in (*_SENSORS, *_COST_SENSORS)), (ha_mqtt.topic(key, "totals"), "")])
         self._groups = set(names)
 
     def _seconds_to_next_run(self) -> float:

@@ -9,7 +9,7 @@ from car_insights import db
 from car_insights.db import connect
 from car_insights.protocol import Sample
 from car_insights.poller import BACKFILL_MS, Poller, SourceConf, source_id
-from car_insights.source_b import MAPPINGS, REPORT_MAX_AGE_MS, entity_ids
+from car_insights.ha_entities import MAPPINGS, REPORT_MAX_AGE_MS, entity_ids
 from conftest import ms
 
 NOW = ms("2026-10-23T12:00:00+00:00")
@@ -186,38 +186,6 @@ def test_run_polls_repeatedly_until_cancelled():
 
     asyncio.run(go())
     assert len(f.calls) >= 2
-
-
-def test_learns_capacity_on_first_poll_then_daily():
-    conn = connect(":memory:")
-    db.ingest(conn, "car1", "x", [s for i in range(10) for s in (Sample(2 * i + 1, T + i * 1000, "battery_wh", 25_000.0),
-                                                                  Sample(2 * i + 2, T + i * 1000, "soc_percent", 50.0))], NOW)
-    clock = [NOW]
-    p = Poller(conn, [CONF], Fetch(), lambda *a: None, lambda: clock[0])
-    poll(p)
-    assert db.capacity_wh(conn, "car1", 1.0) == 50_000.0
-    db.set_capacity_wh(conn, "car1", 1.0)
-    clock[0] += 3_600_000
-    poll(p)
-    assert db.capacity_wh(conn, "car1", 0.0) == 1.0  # not due yet
-    clock[0] += 86_400_000
-    poll(p)
-    assert db.capacity_wh(conn, "car1", 0.0) == 50_000.0
-
-
-@pytest.mark.parametrize("wh", [2_000.0, 150_000.0])  # 4 kWh and 300 kWh learned: outside 10-200 kWh
-def test_implausible_learned_capacity_keeps_the_previous_value(wh, caplog):
-    conn = connect(":memory:")
-    db.ingest(conn, "car1", "x", [s for i in range(10) for s in (Sample(2 * i + 1, T + i * 1000, "battery_wh", wh),
-                                                                  Sample(2 * i + 2, T + i * 1000, "soc_percent", 50.0))], NOW)
-    db.set_capacity_wh(conn, "car1", 57_000.0)
-    clock = [NOW]
-    p = Poller(conn, [CONF], Fetch(), lambda *a: None, lambda: clock[0])
-    poll(p)
-    clock[0] += 2 * 86_400_000
-    poll(p)
-    assert db.capacity_wh(conn, "car1", 0.0) == 57_000.0
-    assert len([r for r in caplog.records if "outside" in r.getMessage()]) == 1  # logged once
 
 
 def test_quiet_car_is_not_reingested_from_the_start_time_state():

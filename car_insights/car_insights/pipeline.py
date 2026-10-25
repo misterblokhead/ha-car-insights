@@ -7,7 +7,7 @@ from typing import Callable
 
 from . import db, route, summary
 from .derive import ESTIMATE_HOLD_MS, Deriver
-from .live import FUTURE_SLACK_MS
+from .protocol import FUTURE_SLACK_MS
 from .totals_sensors import TotalsSensors
 from .trip_sensors import TripSensors
 from .trips import QUIET_MS

@@ -6,8 +6,8 @@ from typing import Callable
 
 from . import db, route, series
 from .charges import KEYS as CHARGE_KEYS, Charge, find_charges
-from .live import FUTURE_SLACK_MS
 from .odometer import chain
+from .protocol import FUTURE_SLACK_MS
 from .trips import KEYS as TRIP_KEYS, QUIET_MS, Trip, find_trips
 
 log = logging.getLogger(__name__)

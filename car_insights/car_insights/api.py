@@ -12,8 +12,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import ingest
-from .live import FUTURE_SLACK_MS
-from .protocol import ProtocolError, Sample, parse_batch
+from .protocol import FUTURE_SLACK_MS, ProtocolError, Sample, parse_batch
 
 log = logging.getLogger(__name__)
 # Layered limits: car batches <= 256 KB, receiver accepts 300 KB, this add-on 1 MiB (deliberately the largest so it never rejects what the receiver forwarded).

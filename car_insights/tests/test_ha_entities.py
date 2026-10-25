@@ -1,4 +1,4 @@
-from car_insights.source_b import RENAULT, MAPPINGS, entity_ids, parse_history, to_samples
+from car_insights.ha_entities import RENAULT, MAPPINGS, entity_ids, parse_history, to_samples
 from conftest import ms
 
 CHG = "sensor.ss_charge_state"

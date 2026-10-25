@@ -47,7 +47,7 @@ def snapshot() -> dict:
     vid, start = conn.execute("SELECT vehicle_id, start FROM charges WHERE end IS NOT NULL ORDER BY start DESC LIMIT 1").fetchone()
     prices.set_receipt(conn, vid, start, 12.34)  # puts a "receipt" cost basis in the answers
     sink = Sink()
-    sensors = TripSensors(conn, sink, capacity, lambda kind, v, st: getattr(deriver, f"{kind}_series")(v, st),
+    sensors = TripSensors(conn, sink, capacity,
                           cost=lambda kind, v, row: costs.trip_cost(conn, v, row, demo.TZ)["total"] if kind == "trip" else costs.charge_cost(conn, v, row)["amount"])
     totals = TotalsSensors(conn, sink, demo.TZ, now_ms=lambda: NOW)
     summarize = lambda v, min_t, received: pipeline.refresh(deriver, sensors, totals, v, min_t, received, demo.TZ)

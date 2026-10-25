@@ -11,7 +11,7 @@ The car-side sender is a separate project. Any sender that follows [docs/protoco
 
 ## Sidebar page
 
-The add-on adds a **Car Insights** sidebar page (ingress) with Activity (one timeline of trips and charges with route outlines, detail pages with curves), Statistics (week, month, year) and Settings. Vehicles can be put in cost groups (month and year totals per group) and a vehicle group, and viewers choose which HA users see which vehicles and groups; HA admins edit these on the page's Settings. Every user sees only what they may see. A ready-made dashboard is in [dashboard/car-insights.yaml](dashboard/car-insights.yaml) (see the add-on README for the recorder exclude).
+The add-on adds a **Car Insights** sidebar page (ingress) with Activity (one timeline of trips and charges with route outlines, detail pages with curves), Statistics (week, month, year) and Settings. Vehicles can be put in cost groups (month and year totals per group) and a vehicle group, and viewers choose which HA users see which vehicles and groups; HA admins edit these on the page's Settings. Every user sees only what they may see. A ready-made dashboard is in [dashboard/car-insights.yaml](dashboard/car-insights.yaml).
 
 ## Requirements
 

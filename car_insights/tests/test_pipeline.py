@@ -28,7 +28,7 @@ def env():
     conn = db.connect(":memory:")
     mqtt = FakeMqtt()
     d = Deriver(conn, lambda la, lo: "Home", lambda vid: 57_000.0)
-    return conn, mqtt, d, TripSensors(conn, mqtt, lambda vid: 57_000.0, lambda kind, vid, start: getattr(d, f"{kind}_series")(vid, start)), TotalsSensors(conn, mqtt, TZ, now_ms=lambda: 10_000_000)
+    return conn, mqtt, d, TripSensors(conn, mqtt, lambda vid: 57_000.0), TotalsSensors(conn, mqtt, TZ, now_ms=lambda: 10_000_000)
 
 
 def test_ingest_to_summary_and_sensors(env):
@@ -347,7 +347,7 @@ def assert_rebuilt_like_one_pass(conn, now):
     """rebuild `conn` in windows and a copy in one update: every derived table must be equal"""
     copy = sqlite3.connect(":memory:")
     conn.backup(copy)
-    rebuild(Deriver(conn, lambda la, lo: "Home"), TripSensors(conn, FakeMqtt(), lambda vid: 57_000.0, lambda kind, vid, start: None), conn, now)
+    rebuild(Deriver(conn, lambda la, lo: "Home"), TripSensors(conn, FakeMqtt(), lambda vid: 57_000.0), conn, now)
     Deriver(copy, lambda la, lo: "Home").update("car1", None, now)
     for table in ("trips", "charges", "trip_series", "charge_series", "trip_routes"):
         a, b = (c.execute(f"SELECT * FROM {table} ORDER BY start").fetchall() for c in (conn, copy))

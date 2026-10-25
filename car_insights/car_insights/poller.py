@@ -6,13 +6,12 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
-from . import capacity, db
+from . import db
 from .protocol import Sample
-from .source_b import MAPPINGS, REPORT_MAX_AGE_MS, entity_ids, parse_history, to_samples
+from .ha_entities import MAPPINGS, REPORT_MAX_AGE_MS, entity_ids, parse_history, to_samples
 
 log = logging.getLogger(__name__)
 BACKFILL_MS = 10 * 86_400_000  # HA's default history retention
-LEARN_EVERY_MS = 86_400_000
 SETTLE_MS = 10_000  # a metric row and its report-time row come from one HA update: end the window before "now" so both land in one fetch
 
 
@@ -31,10 +30,8 @@ class Poller:
     def __init__(self, conn, confs: list[SourceConf], fetch: Callable[[list[str], int, int], list[list[dict]]],
                  on_samples: Callable[[str, int, int], None], now_ms: Callable[[], int] = lambda: int(time.time() * 1000)):
         self._conn, self._confs, self._fetch, self._on_samples, self._now = conn, confs, fetch, on_samples, now_ms
-        self._learned: dict[str, int] = {}  # vehicle -> when capacity was last learned (in memory: re-learns after a restart)
         self._until: dict[tuple[str, str], int] = {}  # (vehicle, source) -> `now` of its last successful poll (in memory: a restart starts from the cursor)
         self._missing: set[str] = set()  # entities already reported as absent from HA
-        self._implausible: set[str] = set()  # vehicles whose out-of-range learned capacity was already logged
 
     async def poll_once(self) -> None:
         for conf in self._confs:
@@ -42,22 +39,6 @@ class Poller:
                 await self._poll(conf)
             except Exception:
                 log.exception("polling %s failed, retrying next interval", conf.entity_stem)
-            self._learn(conf.vehicle_id)
-
-    def _learn(self, vid: str) -> None:
-        now = self._now()
-        if now - self._learned.get(vid, -LEARN_EVERY_MS) < LEARN_EVERY_MS:
-            return
-        self._learned[vid] = now
-        try:
-            wh = capacity.learn(self._conn, vid, now)
-            if wh is not None and capacity.PLAUSIBLE_WH[0] <= wh <= capacity.PLAUSIBLE_WH[1]:
-                db.set_capacity_wh(self._conn, vid, wh)
-            elif wh is not None and vid not in self._implausible:
-                self._implausible.add(vid)
-                log.warning("learned capacity %.0f Wh of %s is outside %.0f-%.0f Wh, keeping the previous value", wh, vid, *capacity.PLAUSIBLE_WH)
-        except Exception:
-            log.exception("learning the capacity of %s failed", vid)
 
     async def _poll(self, conf: SourceConf) -> None:
         vid, sid, mapping = conf.vehicle_id, source_id(conf), MAPPINGS[conf.mapping]

@@ -35,18 +35,10 @@ Rules: a charge is DC when its average power is above 22 kW, else AC. Charging l
 
 The first start of 0.7.0 rebuilds all trips and charges once (charges gain their GPS point); the log shows `rebuild of N vehicles took ... s`.
 
-## Sensors, dashboard and recorder
+## Sensors and dashboard
 
-Per vehicle: live sensors, last trip and last charge, month and year totals, and `sensor.<vehicle>_last_trip_curve` / `sensor.<vehicle>_last_charge_curve` (the state is the segment start, the attributes carry the series for your own cards). Per cost group: month and year totals on a device of its own.
+Per vehicle: live sensors, last trip and last charge, month and year totals. Per cost group: month and year totals on a device of its own.
 
 Cost sensors (0.7.0): `last_trip_cost` and `last_charge_cost` (EUR); per vehicle and per cost group `month_` and `year_` `energy_cost`, `fixed_cost` and `total_cost` (EUR) and `cost_per_km` (EUR/km). The ended trip and charge events carry `cost`.
 
 A ready-made Lovelace sections view is in [dashboard/car-insights.yaml](../dashboard/car-insights.yaml) (Now, Last trip, Last charge, This month, This year, Last 24 hours, and a shortcut to the sidebar page): replace `VEHICLE` with the device's entity prefix and its title with your car's name. Its two charts need `apexcharts-card` from HACS. Per-trip curves are on the sidebar page, not on the dashboard: `apexcharts-card` only draws a time axis ending at a span relative to now, so a past trip's km-based curve cannot be shown faithfully.
-
-The curve attributes can be large and change on every trip, so keep them out of the recorder:
-
-```yaml
-recorder:
-  exclude:
-    entity_globs: ["sensor.*_last_trip_curve", "sensor.*_last_charge_curve"]
-```
