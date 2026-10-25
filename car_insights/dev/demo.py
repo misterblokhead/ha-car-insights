@@ -106,6 +106,7 @@ def drive(log, t0, a, b, wh, temp, rng, wake=True, until=None) -> tuple[int, flo
     log(t0, "battery_wh", round(wh))  # a reading at the start instant is the trip's base
     height = lambda s: 40 * math.sin(2 * math.pi * s / 2400 + phase)  # metres
     phase = rng.uniform(0, 6)
+    hard = rng.random() < 1 / 3  # a third of the drives start and stop hard: 200 ms speed samples at about +-4 m/s2 give the style events
     t, s, v, n = t0, 0.0, 0.0, 0
     while True:
         rem = cum[-1] - s
@@ -118,8 +119,14 @@ def drive(log, t0, a, b, wh, temp, rng, wake=True, until=None) -> tuple[int, flo
         n += 1
         if n % 3 == 0:
             log(t, "battery_wh", round(wh))
+        if hard and t == t0:
+            for k in range(1, 8):
+                log(t + 200 * k, "speed", round(min(6.5, new + 0.8 * k), 2))
         if until is not None and t + 4000 > until:
             return t, wh
+        if hard and 0 < rem <= new * 4:  # the step before arrival
+            for k in range(1, 12):
+                log(t + 200 * k, "speed", round(max(1.5, new - 0.8 * k), 2))
         if rem <= 0:
             break
         s += new * 4

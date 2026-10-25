@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { split, durationParts, compare, markerAt, deltaText, kwLabel, arrow, rangeLine, place, chargedAt, estimate, routeLabel, tripTitle, span, temp, fig } from "./detail.js";
+import { split, durationParts, compare, markerAt, deltaText, kwLabel, arrow, rangeLine, place, chargedAt, estimate, routeLabel, tripTitle, span, temp, fig, scoreWord, per10, bandRows } from "./detail.js";
 import { clock, setZone } from "./time.js";
 
 setZone("Europe/Amsterdam");
@@ -123,4 +123,32 @@ test("temp rounds to whole degrees, keeps the sign and shows a dash when unknown
 test("fig builds a Figure's props from a label and a [value, unit] pair", () => {
   assert.deepEqual(fig("Distance", ["12.3", "km"]), { label: "Distance", value: "12.3", unit: "km" });
   assert.deepEqual(fig("Average", ["–", ""]), { label: "Average", value: "–", unit: "" });
+});
+
+test("scoreWord names the score", () => {
+  assert.equal(scoreWord(80), "Smooth");
+  assert.equal(scoreWord(79), "Average");
+  assert.equal(scoreWord(60), "Average");
+  assert.equal(scoreWord(59), "Lively");
+  assert.equal(scoreWord(0), "Lively");
+  assert.equal(scoreWord(null), "Too short for a score");
+});
+
+test("per10 is events per 10 km", () => {
+  assert.equal(per10(3, 27.3), "1.1 per 10 km");
+  assert.equal(per10(0, 5), "0.0 per 10 km");
+  assert.equal(per10(2, 0), "–");
+});
+
+test("bandRows gives each band its share of distance and consumption", () => {
+  const bands = { "0-50": [6000, 900], "50-80": [3600, 700], "80-100": [0, 0], "100-120": [400, -20], "120+": [0, 0] };
+  const rows = bandRows(bands, 0.5);
+  assert.deepEqual(rows.map((r) => r.name), ["0-50", "50-80", "80-100", "100-120", "120+"]);
+  assert.ok(Math.abs(rows.reduce((a, r) => a + r.share, 0) - 1) < 1e-9);
+  assert.equal(rows[0].share, 0.6);
+  assert.equal(rows[0].kwhPer100, 15); // 900 Wh over 6 km
+  assert.equal(rows[2].kwhPer100, null); // no distance
+  assert.equal(rows[3].kwhPer100, null); // 0.4 km is under the minimum
+  assert.equal(bandRows({ "0-50": [500, 100] }, 0.5)[0].kwhPer100, 20); // exactly the minimum counts
+  assert.equal(bandRows({ "0-50": [0, 0] }, 0.5)[0].share, 0); // no distance at all: no division by zero
 });

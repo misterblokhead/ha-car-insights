@@ -6,7 +6,8 @@
   // x: numbers (seconds when `time`, else km, ...); series: [{label, values, scale = "y" | "y2" | "plug", kind = "line" | "area" | "bars",
   // color: a token name such as "--trip", dash}]. `label` is what screen readers get (the key figures); it defaults to the series names.
   // xaxis: extra uPlot options for the x axis (`splits`, `values`: category names on index x).
-  let { x, series, time = false, xlabel = "", height = 180, label = "", xaxis = {} } = $props();
+  // marks: [{x, kind: "accel" | "brake" | "corner"}], small triangles on the x axis (the driving events of a trip).
+  let { x, series, time = false, xlabel = "", height = 180, label = "", xaxis = {}, marks = [] } = $props();
   let el;
   let scheme = $state(0); // bumped when the light or dark scheme flips: the colours are read from the tokens again
 
@@ -54,6 +55,21 @@
       return base;
     };
 
+    const markColor = { accel: token("--trip"), brake: token("--trip-text"), corner: muted };
+    const drawMarks = (u) => {
+      const { ctx, bbox } = u, r = 4 * devicePixelRatio, y = bbox.top + bbox.height;
+      for (const m of marks) {
+        const cx = u.valToPos(m.x, "x", true);
+        if (cx < bbox.left || cx > bbox.left + bbox.width) continue;
+        ctx.fillStyle = markColor[m.kind];
+        ctx.beginPath();
+        ctx.moveTo(cx - r, y);
+        ctx.lineTo(cx + r, y);
+        ctx.lineTo(cx, y - 1.6 * r);
+        ctx.fill();
+      }
+    };
+
     const tz = zone(); // time axes follow HA's zone; without one uPlot keeps the browser's
     const plot = new uPlot(
       {
@@ -62,6 +78,7 @@
         height,
         legend: { show: series.length > 1, live: false }, // names and swatches only: the live "--" would read as missing data
         cursor: { drag: { x: false, y: false } },
+        hooks: { draw: [drawMarks] },
         scales,
         axes: [
           { stroke: muted, font, grid: { stroke: line, width: 1 }, ticks: { stroke: line, width: 1 }, label: xlabel, labelFont: font, labelSize: xlabel ? 22 : 0, ...xaxis },
