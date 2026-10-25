@@ -10,7 +10,9 @@
     // Leaflet needs literal colours, so the tokens are read once, here
     const css = getComputedStyle(el);
     const colour = (kind) => css.getPropertyValue(`--${kind}`).trim();
-    const map = L.map(el, { scrollWheelZoom: false });
+    // on touch, a map that drags would trap the page's vertical scroll, so it pans only after a tap (like the wheel)
+    const coarse = matchMedia("(pointer: coarse)").matches;
+    const map = L.map(el, { scrollWheelZoom: false, dragging: !coarse });
     L.tileLayer("api/ui/tiles/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -32,11 +34,13 @@
     if (bounds.isValid()) map.fitBounds(bounds, { padding: [16, 16], maxZoom: 17 });
 
     // the wheel zooms only after a click or focus, so scrolling the page past the map still works
-    const zoomOn = () => map.scrollWheelZoom.enable(), zoomOff = () => map.scrollWheelZoom.disable();
+    const zoomOn = () => (map.scrollWheelZoom.enable(), map.dragging.enable());
+    const zoomOff = () => map.scrollWheelZoom.disable();
+    const dragOff = () => coarse && map.dragging.disable();
     // dragging the map must not reach the detail pane's swipe
     const stop = (e) => e.stopPropagation();
     const listeners = [
-      ["click", zoomOn], ["focus", zoomOn], ["blur", zoomOff], ["mouseleave", zoomOff],
+      ["click", zoomOn], ["focus", zoomOn], ["blur", zoomOff], ["blur", dragOff], ["mouseleave", zoomOff],
       ["pointerdown", stop], ["touchstart", stop], ["wheel", stop],
     ];
     for (const [type, fn] of listeners) el.addEventListener(type, fn, { passive: true });
