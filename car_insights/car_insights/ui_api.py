@@ -1,6 +1,5 @@
 """The sidebar page's API: answers only Supervisor ingress requests, and only with what the viewer may see."""
 import dataclasses
-import json
 import time
 from datetime import date, datetime
 from typing import Annotated, Any, Awaitable, Callable, Literal
@@ -8,10 +7,11 @@ from typing import Annotated, Any, Awaitable, Callable, Literal
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
 
-from . import access, activity, costs, db, prices, stats
+from . import access, activity, costs, db, prices, stats, store
 from .access import Viewer
 from .figures import pct
-from .derive import Deriver, Zones
+from .derive import Zones
+from .kinds import CHARGE, TRIP, Kind
 from .protocol import fix, num
 
 EpochMs = Annotated[int, Query(ge=0, lt=2**62)]  # sqlite integers are 64-bit: anything larger would be a 500, not a 422
@@ -73,7 +73,7 @@ class _Card(BaseModel):
     start_fee: Num
 
 
-def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], float],
+def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
            is_admin: Callable[[str], Awaitable[bool]], on_settings: Callable[[], None] = lambda: None,
            on_costs: Callable[[list[str] | None], None] = lambda vids: None,
            ingress_hosts: tuple[str, ...] = ("172.30.32.2",), now_ms: Callable[[], int] = lambda: int(time.time() * 1000)) -> APIRouter:
@@ -127,15 +127,12 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
         on_costs(vids(out) if callable(vids) else vids)
         return out
 
-    def has_open(table: str, vid: str) -> bool:
-        return conn.execute(f"SELECT 1 FROM {table} WHERE vehicle_id=? AND end IS NULL", (vid,)).fetchone() is not None
-
     def vehicle_card(vid: str, now: int) -> dict:
         got = db.latest_at_or_before(conn, vid, now, ("battery_wh", "range_m", "gps"))
         wh, cap, pos = got.get("battery_wh"), capacity(vid), fix(got.get("gps"))
         return {
             "id": vid, "name": db.device_info(conn, vid)[0],
-            "status": "driving" if has_open("trips", vid) else "charging" if has_open("charges", vid) else "parked",
+            "status": "driving" if store.has_open(conn, TRIP, vid) else "charging" if store.has_open(conn, CHARGE, vid) else "parked",
             "battery_wh": wh, "soc_percent": pct(wh, cap),
             "range_m": got.get("range_m"),
             "position": None if pos is None else {"lat": pos[0], "lon": pos[1], "place": zones(*pos)},
@@ -143,12 +140,12 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
                                     (vid, now)).fetchone()[0],
         }
 
-    def detail(table: str, series: Callable[[str, int], dict | None], viewer: Viewer, vid: str, start: int) -> tuple[dict, dict | None]:
+    def detail(kind: Kind, viewer: Viewer, vid: str, start: int) -> tuple[dict, dict | None]:
         visible(viewer, vid)
-        row = conn.execute(f"SELECT json FROM {table} WHERE vehicle_id=? AND start=?", (vid, start)).fetchone()
+        row = store.row(conn, kind, vid, start)
         if row is None:
             raise _not_found()
-        return json.loads(row[0]), series(vid, start)
+        return row, store.series(conn, kind, vid, start)
 
     @r.get("/me")
     async def me(request: Request):
@@ -167,7 +164,7 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
     @r.get("/activity")
     async def get_activity(request: Request, view: str = "", before: EpochMs | None = None):
         out = activity.page(conn, vids_of(await who(request), view), before, now_ms(), tz, lambda v: db.device_info(conn, v)[0],
-                            deriver.trip_route, capacity)
+                            capacity)
         books: dict[str, prices.Book] = {}
         for d in out["days"]:
             for i in d["items"]:
@@ -185,13 +182,13 @@ def router(conn, deriver: Deriver, zones: Zones, tz, capacity: Callable[[str], f
 
     @r.get("/trips/{vid}/{start}")
     async def trip(request: Request, vid: str, start: StartMs):
-        row, series = detail("trips", deriver.trip_series, await who(request), vid, start)
-        return {"trip": row, "cost": costs.trip_cost(conn, vid, row, tz), "series": series, "route": deriver.trip_route(vid, start),
+        row, series = detail(TRIP, await who(request), vid, start)
+        return {"trip": row, "cost": costs.trip_cost(conn, vid, row, tz), "series": series, "route": store.route(conn, vid, start),
                 "similar": stats.similar_trips(conn, vid, row), "capacity_wh": capacity(vid)}
 
     @r.get("/charges/{vid}/{start}")
     async def charge(request: Request, vid: str, start: StartMs):
-        row, series = detail("charges", deriver.charge_series, await who(request), vid, start)
+        row, series = detail(CHARGE, await who(request), vid, start)
         return {"charge": row, "cost": costs.charge_cost(prices.book(conn, vid), row), "series": series, "capacity_wh": capacity(vid),
                 "outside_temp_c": num(db.latest_at_or_before(conn, vid, start, ("outside_temp",)).get("outside_temp"))}
 

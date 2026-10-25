@@ -4,7 +4,8 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import date
 
-from . import db
+from . import db, store
+from .kinds import CHARGE
 from .zones import Zone, name_at
 
 SPOT_RADIUS_M = 100
@@ -56,26 +57,22 @@ def spot_name_at(conn, lat: float, lon: float) -> str | None:
 
 def relabel(conn) -> None:
     """A charge shows its zone, else the spot it lies in, else nothing."""
-    rows = conn.execute("SELECT vehicle_id, start, json_extract(json,'$.lat'), json_extract(json,'$.lon'), "
-                        "json_extract(json,'$.zone'), json_extract(json,'$.place') FROM charges "
-                        "WHERE json_extract(json,'$.lat') IS NOT NULL").fetchall()
-    for vid, start, lat, lon, zone, old in rows:
-        new = zone or spot_name_at(conn, lat, lon)
-        if new != old:
-            conn.execute("UPDATE charges SET json=json_set(json,'$.place',?) WHERE vehicle_id=? AND start=?", (new, vid, start))
+    for c in store.charge_points(conn):
+        new = c.get("zone") or spot_name_at(conn, c["lat"], c["lon"])
+        if new != c.get("place"):
+            store.set_place(conn, c["vehicle_id"], c["start"], new)
 
 
 def create_spot(conn, vid: str, start: int, name: str, per_kwh: float, start_fee: float = 0, per_min: float = 0) -> str:
     name = _name(name)
-    r = conn.execute("SELECT json_extract(json,'$.lat'), json_extract(json,'$.lon') FROM charges WHERE vehicle_id=? AND start=?",
-                     (vid, start)).fetchone()
-    if r is None:
+    c = store.row(conn, CHARGE, vid, start)
+    if c is None:
         raise KeyError(start)
-    if r[0] is None:
+    if c.get("lat") is None:
         raise ValueError("this charge has no GPS point")
     sid = uuid.uuid4().hex[:8]
     with db.tx(conn):
-        conn.execute("INSERT INTO charge_spots VALUES(?,?,?,?,?)", (sid, name, r[0], r[1], SPOT_RADIUS_M))
+        conn.execute("INSERT INTO charge_spots VALUES(?,?,?,?,?)", (sid, name, c["lat"], c["lon"], SPOT_RADIUS_M))
         set_tariff(conn, sid, start, per_kwh, start_fee, per_min)  # a bad price rolls the spot back
         relabel(conn)
     return sid
@@ -100,11 +97,11 @@ def delete_spot(conn, spot_id: str) -> None:
 def set_receipt(conn, vid: str, start: int, amount: float | None) -> None:
     if amount is not None:
         _num(amount, 1000, "amount")
-    r = conn.execute("SELECT end FROM charges WHERE vehicle_id=? AND start=?", (vid, start)).fetchone()
-    if r is None:
+    c = store.row(conn, CHARGE, vid, start)
+    if c is None:
         raise KeyError(start)
     with db.tx(conn):  # every receipt in the span goes: receipt_for reads the newest one, a charge re-derived earlier may hold an old one
-        conn.execute("DELETE FROM charge_receipts WHERE vehicle_id=? AND start>=? AND (? IS NULL OR start<=?)", (vid, start, r[0], r[0]))
+        conn.execute("DELETE FROM charge_receipts WHERE vehicle_id=? AND start>=? AND (? IS NULL OR start<=?)", (vid, start, c["end"], c["end"]))
         if amount is not None:
             conn.execute("INSERT INTO charge_receipts VALUES(?,?,?)", (vid, start, amount))
 

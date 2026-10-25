@@ -9,9 +9,8 @@ from fastapi.testclient import TestClient
 from car_insights import access, db, prices, ui_api
 from car_insights.api import create_app
 from car_insights.db import connect, json_dumps
-from car_insights.derive import ALGO, Deriver
 from car_insights.ha_users import AdminCache
-from conftest import s
+from conftest import s, seed_charge, seed_trip
 
 TZ = ZoneInfo("Europe/Amsterdam")
 NOW = int(datetime(2026, 10, 23, 12, tzinfo=TZ).timestamp() * 1000)
@@ -39,7 +38,7 @@ def build(conn, **kw):
     zones = lambda lat, lon: "Home"
     cap = lambda vid: CAP.get(vid, 60_000.0)
     calls = []
-    router = ui_api.router(conn, Deriver(conn, zones, cap), zones, TZ, cap, is_admin, lambda: calls.append(1), now_ms=lambda: NOW,
+    router = ui_api.router(conn, zones, TZ, cap, is_admin, lambda: calls.append(1), now_ms=lambda: NOW,
                            on_costs=lambda vids: calls.append(vids), **kw)  # on_settings appends 1, on_costs its argument
     return create_app(conn, "t" * 64, lambda *a: None, lambda: NOW, ui=router), calls
 
@@ -47,7 +46,7 @@ def build(conn, **kw):
 def build_with(conn, admins):
     zones = lambda lat, lon: "Home"
     cap = lambda vid: 60_000.0
-    router = ui_api.router(conn, Deriver(conn, zones, cap), zones, TZ, cap, admins.is_admin, now_ms=lambda: NOW)
+    router = ui_api.router(conn, zones, TZ, cap, admins.is_admin, now_ms=lambda: NOW)
     return create_app(conn, "t" * 64, lambda *a: None, lambda: NOW, ui=router), None
 
 
@@ -57,7 +56,7 @@ def client(conn, host="172.30.32.2", **kw):
 
 
 def put(conn, table, vid, start, end, extra=None):
-    conn.execute(f"INSERT INTO {table} VALUES(?,?,?,?,?)", (vid, start, end, ALGO, json.dumps({"start": start, "end": end, **(extra or {})})))
+    (seed_trip if table == "trips" else seed_charge)(conn, vid, start, end, **(extra or {}))
 
 
 def test_non_ingress_address_forbidden(conn):
@@ -102,9 +101,8 @@ def test_hidden_vehicle_trip_is_404_like_missing(conn):
 
 
 def test_detail_has_series_and_capacity(conn):
-    put(conn, "trips", "car1", 1000, 2000)
-    put(conn, "charges", "car1", 1000, 2000)
-    conn.execute("INSERT INTO charge_series VALUES('car1',1000,?)", (json.dumps({"t": [1, 2]}),))
+    seed_trip(conn, "car1", 1000, 2000)
+    seed_charge(conn, "car1", 1000, 2000, series={"t": [1, 2]})
     c, _ = client(conn)
     t = c.get("/api/ui/trips/car1/1000", headers=VIEWER).json()
     assert t == {"trip": {"start": 1000, "end": 2000}, "cost": {"energy": None, "fixed": None, "total": None}, "series": None, "route": None, "similar": None, "capacity_wh": CAP["car1"]}
@@ -116,9 +114,8 @@ def test_detail_has_series_and_capacity(conn):
 
 def test_trip_detail_route_and_similar(conn):
     put(conn, "trips", "car1", 500, 900, {"from": "Home", "to": "Work", "duration_s": 60, "distance_m": 1000, "net_wh": 100})
-    put(conn, "trips", "car1", 1000, 2000, {"from": "Home", "to": "Work"})
     pts = [[52.0 + i / 1000, 5.0] for i in range(300)]
-    conn.execute("INSERT INTO trip_routes VALUES('car1',1000,?,?)", (ALGO, json.dumps(pts)))
+    seed_trip(conn, "car1", 1000, 2000, route=pts, **{"from": "Home", "to": "Work"})
     c, _ = client(conn)
     t = c.get("/api/ui/trips/car1/1000", headers=VIEWER).json()
     assert t["route"] == pts and len(t["route"]) == 300
@@ -211,7 +208,7 @@ def test_bad_group_name_400(conn):
 
 def test_static_index_served_and_ingest_still_works(conn, tmp_path):
     (tmp_path / "index.html").write_text("<h1>cars</h1>")
-    router = ui_api.router(conn, Deriver(conn, lambda a, b: None), lambda a, b: None, TZ, lambda v: 1.0, is_admin, now_ms=lambda: NOW)
+    router = ui_api.router(conn, lambda a, b: None, TZ, lambda v: 1.0, is_admin, now_ms=lambda: NOW)
     c = TestClient(create_app(conn, "t" * 64, lambda *a: None, lambda: NOW, ui=router, web_dir=tmp_path), client=("172.30.32.2", 50000))
     assert c.get("/").text == "<h1>cars</h1>"
     assert c.get("/health").json() == {"ok": True}

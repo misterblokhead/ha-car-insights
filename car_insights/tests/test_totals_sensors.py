@@ -7,7 +7,7 @@ import pytest
 
 from car_insights import access, db, prices, totals_sensors
 from car_insights.totals_sensors import TotalsSensors
-from conftest import FakeMqtt
+from conftest import FakeMqtt, seed_charge, seed_trip
 
 TZ = ZoneInfo("Europe/Amsterdam")
 NOW = int(datetime(2026, 10, 23, 12, tzinfo=TZ).timestamp() * 1000)
@@ -21,9 +21,9 @@ def add(conn, vid, group=None, trips=(), charges=()):
     if group:
         access.set_vehicle(conn, vid, group, [])
     for start, dist, net in trips:
-        conn.execute("INSERT INTO trips VALUES(?,?,?,?,?)", (vid, start, start + 1, 1, json.dumps({"distance_m": dist, "net_wh": net})))
+        seed_trip(conn, vid, start, start + 1, distance_m=dist, net_wh=net)
     for start, added in charges:
-        conn.execute("INSERT INTO charges VALUES(?,?,?,?,?)", (vid, start, start + 1, 1, json.dumps({"start": start, "end": start + 1, "added_wh": added})))
+        seed_charge(conn, vid, start, start + 1, added_wh=added)
 
 
 @pytest.fixture

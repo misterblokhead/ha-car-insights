@@ -1,4 +1,3 @@
-import json
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
@@ -7,6 +6,7 @@ from pytest import approx
 from car_insights import costs, db, prices, stats
 from car_insights.periods import period_starts
 from car_insights.totals import totals
+from conftest import seed_charge, seed_trip
 
 TZ = ZoneInfo("Europe/Amsterdam")
 
@@ -21,9 +21,9 @@ NOW = ms(2026, 10, 23, 12)
 def conn_with(trips=(), charges=()):
     c = db.connect(":memory:")
     for vid, start, end, dist, net in trips:
-        c.execute("INSERT INTO trips VALUES(?,?,?,?,?)", (vid, start, end, 1, json.dumps({"distance_m": dist, "net_wh": net})))
+        seed_trip(c, vid, start, end, distance_m=dist, net_wh=net)
     for vid, start, end, added in charges:
-        c.execute("INSERT INTO charges VALUES(?,?,?,?,?)", (vid, start, end, 1, json.dumps({"start": start, "end": end, "added_wh": added})))
+        seed_charge(c, vid, start, end, added_wh=added)
     return c
 
 
@@ -73,7 +73,7 @@ def test_month_cost():
     c.execute("INSERT INTO vehicles(vehicle_id) VALUES('a')")
     prices.set_tariff(c, "ac", 0, 0.40)
     for st, wh in ((s, 20_000), (s + 86_400_000, None)):
-        c.execute("INSERT INTO charges VALUES(?,?,?,?,?)", ("a", st, st + 3_600_000, 1, json.dumps({"start": st, "end": st + 3_600_000, "added_wh": wh})))
+        seed_charge(c, "a", st, st + 3_600_000, added_wh=wh)
     prices.add_fixed_cost(c, "a", "Insurance", 31.0, "month", date(2026, 10, 1), None)
     assert totals(c, ["a"], now, TZ)["month"]["cost"] == {"energy": approx(8.8), "fixed": approx(10.0), "total": approx(18.8), "uncosted": 1}
 

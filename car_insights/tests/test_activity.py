@@ -1,4 +1,3 @@
-import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -6,7 +5,7 @@ import pytest
 
 from car_insights import activity
 from car_insights.db import connect, json_dumps
-from car_insights.derive import ALGO
+from conftest import seed_charge, seed_trip
 
 TZ = ZoneInfo("Europe/Amsterdam")
 NOW = int(datetime(2026, 10, 25, 12, tzinfo=TZ).timestamp() * 1000)
@@ -25,13 +24,12 @@ def conn():
 
 
 def put(conn, table, vid, start, end, extra=None):
-    conn.execute(f"INSERT INTO {table} VALUES(?,?,?,?,?)", (vid, start, end, ALGO, json.dumps({"start": start, "end": end, **(extra or {})})))
+    (seed_trip if table == "trips" else seed_charge)(conn, vid, start, end, **(extra or {}))
 
 
-def page(conn, vids=("car1",), before=None, routes=None, **kw):
+def page(conn, vids=("car1",), before=None, **kw):
     from car_insights import db
-    return activity.page(conn, list(vids), before, NOW, TZ, lambda v: db.device_info(conn, v)[0],
-                         lambda v, s: (routes or {}).get((v, s)), lambda v: 50_000.0, **kw)
+    return activity.page(conn, list(vids), before, NOW, TZ, lambda v: db.device_info(conn, v)[0], lambda v: 50_000.0, **kw)
 
 
 def test_merges_trips_and_charges_newest_first(conn):
@@ -98,11 +96,11 @@ def test_summary_nulls_count_zero(conn):
 
 def test_trip_items_carry_card_route(conn):
     a, b = at(2026, 10, 25, 7), at(2026, 10, 25, 9)
-    put(conn, "trips", "car1", a, a + 1000)
+    pts = [[52.0 + i / 1000, 5.0 + i / 1000] for i in range(300)]
+    seed_trip(conn, "car1", a, a + 1000, route=pts)
     put(conn, "trips", "car1", b, b + 1000)
     put(conn, "charges", "car1", at(2026, 10, 25, 11), at(2026, 10, 25, 12))
-    pts = [[52.0 + i / 1000, 5.0 + i / 1000] for i in range(300)]
-    items = page(conn, routes={("car1", a): pts})["days"][0]["items"]
+    items = page(conn)["days"][0]["items"]
     assert "route" not in items[0]
     assert items[1]["route"] is None and len(items[2]["route"]) == 48
 
@@ -123,7 +121,7 @@ def test_first_page_reads_only_recent_rows(conn):
             seen.append(sql)
             return real.execute(sql, args)
 
-    got = activity.page(Spy(), ["car1", "car2"], None, NOW, TZ, lambda v: v, lambda v, s: None, lambda v: 50_000.0, min_items=20)
+    got = activity.page(Spy(), ["car1", "car2"], None, NOW, TZ, lambda v: v, lambda v: 50_000.0, min_items=20)
     n = sum(len(d["items"]) for d in got["days"])
     assert 20 <= n < 100
     allrows = [(r[0], k, r[1]) for k, t in (("trip", "trips"), ("charge", "charges")) for r in conn.execute(f"SELECT start, end FROM {t}")]
@@ -133,5 +131,5 @@ def test_first_page_reads_only_recent_rows(conn):
     assert got["next"] == cut
     want = sorted(((st, k) for st, k, _ in allrows if st >= cut), key=lambda r: (-r[0], r[1]))
     assert sorted(((i["start"], i["kind"]) for d in got["days"] for i in d["items"]), key=lambda r: (-r[0], r[1])) == want
-    assert all("LIMIT" in q or "start>=?" in q or "end IS NULL" in q for q in seen)
+    assert all("LIMIT" in q or "start>=?" in q or "end IS NULL" in q or "trip_routes" in q for q in seen)  # a route is read per shown trip
     assert sum(i["end"] is None for d in got["days"] for i in d["items"]) == 2  # both open rows are there

@@ -2,6 +2,9 @@ import itertools
 import json
 from datetime import datetime, timedelta
 
+from car_insights import store
+from car_insights.derive import ALGO
+from car_insights.kinds import CHARGE, TRIP
 from car_insights.protocol import Sample
 
 _seq = itertools.count(1)
@@ -31,6 +34,20 @@ def plugged_then_cloud(p):
     m = 60_000
     return [s(p, "plugged", True), s(p + m, "plugged", False),
             s(p + 2 * m, "charging_state", True), s(p + 30 * m, "charging_state", False)]
+
+
+def seed_trip(conn, vid, start, end, *, series=None, route=None, algo=ALGO, **fields):
+    """a stored trip row (end None: open) through the store, with the series and route rows when given; returns the row"""
+    row = {"start": start, "end": end, **fields}
+    store.insert(conn, TRIP, vid, row, series, route, algo)
+    return row
+
+
+def seed_charge(conn, vid, start, end, *, series=None, algo=ALGO, **fields):
+    """a stored charge row (end None: open) through the store; returns the row"""
+    row = {"start": start, "end": end, **fields}
+    store.insert(conn, CHARGE, vid, row, series, None, algo)
+    return row
 
 
 class FakeMqtt:

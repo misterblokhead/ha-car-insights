@@ -1,8 +1,8 @@
 """What a charge costs: receipt, else the spot's tariff, else the AC/DC default. What a trip costs: energy plus its share of the fixed costs."""
-import json
 from datetime import date, datetime, timedelta
 
-from . import prices
+from . import prices, store
+from .kinds import CHARGE
 from .periods import midnight_ms
 
 ENERGY_WINDOW_MS = 30 * 86_400_000
@@ -63,9 +63,7 @@ def _energy(conn, vid: str, trip: dict) -> float | None:
     end = trip["end"]
     book = prices.book(conn, vid)
     amount = kwh = 0.0
-    for (js,) in conn.execute("SELECT json FROM charges WHERE vehicle_id=? AND end IS NOT NULL AND end BETWEEN ? AND ?",
-                              (vid, end - ENERGY_WINDOW_MS, end)):
-        ch = json.loads(js)
+    for ch in store.ended(conn, CHARGE, vid, end - ENERGY_WINDOW_MS, end):
         a = charge_cost(book, ch)["amount"]
         if a is not None and (ch.get("added_wh") or 0) > 0:
             amount, kwh = amount + a, kwh + ch["added_wh"] / 1000
@@ -83,11 +81,9 @@ def _fixed(conn, vid: str, trip: dict, tz) -> float | None:
     if trip.get("distance_m") is None:
         return None
     end_day = datetime.fromtimestamp(trip["end"] / 1000, tz).date()
-    first = conn.execute("SELECT COALESCE(MIN(start), ?) FROM trips WHERE vehicle_id=?", (trip["start"], vid)).fetchone()[0]
+    first = store.first_trip_start(conn, vid, trip["start"])
     lo = max(end_day - timedelta(days=FIXED_DAYS - 1), datetime.fromtimestamp(first / 1000, tz).date())
-    km = conn.execute("SELECT COALESCE(SUM(json_extract(json,'$.distance_m')),0) / 1000.0 FROM trips "
-                      "WHERE vehicle_id=? AND end IS NOT NULL AND start>=? AND end<=?",
-                      (vid, midnight_ms(lo, tz), trip["end"])).fetchone()[0]
+    km = store.trip_distance_m(conn, vid, midnight_ms(lo, tz), trip["end"]) / 1000.0
     if km < MIN_FIXED_KM:
         return None
     return fixed_between(conn, [vid], lo, end_day + timedelta(days=1)) / km * trip["distance_m"] / 1000
@@ -104,11 +100,10 @@ def trip_cost(conn, vid: str, trip: dict, tz) -> dict:
 
 def period_costs(conn, vids: list[str], lo: int, hi: int, tz, now_ms: int) -> dict:
     """Costs of the closed charges starting in [lo, hi) plus the fixed costs of the days up to the period's last day, or today if still running."""
-    q = ",".join("?" * len(vids))
     energy, uncosted, books = 0.0, 0, {}
-    for vid, js in conn.execute(
-            f"SELECT vehicle_id, json FROM charges WHERE vehicle_id IN ({q}) AND end IS NOT NULL AND start >= ? AND start < ?", (*vids, lo, hi)):
-        a = charge_cost(books.get(vid) or books.setdefault(vid, prices.book(conn, vid)), json.loads(js))["amount"]
+    for ch in store.in_range(conn, CHARGE, vids, lo, hi):
+        vid = ch["vehicle_id"]
+        a = charge_cost(books.get(vid) or books.setdefault(vid, prices.book(conn, vid)), ch)["amount"]
         energy, uncosted = (energy + a, uncosted) if a is not None else (energy, uncosted + 1)
     day = lambda ms: datetime.fromtimestamp(ms / 1000, tz).date()
     fixed = fixed_between(conn, vids, day(lo), min(day(hi - 1), day(now_ms)) + timedelta(days=1))

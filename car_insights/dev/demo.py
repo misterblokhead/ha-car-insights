@@ -20,9 +20,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import uvicorn  # noqa: E402
 
-from car_insights import access, db, prices, ui_api  # noqa: E402
+from car_insights import access, db, prices, store, ui_api  # noqa: E402
 from car_insights.api import create_app  # noqa: E402
 from car_insights.derive import Deriver  # noqa: E402
+from car_insights.kinds import CHARGE  # noqa: E402
 from car_insights.protocol import Sample  # noqa: E402
 
 TZ = ZoneInfo("Europe/Amsterdam")
@@ -176,9 +177,9 @@ def build(conn, now: int) -> Deriver:
     first = today - timedelta(days=10)
     for target, per_kwh in (("ac", 0.45), ("dc", 0.69)):
         prices.set_tariff(conn, target, local(first, 0, 0), per_kwh)
-    shop = conn.execute("SELECT vehicle_id, start FROM charges WHERE json_extract(json, '$.place') = 'Shop' ORDER BY start").fetchone()
+    shop = min(((c["start"], vid) for vid in CARS for c in store.closed(conn, CHARGE, vid) if c["place"] == "Shop"), default=None)
     if shop:  # none when the Saturday visit falls outside the 10 days
-        prices.create_spot(conn, *shop, "Shop", 0.35)
+        prices.create_spot(conn, shop[1], shop[0], "Shop", 0.35)
     for vid in CARS:
         prices.add_fixed_cost(conn, vid, "Charge card", 3.99, "month", first, None)
     return deriver
@@ -206,7 +207,7 @@ def main(web_dir: str) -> None:
         return uid == "u-admin"
 
     capacity = lambda vid: db.capacity_wh(conn, vid, 60_000.0)
-    router = ui_api.router(conn, deriver, zones, TZ, capacity, is_admin, ingress_hosts=("127.0.0.1",))
+    router = ui_api.router(conn, zones, TZ, capacity, is_admin, ingress_hosts=("127.0.0.1",))
     app = create_app(conn, "demo-token", lambda *a: None, ui=router, web_dir=Path(web_dir))
     uvicorn.run(AsUser(app, user), host="127.0.0.1", port=8765)
 

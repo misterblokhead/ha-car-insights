@@ -2,9 +2,10 @@ from datetime import date
 
 import pytest
 
-from car_insights import prices
-from car_insights.db import connect, json_dumps
-from car_insights.derive import ALGO
+from car_insights import prices, store
+from car_insights.db import connect
+from car_insights.kinds import CHARGE
+from conftest import seed_charge
 
 
 @pytest.fixture
@@ -15,12 +16,11 @@ def c():
 
 
 def charge(c, start, end=None, lat=None, lon=None, zone=None, place=None):
-    c.execute("INSERT OR REPLACE INTO charges VALUES(?,?,?,?,?)",
-              ("car1", start, end or start + 1000, ALGO, json_dumps({"lat": lat, "lon": lon, "zone": zone, "place": place})))
+    seed_charge(c, "car1", start, end or start + 1000, lat=lat, lon=lon, zone=zone, place=place)
 
 
 def place(c, start):
-    return c.execute("SELECT json_extract(json,'$.place') FROM charges WHERE vehicle_id='car1' AND start=?", (start,)).fetchone()[0]
+    return store.row(c, CHARGE, "car1", start)["place"]
 
 
 def count(c, table):

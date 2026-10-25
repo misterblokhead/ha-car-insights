@@ -6,6 +6,7 @@ from typing import Callable
 from . import db, ha_mqtt
 from .figures import wh_per_100km
 from .ha_mqtt import Sink
+from .kinds import KINDS
 
 log = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ _SENSORS = {
     "last_trip_cost": ("last_trip", "cost", "Last trip cost", "EUR", "monetary"),
     "last_charge_cost": ("last_charge", "cost", "Last charge cost", "EUR", "monetary"),
 }
-_EVENTS = {"trip": "Trip", "charge": "Charge"}
+_EVENTS = {k.name: k.event for k in KINDS}
 _PRIVATE = ("lat", "lon", "zone")  # the exact GPS point stays out of events
 
 

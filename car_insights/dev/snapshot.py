@@ -17,8 +17,9 @@ warnings.filterwarnings("ignore", message="Using `httpx` with `starlette.testcli
 from fastapi.testclient import TestClient  # noqa: E402
 
 import demo  # noqa: E402
-from car_insights import costs, db, pipeline, prices, ui_api  # noqa: E402
+from car_insights import costs, db, pipeline, prices, store, ui_api  # noqa: E402
 from car_insights.api import create_app  # noqa: E402
+from car_insights.kinds import CHARGE  # noqa: E402
 from car_insights.totals_sensors import TotalsSensors  # noqa: E402
 from car_insights.trip_sensors import TripSensors  # noqa: E402
 
@@ -43,15 +44,15 @@ def snapshot() -> dict:
         return True
 
     capacity = lambda vid: db.capacity_wh(conn, vid, 60_000.0)
-    router = ui_api.router(conn, deriver, demo.zones, demo.TZ, capacity, is_admin, ingress_hosts=("testclient",), now_ms=lambda: NOW)
-    vid, start = conn.execute("SELECT vehicle_id, start FROM charges WHERE end IS NOT NULL ORDER BY start DESC LIMIT 1").fetchone()
+    router = ui_api.router(conn, demo.zones, demo.TZ, capacity, is_admin, ingress_hosts=("testclient",), now_ms=lambda: NOW)
+    start, vid = max((c["start"], vid) for vid in demo.CARS for c in store.closed(conn, CHARGE, vid, 1))  # the newest closed charge
     prices.set_receipt(conn, vid, start, 12.34)  # puts a "receipt" cost basis in the answers
     sink = Sink()
     sensors = TripSensors(conn, sink, capacity,
                           trip_cost=lambda v, row: costs.trip_cost(conn, v, row, demo.TZ)["total"],
                           charge_cost=lambda v, row: costs.charge_cost(prices.book(conn, v), row)["amount"])
     totals = TotalsSensors(conn, sink, demo.TZ, now_ms=lambda: NOW)
-    summarize = lambda v, min_t, received: pipeline.refresh(deriver, sensors, totals, v, min_t, received, demo.TZ)
+    summarize = lambda v, min_t, received: pipeline.refresh(deriver, sensors, totals, conn, capacity, v, min_t, received, demo.TZ)
     c = TestClient(create_app(conn, TOKEN, lambda *a: None, lambda: NOW, summarize=summarize, ui=router))
     out: dict = {}
 

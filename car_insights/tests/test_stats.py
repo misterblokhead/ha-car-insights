@@ -1,4 +1,3 @@
-import json
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
@@ -7,12 +6,11 @@ from pytest import approx
 from car_insights import prices, stats
 from car_insights.periods import period_bounds
 from car_insights.db import connect
-from car_insights.derive import ALGO
+from conftest import seed_charge, seed_trip
 
 
 def put(conn, start, extra, vid="car1", end=None):
-    end = start + 1000 if end is None else end
-    conn.execute("INSERT INTO trips VALUES(?,?,?,?,?)", (vid, start, end, ALGO, json.dumps({"start": start, "end": end, **extra})))
+    seed_trip(conn, vid, start, start + 1000 if end is None else end, **extra)
 
 
 def trip(start=100_000, **kw):
@@ -65,8 +63,7 @@ def plain(m):
 
 
 def row(c, table, start, extra, vid="car1", end=True):
-    end = start + 1000 if end else None
-    c.execute(f"INSERT INTO {table} VALUES(?,?,?,?,?)", (vid, start, end, ALGO, json.dumps({"start": start, "end": end, **extra})))
+    (seed_trip if table == "trips" else seed_charge)(c, vid, start, start + 1000 if end else None, **extra)
 
 
 def test_period_bounds_week_month_year():

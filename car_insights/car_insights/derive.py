@@ -1,11 +1,11 @@
-import json
 import logging
 from bisect import bisect_left, bisect_right
 from dataclasses import asdict
 from typing import Callable
 
-from . import db, route, series
+from . import db, route, series, store
 from .charges import KEYS as CHARGE_KEYS, Charge, find_charges
+from .kinds import CHARGE, KINDS, TRIP
 from .odometer import chain
 from .protocol import FUTURE_SLACK_MS
 from .trips import KEYS as TRIP_KEYS, QUIET_MS, Trip, find_trips
@@ -13,8 +13,6 @@ from .trips import KEYS as TRIP_KEYS, QUIET_MS, Trip, find_trips
 log = logging.getLogger(__name__)
 ALGO = 6  # charges gained lat, lon and zone; bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
 ESTIMATE_HOLD_MS = 7 * 86_400_000  # a SoC-estimated charge this recent is re-derived on every update: the car's value may still arrive
-_TABLES = ("trips", "charges")
-_SATELLITES = {"trips": ("trip_series", "trip_routes"), "charges": ("charge_series",)}  # deleted and inserted exactly with their rows
 KEYS = tuple(sorted({*TRIP_KEYS, *CHARGE_KEYS, *series.KEYS}))  # the only sample keys derivation loads
 Zones = Callable[[float, float], str | None]
 
@@ -27,6 +25,12 @@ def _trip_wire(t: Trip, zones: Zones, odo: tuple[float | None, float | None]) ->
             "odometer_start_km": odo[0], "odometer_end_km": odo[1]}
 
 
+def _held(c: dict, received_ms: int) -> bool:
+    """A recent SoC-estimated charge is re-derived until the car's own value replaces it; one with no car reading before its start
+    (start_wh null) can never be refined, so it holds nothing."""
+    return c["end"] is not None and c["end"] >= received_ms - ESTIMATE_HOLD_MS and c["energy_source"] == "soc_estimate" and c["start_wh"] is not None
+
+
 def _charge_wire(c: Charge, zones: Zones, spots: Zones) -> dict:
     d = asdict(c)
     fix = d.pop("fix")
@@ -36,8 +40,7 @@ def _charge_wire(c: Charge, zones: Zones, spots: Zones) -> dict:
 
 
 class Deriver:
-    def __init__(self, conn, zones: Zones, capacity: Callable[[str], float] = lambda vid: 60_000.0, rebuild: bool = False,
-                 spots: Zones = lambda lat, lon: None):
+    def __init__(self, conn, zones: Zones, capacity: Callable[[str], float] = lambda vid: 60_000.0, spots: Zones = lambda lat, lon: None):
         self._conn, self._zones, self._capacity, self._spots = conn, zones, capacity, spots
         self._idle: dict[str, int] = {}  # vehicle -> newest sample t read while nothing was open: the next window starts there
         self._ignition: set[str] = set()  # vehicles known to send an ignition signal (it never goes away)
@@ -46,23 +49,37 @@ class Deriver:
         # a rejoined trip fires a second ended event (same start) at its real close
         # shortcut: in memory only, a restart between the quiet close and the backlog keeps the split; persist it if that shows up
         self._quiet: dict[str, int] = {}
-        # a vehicle with any old-version row in either table is rebuilt whole; `rebuild` (the zones changed) rebuilds every vehicle
-        stale = {r[0] for t in _TABLES for r in conn.execute(f"SELECT vehicle_id FROM {t} WHERE algo!=? OR ?", (ALGO, rebuild))}
-        with db.tx(conn):
-            for t in _TABLES:
-                conn.executemany(f"DELETE FROM {t} WHERE vehicle_id=?", [(v,) for v in stale])
-                for sat in _SATELLITES[t]:
-                    conn.executemany(f"DELETE FROM {sat} WHERE vehicle_id=?", [(v,) for v in stale])
 
-    def _newest_end(self, vid: str, below: int | None = None) -> int:
-        """newest closed end over both tables (strictly below `below` when given), or -1"""
-        cap = "" if below is None else " AND end<?"
-        args = (vid,) if below is None else (vid, below)
-        return max(self._conn.execute(f"SELECT MAX(end) FROM {t} WHERE vehicle_id=?{cap}", args).fetchone()[0] or -1 for t in _TABLES)
+    def purge_stale(self, rebuild: bool = False) -> None:
+        """Delete the rows of every vehicle with a row of another derivation version, so it is derived whole again; `rebuild` (the
+        zones changed) deletes every vehicle's."""
+        with db.tx(self._conn):
+            for vid in store.stale_vehicles(self._conn, ALGO, rebuild):
+                for kind in KINDS:
+                    store.purge(self._conn, kind, vid)
 
-    def newest_end(self, vid: str) -> int:
-        """newest closed end over both tables, or -1"""
-        return self._newest_end(vid)
+    def _is_quiet(self, vid: str, received_ms: int) -> bool:
+        """The car's own senders have delivered nothing for QUIET_MS, so no backlog is draining."""
+        last = db.car_last_received(self._conn, vid)
+        return last is not None and received_ms - last >= QUIET_MS
+
+    def _window_start(self, vid: str, min_t: int | None, received_ms: int) -> int:
+        """The time after which `update` derives again: samples later than it are read, rows open or ending after it are replaced.
+        A car that is back after a quiet close is no longer remembered as quiet."""
+        conn = self._conn
+        w = max(store.newest_end(conn, vid), self._idle.get(vid, -1))
+        if min_t is not None and min_t <= w:  # late data: back to the newest closed end below it
+            w = store.newest_end(conn, vid, min_t)
+        # shortcut: a held estimate makes every update (each 5 s batch while driving) re-read all samples since its start,
+        # up to 7 days; checkpoint it (or release the hold once a car reading exists) if that gets slow.
+        held = [c["start"] for c in store.ended(conn, CHARGE, vid, received_ms - ESTIMATE_HOLD_MS) if _held(c, received_ms)]
+        if held:
+            w = min(w, min(held) - 1)
+        if vid in self._quiet and not self._is_quiet(vid, received_ms):  # the car is back: re-derive the trip the quiet rule closed
+            w = min(w, self._quiet.pop(vid) - 1)
+        while starts := store.straddling(conn, vid, w):  # a stored segment (open or closed) straddling the window start must be re-derived whole
+            w = min(starts) - 1
+        return w
 
     def update(self, vid: str, min_t: int | None, received_ms: int) -> tuple[list[dict], list[dict], set[tuple[str, int]]]:
         """Re-derive everything after the last closed segment (or before min_t when late data arrived).
@@ -78,34 +95,11 @@ class Deriver:
         # does not reopen it; senders upload oldest-first, so that needs two car senders interleaving (cloud samples never
         # reach find_trips). A trip closed only by the quiet rule is the exception: see _quiet.
         with db.tx(conn):
-            w = max(self._newest_end(vid), self._idle.get(vid, -1))
-            if min_t is not None and min_t <= w:  # late data: back to the newest closed end below it
-                w = self._newest_end(vid, min_t)
-            # a recent SoC-estimated charge is re-derived until the car's own value replaces it; one with no car reading
-            # before its start (start_wh null) can never be refined, so it holds nothing
-            # shortcut: a held estimate makes every update (each 5 s batch while driving) re-read all samples since its start,
-            # up to 7 days; checkpoint it (or release the hold once a car reading exists) if that gets slow.
-            held = conn.execute("SELECT MIN(start) FROM charges WHERE vehicle_id=? AND end>=? AND json_extract(json, '$.energy_source')='soc_estimate'"
-                                " AND json_extract(json, '$.start_wh') IS NOT NULL", (vid, received_ms - ESTIMATE_HOLD_MS)).fetchone()[0]
-            if held is not None:
-                w = min(w, held - 1)
-            last = db.car_last_received(conn, vid)
-            quiet = last is not None and received_ms - last >= QUIET_MS
-            if vid in self._quiet and not quiet:  # the car is back: re-derive the trip the quiet rule closed
-                w = min(w, self._quiet.pop(vid) - 1)
-            while True:  # a stored segment (open or closed) straddling the window start must be re-derived whole
-                starts = [r[0] for t in _TABLES for r in conn.execute(
-                    f"SELECT start FROM {t} WHERE vehicle_id=? AND (end IS NULL OR end>?) AND start<=?", (vid, w, w))]
-                if not starts:
-                    break
-                w = min(starts) - 1
-            old = {t: dict(conn.execute(f"SELECT start, json FROM {t} WHERE vehicle_id=? AND (end IS NULL OR end>?)", (vid, w)))
-                   for t in _TABLES}
-            for t in _TABLES:  # the series and routes first: they are found through the rows they belong to
-                for sat in _SATELLITES[t]:
-                    conn.execute(f"DELETE FROM {sat} WHERE vehicle_id=? AND start IN "
-                                 f"(SELECT start FROM {t} WHERE vehicle_id=? AND (end IS NULL OR end>?))", (vid, vid, w))
-                conn.execute(f"DELETE FROM {t} WHERE vehicle_id=? AND (end IS NULL OR end>?)", (vid, w))
+            w = self._window_start(vid, min_t, received_ms)
+            quiet = self._is_quiet(vid, received_ms)
+            old = {k: store.rows_after(conn, k, vid, w) for k in KINDS}
+            for k in KINDS:  # the series and routes go with their rows
+                store.drop_after(conn, k, vid, w)
             if vid not in self._ignition and db.has_key(conn, vid, "ignition"):
                 self._ignition.add(vid)
             if vid not in self._cloud and db.has_key(conn, vid, "charging_state"):
@@ -121,11 +115,11 @@ class Deriver:
             for k in ("plugged", "charging_state"):
                 if seed.get(k) is True:
                     last_t = db.latest_t(conn, vid, k, w) or -1
-                    last_trip_start = conn.execute("SELECT MAX(start) FROM trips WHERE vehicle_id=?", (vid,)).fetchone()[0] or -1
+                    last_trip_start = store.newest_start(conn, TRIP, vid)
                     last_charge_end = -1
                     plug_t = last_t
                     if k == "plugged":
-                        last_charge_end = conn.execute("SELECT MAX(end) FROM charges WHERE vehicle_id=?", (vid,)).fetchone()[0] or -1
+                        last_charge_end = store.newest_end(conn, vid, kinds=(CHARGE,))
                         if vid in self._cloud:
                             plug_t = db.plug_start(conn, vid, w) or -1
                     if last_trip_start > last_t:  # a True after the trip is a real plug, however often it was re-sent
@@ -138,71 +132,35 @@ class Deriver:
             for trip in raw_trips:
                 if trip.quiet_closed:
                     self._quiet[vid] = trip.start
-            charges = [_charge_wire(c, self._zones, self._spots) for c in find_charges(samples, seed, vid in self._cloud, self._capacity(vid))]
-            new: dict[str, list[dict]] = {"trips": [], "charges": []}
+            raw_charges = find_charges(samples, seed, vid in self._cloud, self._capacity(vid))
+            # what differs per kind: what was found, how it becomes a row (a trip in start order: earlier closed trips are already
+            # stored, so chain sees them) and how its series is cut from its samples
+            per_kind = ((TRIP, raw_trips, lambda t: _trip_wire(t, self._zones, chain(conn, vid, t.start, t.distance_m)),
+                         lambda r, span: series.trip(span, r["start_wh"], r["start"])),
+                        (CHARGE, raw_charges, lambda c: _charge_wire(c, self._zones, self._spots),
+                         lambda r, span: series.charge(span, r["start"], r["end"])))
+            stored: dict = {k: [] for k in KINDS}
+            new: dict[str, list[dict]] = {k.table: [] for k in KINDS}
             refined: set[tuple[str, int]] = set()
-            trips: list[dict] = []
             times = [x.t for x in samples]
             seen: set[tuple[str, int]] = set()
-            for table, rows in (("trips", raw_trips), ("charges", charges)):
-                for r in rows:
-                    key = (table, r.start if table == "trips" else r["start"])
-                    if key in seen:  # a repeated start would break the primary key and roll back every update after
-                        log.warning("duplicate %s start %s for %s skipped", table, key[1], vid)
+            for kind, found, to_row, to_series in per_kind:
+                for x in found:
+                    if (kind.table, x.start) in seen:  # a repeated start would break the primary key and roll back every update after
+                        log.warning("duplicate %s start %s for %s skipped", kind.table, x.start, vid)
                         continue
-                    seen.add(key)
-                    if table == "trips":  # in start order: earlier closed trips are already stored, so chain sees them
-                        r = _trip_wire(r, self._zones, chain(conn, vid, r.start, r.distance_m))
-                        trips.append(r)
-                    js = db.json_dumps(r)
-                    conn.execute(f"INSERT INTO {table} VALUES(?,?,?,?,?)", (vid, r["start"], r["end"], ALGO, js))
+                    seen.add((kind.table, x.start))
+                    r = to_row(x)
+                    stored[kind].append(r)
                     span = samples[bisect_left(times, r["start"]):None if r["end"] is None else bisect_right(times, r["end"])]
-                    ser = series.trip(span, r["start_wh"], r["start"]) if table == "trips" else series.charge(span, r["start"], r["end"])
-                    conn.execute(f"INSERT INTO {_SATELLITES[table][0]} VALUES(?,?,?)", (vid, r["start"], db.json_dumps(ser)))
-                    if table == "trips":
-                        conn.execute("INSERT INTO trip_routes VALUES(?,?,?,?)", (vid, r["start"], ALGO, db.json_dumps(route.from_samples(span))))
-                    if r["end"] is not None and old[table].get(r["start"]) != js:
-                        new[table].append(r)
-                        if r["start"] in old[table] and json.loads(old[table][r["start"]])["end"] is not None:
-                            refined.add((table, r["start"]))
+                    store.insert(conn, kind, vid, r, to_series(r, span), route.from_samples(span) if kind.has_route else None, ALGO)
+                    if r["end"] is not None and old[kind].get(r["start"]) != r:
+                        new[kind.table].append(r)
+                        if r["start"] in old[kind] and old[kind][r["start"]]["end"] is not None:
+                            refined.add((kind.table, r["start"]))
         # an estimate still within its hold re-reads its window, so no watermark may skip past it
-        estimating = any(c["energy_source"] == "soc_estimate" and c["start_wh"] is not None and c["end"] >= received_ms - ESTIMATE_HOLD_MS
-                         for c in charges if c["end"] is not None)
-        if estimating or any(r["end"] is None for r in trips + charges):
+        if any(_held(c, received_ms) for c in stored[CHARGE]) or any(r["end"] is None for k in KINDS for r in stored[k]):
             self._idle.pop(vid, None)
         else:
             self._idle[vid] = samples[-1].t if samples else w
-        return new["trips"], new["charges"], refined
-
-    def current_trip(self, vid: str) -> dict | None:
-        r = self._conn.execute("SELECT json FROM trips WHERE vehicle_id=? AND end IS NULL", (vid,)).fetchone()
-        return None if r is None else json.loads(r[0])
-
-    def trip_series(self, vid: str, start: int) -> dict | None:
-        return self._series("trip_series", vid, start)
-
-    def charge_series(self, vid: str, start: int) -> dict | None:
-        return self._series("charge_series", vid, start)
-
-    def capacity_wh(self, vid: str) -> float:
-        return self._capacity(vid)
-
-    def trip_route(self, vid: str, start: int) -> list[list[float]] | None:
-        r = self._conn.execute("SELECT points FROM trip_routes WHERE vehicle_id=? AND start=?", (vid, start)).fetchone()
-        return None if r is None else json.loads(r[0])
-
-    def _series(self, table: str, vid: str, start: int) -> dict | None:
-        r = self._conn.execute(f"SELECT json FROM {table} WHERE vehicle_id=? AND start=?", (vid, start)).fetchone()
-        return None if r is None else json.loads(r[0])
-
-    def stored_trips(self, vid: str, limit: int = -1, since: int = 0) -> list[dict]:
-        return self._stored("trips", vid, limit, since)
-
-    def stored_charges(self, vid: str, limit: int = -1, since: int = 0) -> list[dict]:
-        return self._stored("charges", vid, limit, since)
-
-    def _stored(self, table: str, vid: str, limit: int, since: int) -> list[dict]:
-        """Closed rows starting at or after `since`, newest first (limit -1: all)."""
-        rows = self._conn.execute(
-            f"SELECT json FROM {table} WHERE vehicle_id=? AND end IS NOT NULL AND start>=? ORDER BY start DESC LIMIT ?", (vid, since, limit))
-        return [json.loads(r[0]) for r in rows]
+        return new[TRIP.table], new[CHARGE.table], refined
