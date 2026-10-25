@@ -1,7 +1,7 @@
 process.env.TZ = "America/New_York"; // the browser is west of the server
 import test from "node:test";
 import assert from "node:assert/strict";
-import { statsUrl, mapUrl, change, periodLabel, bucketLabel, places, styleRows } from "./stats.js";
+import { statsUrl, mapUrl, change, periodLabel, bucketLabel, places, styleRows, pointsTag } from "./stats.js";
 import { setZone } from "./time.js";
 
 setZone("Europe/Amsterdam");
@@ -91,4 +91,11 @@ test("styleRows: nothing to compare against without a previous period", () => {
     assert.equal(r.points, null);
     assert.ok(r.events.every((e) => e.change == null));
   }
+});
+
+test("pointsTag: the arrow carries the sign, the text the size", () => {
+  assert.deepEqual(pointsTag(3), { dir: 1, text: "3", hint: false });
+  assert.deepEqual(pointsTag(-2), { dir: -1, text: "2", hint: false });
+  assert.equal(pointsTag(0).text, "same");
+  assert.equal(pointsTag(null), null);
 });

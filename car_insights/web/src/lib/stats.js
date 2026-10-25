@@ -52,15 +52,18 @@ const EVENTS = [["accel", "Hard accelerations"], ["brake", "Hard brakings"], ["c
 // (no change without km there), and the speed bands as bars relative to the largest kWh/100 km.
 export function styleRows(style, previous) {
   const prev = previous?.km > 0 ? previous : null;
-  const per10 = (s, k) => (s.km > 0 ? (s[k] / s.km) * 10 : null);
+  const rate = (s, k) => (s.km > 0 ? (s[k] / s.km) * 10 : null);
   const values = Object.values(style.bands).map((b) => b.kwh_per_100km);
   const max = Math.max(0, ...values.filter((v) => v != null));
   return {
     points: style.score != null && prev?.score != null ? style.score - prev.score : null,
     events: EVENTS.map(([k, name]) => {
-      const now = per10(style, k);
-      return { k, name, per10: now, change: prev ? change(now, per10(prev, k)) : null };
+      const now = rate(style, k);
+      return { k, name, per10: now, change: prev ? change(now, rate(prev, k)) : null };
     }),
     bands: Object.entries(style.bands).map(([name, b]) => ({ name, value: b.kwh_per_100km, share: b.kwh_per_100km == null || !max ? 0 : b.kwh_per_100km / max })),
   };
 }
+
+// The change tag of the score: points, not a percentage of a 0-100 score; "same" at 0, null without a change.
+export const pointsTag = (p) => (p == null ? null : { dir: Math.sign(p), text: p ? String(Math.abs(p)) : "same", hint: false });

@@ -5,7 +5,7 @@
   import { dayKey, dayLabel, today } from "../lib/time.js";
   import { per10, scoreWord, split, tripTitle } from "../lib/detail.js";
   import { eur, per100 as costPer100, uncostedText } from "../lib/costs.js";
-  import { bucketLabel, change, periodLabel, places, statsUrl, styleRows } from "../lib/stats.js";
+  import { bucketLabel, change, periodLabel, places, pointsTag, statsUrl, styleRows } from "../lib/stats.js";
   import Chart from "../lib/Chart.svelte";
   import Figure from "../lib/ui/Figure.svelte";
   import Segmented from "../lib/ui/Segmented.svelte";
@@ -92,7 +92,7 @@
   const share = $derived(hl?.gross_wh > 0 ? Math.round((hl.recup_wh / hl.gross_wh) * 100) : null);
   const style = $derived(data?.style);
   const sty = $derived(style?.km > 0 ? styleRows(style, data.previous_style) : null);
-  const points = $derived(sty?.points == null ? null : { dir: Math.sign(sty.points), text: sty.points ? `${sty.points < 0 ? "−" : "+"}${Math.abs(sty.points)}` : "same", hint: false }); // points: a percentage of a 0–100 score reads oddly
+  const points = $derived(pointsTag(sty?.points));
   const when = (ms) => dayLabel(dayKey(ms), today()); // at render, so a page left open past midnight labels right
   const trip = (x) => hashOf({ kind: "trip", vehicle_id: x.vehicle_id, start: x.start });
 </script>
@@ -208,7 +208,7 @@
             <dl class="d-rows">
               {#each sty.events as e (e.k)}
                 {@const tr = tag(e.change, true)}
-                <div><dt>{e.name}</dt><dd>{per10(style[e.k], style.km)}{#if tr} {@render changeTag(tr)}{/if}</dd></div>
+                <div><dt>{e.name}</dt><dd>{per10(style[e.k], style.km)}{#if tr}{" "}{@render changeTag(tr)}{/if}</dd></div>
               {/each}
             </dl>
             <div class="d-head bandhead"><h2>Consumption by speed</h2><span class="d-note">km/h · kWh/100 km</span></div>
