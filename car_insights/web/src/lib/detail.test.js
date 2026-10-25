@@ -151,4 +151,5 @@ test("bandRows gives each band its share of distance and consumption", () => {
   assert.equal(rows[3].kwhPer100, null); // 0.4 km is under the minimum
   assert.equal(bandRows({ "0-50": [500, 100] }, 0.5)[0].kwhPer100, 20); // exactly the minimum counts
   assert.equal(bandRows({ "0-50": [0, 0] }, 0.5)[0].share, 0); // no distance at all: no division by zero
+  assert.equal(bandRows({ "0-50": [6000, null] }, 0.5)[0].kwhPer100, null); // no energy readings: not 0.0
 });

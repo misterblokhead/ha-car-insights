@@ -6,7 +6,7 @@
   // x: numbers (seconds when `time`, else km, ...); series: [{label, values, scale = "y" | "y2" | "plug", kind = "line" | "area" | "bars",
   // color: a token name such as "--trip", dash}]. `label` is what screen readers get (the key figures); it defaults to the series names.
   // xaxis: extra uPlot options for the x axis (`splits`, `values`: category names on index x).
-  // marks: [{x, kind: "accel" | "brake" | "corner"}], small triangles on the x axis (the driving events of a trip).
+  // marks: [{x, color: a token name}], small triangles on the x axis (the driving events of a trip).
   let { x, series, time = false, xlabel = "", height = 180, label = "", xaxis = {}, marks = [] } = $props();
   let el;
   let scheme = $state(0); // bumped when the light or dark scheme flips: the colours are read from the tokens again
@@ -55,7 +55,6 @@
       return base;
     };
 
-    const markColor = { accel: token("--trip"), brake: token("--trip-text"), corner: muted };
     const drawMarks = (u) => {
       const { ctx, bbox } = u, r = 4 * devicePixelRatio, y = bbox.top + bbox.height;
       const { min, max } = u.scales.x;
@@ -63,7 +62,7 @@
       for (const m of marks) {
         // a mark just past the data (events are rounded to 0.1 km) is pinned to the edge, and drawn whole inside the plot
         const cx = Math.min(bbox.left + bbox.width - r, Math.max(bbox.left + r, u.valToPos(Math.min(max, Math.max(min, m.x)), "x", true)));
-        ctx.fillStyle = markColor[m.kind];
+        ctx.fillStyle = token(m.color);
         ctx.beginPath();
         ctx.moveTo(cx - r, y);
         ctx.lineTo(cx + r, y);

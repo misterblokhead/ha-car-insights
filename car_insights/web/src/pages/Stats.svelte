@@ -200,7 +200,7 @@
         </section>
 
         <section class="d-card sty">
-          <div class="d-head"><h2>Driving style</h2>{#if sty}<span class="d-note">{scoreWord(style.score)}</span>{/if}</div>
+          <div class="d-head"><h2>Driving style</h2>{#if sty}<span class="d-note">{style.score == null ? "No trips of 2 km or more" : scoreWord(style.score)}</span>{/if}</div>
           {#if sty}
             {#if style.score != null}
               <div class="big">{style.score}<small> / 100</small>{#if points}<span class="d-note pts">{@render changeTag(points)}</span>{/if}</div>
@@ -214,11 +214,11 @@
             <div class="d-head bandhead"><h2>Consumption by speed</h2><span class="d-note">km/h · kWh/100 km</span></div>
             <ul class="bands">
               {#each sty.bands as b (b.name)}
-                <li><span class="bn">{b.name}</span><span class="track"><i class="bar" style:width="{b.share * 100}%"></i></span><span class="bv">{b.value == null ? NA : b.value.toFixed(1)}</span></li>
+                <li><span class="bn">{b.name}</span><span class="track"><i class="meter" style:width="{b.share * 100}%"></i></span><span class="bv">{b.value == null ? NA : b.value.toFixed(1)}</span></li>
               {/each}
             </ul>
           {:else}
-            <p class="d-msg">No trips this {period}.</p>
+            <p class="d-msg">No trips in this {period}.</p>
           {/if}
         </section>
       </div>
@@ -308,11 +308,10 @@
   .hl .d-note { flex-basis: 100%; }
 
   .pts { margin-left: 8px; font-size: 15px; font-weight: 500; }
-  .bandhead { margin: 14px 0 8px; }
   .bands li { display: flex; align-items: center; gap: 10px; min-height: 28px; }
   .bn { flex: none; width: 4.5em; color: var(--muted); }
   .track { flex: 1; min-width: 0; }
-  .bar { display: block; height: 8px; border-radius: 4px; background: var(--energy); }
+  .meter { display: block; height: 8px; border-radius: 4px; background: var(--energy); }
   .bv { flex: none; min-width: 3em; text-align: right; white-space: nowrap; }
 
   .places ul { margin-top: 10px; }

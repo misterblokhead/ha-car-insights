@@ -72,15 +72,21 @@ test("styleRows: events per 10 km with their change, bands relative to the large
   const now = { km: 100, accel: 20, brake: 10, corner: 0, score: 80, bands: B([14, 18, 20, null, 10]) };
   const before = { km: 50, accel: 5, brake: 10, corner: 5, score: 77, bands: B([]) };
   const r = styleRows(now, before);
-  assert.deepEqual(r.events.map((e) => [e.name, e.per10, e.change]), [
-    ["Hard accelerations", 2, 1], // 2.0 against 1.0 per 10 km
-    ["Hard brakings", 1, -0.5],
-    ["Sharp corners", 0, -1], // 1.0 down to none
+  assert.deepEqual(r.events, [
+    { k: "accel", name: "Hard accelerations", change: 1 }, // 2.0 against 1.0 per 10 km
+    { k: "brake", name: "Hard brakings", change: -0.5 },
+    { k: "corner", name: "Sharp corners", change: -1 }, // 1.0 down to none
   ]);
   assert.equal(r.points, 3);
   assert.deepEqual(r.bands.map((b) => [b.name, b.value, b.share]), [
     ["0-50", 14, 0.7], ["50-80", 18, 0.9], ["80-100", 20, 1], ["100-120", null, 0], ["120+", 10, 0.5],
   ]);
+});
+
+test("styleRows: a band of net recuperation has no bar", () => {
+  const r = styleRows({ km: 10, accel: 0, brake: 0, corner: 0, score: 90, bands: B([-3, 10, null, null, null]) }, null);
+  assert.deepEqual(r.bands.map((b) => b.share), [0, 1, 0, 0, 0]);
+  assert.ok(styleRows({ km: 10, accel: 0, brake: 0, corner: 0, score: 90, bands: B([-3, -1, null, null, null]) }, null).bands.every((b) => b.share === 0));
 });
 
 test("styleRows: nothing to compare against without a previous period", () => {

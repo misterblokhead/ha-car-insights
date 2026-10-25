@@ -1,7 +1,7 @@
 <script>
   import { NA, km, kwh, kwhPer100 } from "../lib/format.js";
   import { eur, tripCostLine } from "../lib/costs.js";
-  import { arrow, bandRows, compare, deltaText, durationParts, fig, markerAt, per10, rangeLine, routeLabel, scoreWord, split, temp, tripTitle } from "../lib/detail.js";
+  import { arrow, bandRows, compare, deltaText, durationParts, EVENTS, fig, markerAt, per10, rangeLine, routeLabel, scoreWord, split, temp, tripTitle } from "../lib/detail.js";
   import { consumptionBuckets, tripCharts } from "../lib/series.js";
   import Chart from "../lib/Chart.svelte";
   import DetailPage from "../lib/ui/DetailPage.svelte";
@@ -14,7 +14,7 @@
   const wh = (v) => (v == null ? null : (v / 1000).toFixed(2));
   const whole = (v) => (v == null ? null : v.toFixed(0));
   const kmh = (v) => (v == null ? NA : `${Math.round(v)} km/h`);
-  const EVENTS = [["accel", "Hard accelerations"], ["brake", "Hard brakings"], ["corner", "Sharp corners"]];
+  const MARK = { accel: "--trip", brake: "--trip-text", corner: "--muted" }; // the colour of each event's marker
   const BAND_OPACITY = [0.4, 0.45, 0.6, 0.8, 1]; // one hue, darker for faster
 </script>
 
@@ -25,7 +25,7 @@
     {@const t = data.trip}
     {@const buckets = consumptionBuckets(data.series, 0.5)}
     {@const speed = tripCharts(data.series)?.speed}
-    {@const marks = (data.series?.events ?? []).map(([x, kind]) => ({ x, kind }))}
+    {@const marks = (data.series?.events ?? []).map(([x, kind]) => ({ x, color: MARK[kind] }))}
     {@const style = t.style}
     {@const bands = style ? bandRows(style.bands, 0.5) : []}
     {@const avg = t.avg_speed_mps != null ? t.avg_speed_mps * 3.6 : null}
@@ -71,7 +71,7 @@
             <div><dt>{name}</dt><dd>{style[k][0]} · {per10(style[k][0], t.distance_m / 1000)}</dd></div>
           {/each}
         </dl>
-        <div class="d-head bandhead"><h2>Speed</h2><span class="d-note">km/h · kWh/100 km · share</span></div>
+        <div class="d-head bandhead"><h2>Speed bands</h2><span class="d-note">km/h · kWh/100 km · share</span></div>
         <div class="share-bar" role="img" aria-label="Distance by speed band: {bands.map((b) => `${b.name} km/h ${Math.round(b.share * 100)} %`).join(', ')}">
           {#each bands as b, i (b.name)}{#if b.share > 0}<i style:flex="{b.share} 1 0" style:background="var(--trip)" style:opacity={BAND_OPACITY[i]}></i>{/if}{/each}
         </div>
@@ -149,7 +149,6 @@
 </DetailPage>
 
 <style>
-  .bandhead { margin: 14px 0 8px; }
   .bands { margin: 10px 0 0; padding: 0; list-style: none; }
   .bands li { display: flex; align-items: center; gap: 0 10px; min-height: 32px; }
   .swatch { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--trip); }
