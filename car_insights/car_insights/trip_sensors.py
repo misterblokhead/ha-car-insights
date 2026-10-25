@@ -62,6 +62,7 @@ class TripSensors:
         specs |= {e: ("event", {"name": name, "state_topic": f"{e}_event", "event_types": ["ended"]}) for e, name in _EVENTS.items()}
         return ha_mqtt.discovery(vid, ha_mqtt.device(vid, *db.device_info(self._conn, vid)), specs)
 
+    # shortcut: clears 0.7.0's curve sensors once; delete after 0.8.x
     def _remove_curves(self, vid: str) -> list[tuple[str, str]]:
         """Empty retained payloads that clear the curve sensors an earlier version announced."""
         return [*((f"homeassistant/sensor/{vid}_last_{e}_curve/config", "") for e in _EVENTS),

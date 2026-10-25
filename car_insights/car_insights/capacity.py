@@ -42,9 +42,10 @@ def update(conn, vid: str, now_ms: int, logged: set[str]) -> None:
         log.exception("learning the capacity of %s failed", vid)
 
 
-async def run(conn, now_ms=lambda: int(time.time() * 1000), interval_s: float = 86_400) -> None:
-    """Learns every vehicle's capacity, then again every interval (in memory: a restart learns at once)."""
+async def run(conn, now_ms=lambda: int(time.time() * 1000), interval_s: float = 86_400, delay_s: float = 600) -> None:
+    """Learns every vehicle's capacity after `delay_s` (the poller's backfill has landed by then), then again every interval."""
     logged: set[str] = set()
+    await asyncio.sleep(delay_s)
     while True:
         try:
             now = now_ms()

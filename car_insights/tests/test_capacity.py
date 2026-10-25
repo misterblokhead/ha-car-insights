@@ -86,17 +86,20 @@ def test_run_learns_every_vehicle(monkeypatch):
     conn = connect(":memory:")
     put(conn, ten(), vid="car1")
     put(conn, ten(ratio=40_000), vid="car2")
-    sleeps = []
+    sleeps, learned = [], []
 
     async def stop(s):
         sleeps.append(s)
-        raise asyncio.CancelledError
+        learned.append(db.capacity_wh(conn, "car1", 1.0))
+        if len(sleeps) == 2:
+            raise asyncio.CancelledError
 
     monkeypatch.setattr(asyncio, "sleep", stop)
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(capacity.run(conn, now_ms=lambda: NOW))
     assert db.capacity_wh(conn, "car1", 1.0) == 57_000.0 and db.capacity_wh(conn, "car2", 1.0) == 40_000.0
-    assert sleeps == [86_400]
+    assert sleeps == [600, 86_400]  # a first wait lets the poller's backfill land; then a pass a day
+    assert learned == [1.0, 57_000.0]  # nothing learned before the first wait ended
 
 
 def test_run_survives_a_failing_pass_and_sleeps(monkeypatch, caplog):
@@ -104,10 +107,14 @@ def test_run_survives_a_failing_pass_and_sleeps(monkeypatch, caplog):
         def execute(self, *a):
             raise RuntimeError("db down")
 
+    sleeps = []
+
     async def stop(s):
-        raise asyncio.CancelledError
+        sleeps.append(s)
+        if len(sleeps) == 2:
+            raise asyncio.CancelledError
 
     monkeypatch.setattr(asyncio, "sleep", stop)
-    with pytest.raises(asyncio.CancelledError):  # reached the sleep: the error did not end the loop
+    with pytest.raises(asyncio.CancelledError):  # reached the sleep after the pass: the error did not end the loop
         asyncio.run(capacity.run(Broken(), now_ms=lambda: NOW))
     assert "learning the capacities failed" in caplog.text
