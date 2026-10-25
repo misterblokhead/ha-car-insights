@@ -1,13 +1,14 @@
 <script>
   import { hashOf } from "../activity.js";
-  import { km, consumption, kwh, duration, time } from "../format.js";
+  import { km, consumption, kwh, duration } from "../format.js";
+  import { clock } from "../time.js";
   import { place, routeLabel } from "../detail.js";
   import Card from "./Card.svelte";
   import RouteOutline from "./RouteOutline.svelte";
 
   let { item, current = false, onclick } = $props();
   const [dist, unit] = $derived(km(item.distance_m).split(" "));
-  const when = $derived(`${time(item.start)} · ${item.end == null ? "now" : duration(item.duration_s)}`);
+  const when = $derived(`${clock(item.start)} · ${item.end == null ? "now" : duration(item.duration_s)}`);
 </script>
 
 <Card href={hashOf(item)} {current} {onclick} kind="trip" title="{place(item.from)} → {place(item.to)}" value={dist} {unit} {when}>

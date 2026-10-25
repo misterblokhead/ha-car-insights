@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { km, kwh, kw, pct, duration, dayKey, when, time, dayLabel, daySummary, delta, kwhPer100, consumption } from "./format.js";
+import { km, kwh, kw, pct, duration, daySummary, delta, kwhPer100, consumption } from "./format.js";
 
 test("units", () => {
   assert.equal(km(26000), "26.0 km");
@@ -16,27 +16,6 @@ test("null is not available", () => {
 test("duration", () => {
   assert.equal(duration(7677), "2 h 08 min");
   assert.equal(duration(2700), "45 min");
-});
-
-test("dayKey is local YYYY-MM-DD", () => {
-  const d = new Date(2026, 9, 3, 23, 30);
-  assert.equal(dayKey(d.getTime()), "2026-10-03");
-});
-
-test("when shows the date only when not today", () => {
-  const now = new Date(2026, 9, 22, 16).getTime();
-  const today = new Date(2026, 9, 22, 14, 5).getTime();
-  assert.equal(when(today, now), time(today));
-  assert.match(when(new Date(2026, 9, 20, 14, 5).getTime(), now), /^Tue 20 Oct /);
-  assert.equal(when(null), "–");
-});
-
-test("dayLabel", () => {
-  assert.equal(dayLabel("2026-10-24", "2026-10-24"), "Today");
-  assert.equal(dayLabel("2026-10-23", "2026-10-24"), "Yesterday");
-  assert.equal(dayLabel("2026-10-22", "2026-10-24"), "Thu 22 Oct");
-  assert.equal(dayLabel("2026-09-30", "2026-10-01"), "Yesterday");
-  assert.equal(dayLabel("2026-09-29", "2026-10-01"), "Tue 29 Sep");
 });
 
 test("daySummary", () => {

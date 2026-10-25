@@ -1,7 +1,7 @@
 <script>
   import { send } from "../../lib/api.js";
   import { currentTariff, eur, validFromFor } from "../../lib/costs.js";
-  import { dayKey } from "../../lib/format.js";
+  import { today } from "../../lib/time.js";
 
   let { data, change } = $props();
 
@@ -19,7 +19,7 @@
   function edit(target, tariffs) {
     list = tariffs;
     const t = currentTariff(list, now());
-    f = { per_kwh: t?.per_kwh ?? "", start_fee: t?.start_fee ?? "", per_min: t?.per_min ?? "", from: dayKey(now()) };
+    f = { per_kwh: t?.per_kwh ?? "", start_fee: t?.start_fee ?? "", per_min: t?.per_min ?? "", from: today() };
     open = target;
   }
   async function save(e) {

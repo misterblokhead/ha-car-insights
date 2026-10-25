@@ -160,7 +160,8 @@ def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
     @r.get("/me")
     async def me(request: Request):
         v = await who(request)
-        return {"user_id": v.user_id, "name": v.name, "is_admin": v.is_admin}
+        # the zone name for the page's dates; the host's fixed-offset fallback has none, and the page then keeps the browser's
+        return {"user_id": v.user_id, "name": v.name, "is_admin": v.is_admin, "tz": getattr(tz, "key", None)}
 
     @r.get("/views")
     async def get_views(request: Request):

@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { split, durationParts, compare, markerAt, deltaText, kwLabel, arrow, rangeLine, place, chargedAt, estimate, routeLabel, temp, fig } from "./detail.js";
+import { setZone } from "./time.js";
+
+setZone("Europe/Amsterdam");
 
 test("split separates the value from its unit", () => {
   assert.deepEqual(split("12.3 km"), ["12.3", "km"]);
@@ -60,7 +63,7 @@ test("arrow shows both ends, a missing one as a dash, and nothing when both are 
 });
 
 test("rangeLine names the day and says now for an open end", () => {
-  const at = new Date(2026, 9, 22, 14, 5).getTime();
+  const at = Date.UTC(2026, 9, 22, 12, 5); // 14:05 in Amsterdam
   assert.match(rangeLine(at, null, at + 1000), /^Today · .+ – now$/);
   assert.match(rangeLine(at, at + 600000, at + 86400000 * 3), /^Thu 22 Oct · .+ – .+$/);
 });

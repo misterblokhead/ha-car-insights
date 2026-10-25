@@ -6,7 +6,8 @@
   import { untrack } from "svelte";
   import { get, latest } from "../lib/api.js";
   import { feed, hashOf, linkAction, load, more, neighbours, refresh, visible } from "../lib/activity.svelte.js";
-  import { dayLabel, daySummary } from "../lib/format.js";
+  import { daySummary } from "../lib/format.js";
+  import { dayLabel } from "../lib/time.js";
   import { screen } from "../lib/media.svelte.js";
   import ChargeCard from "../lib/ui/ChargeCard.svelte";
   import LiveStrip from "../lib/ui/LiveStrip.svelte";

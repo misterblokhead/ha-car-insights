@@ -1,8 +1,7 @@
 // Period arithmetic for the statistics page. Dates are "YYYY-MM-DD" (calendar days, no time zone); weeks start on Monday.
-const DAY = 86400000;
+import { periodDay } from "./time.js";
+
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
-const parts = (d) => d.split("-").map(Number);
 
 // The statistics request; without `at` the server answers for today in its own time zone.
 export const statsUrl = (view, period, at) => `api/ui/stats?view=${encodeURIComponent(view)}&period=${period}${at ? `&at=${at}` : ""}`;
@@ -10,24 +9,21 @@ export const statsUrl = (view, period, at) => `api/ui/stats?view=${encodeURIComp
 // (now − before) / before; null without a baseline.
 export const change = (now, before) => (now == null || !before ? null : (now - before) / before);
 
-// The API's bounds are midnights in HA's time zone; +12 h in UTC lands on that calendar day whatever the browser's zone.
-// shortcut: right only for HA zones within ±12 h of UTC (UTC+13/+14 label a day early), upgrade by sending the day with the bounds.
-const dayOf = (ms) => parts(iso(ms + DAY / 2));
 const short = (m) => MONTHS[m - 1].slice(0, 3);
 
 // "October 2026", "2026", "19 – 25 Oct"; `end` is exclusive.
 export function periodLabel(period, start, end) {
-  const [y, m, d] = dayOf(start);
+  const [y, m, d] = periodDay(start); // the API's bounds are midnights in HA's zone
   if (period === "year") return String(y);
   if (period === "month") return `${MONTHS[m - 1]} ${y}`;
-  const [ey, em, ed] = dayOf(end - DAY);
+  const [ey, em, ed] = periodDay(end - 1);
   if (ey !== y) return `${d} ${short(m)} ${y} – ${ed} ${short(em)} ${ey}`;
   return m === em ? `${d} – ${ed} ${short(m)}` : `${d} ${short(m)} – ${ed} ${short(em)}`;
 }
 
 // x label of a bar: the day number, or the month name in a year.
 export function bucketLabel(period, start) {
-  const [, m, d] = dayOf(start);
+  const [, m, d] = periodDay(start);
   return period === "year" ? short(m) : String(d);
 }
 

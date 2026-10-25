@@ -1,12 +1,12 @@
 <script>
   import { send } from "../../lib/api.js";
   import { eur } from "../../lib/costs.js";
-  import { dayKey } from "../../lib/format.js";
+  import { today } from "../../lib/time.js";
 
   let { data, change } = $props();
 
   const PERIODS = ["month", "quarter", "year", "once"];
-  const blank = () => ({ name: "", amount: "", period: "month", start: dayKey(Date.now()), end: "" });
+  const blank = () => ({ name: "", amount: "", period: "month", start: today(), end: "" });
   let adding = $state(null); // the vehicle id whose add form is open
   let f = $state(blank());
   let saving = $state(false);

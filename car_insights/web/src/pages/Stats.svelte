@@ -1,7 +1,8 @@
 <script>
   import { get, latest } from "../lib/api.js";
   import { hashOf } from "../lib/activity.js";
-  import { NA, km, kwh, kwhPer100, consumption, delta, dayKey, dayLabel } from "../lib/format.js";
+  import { NA, km, kwh, kwhPer100, consumption, delta } from "../lib/format.js";
+  import { dayKey, dayLabel, today } from "../lib/time.js";
   import { place, split } from "../lib/detail.js";
   import { eur, per100 as costPer100, uncostedText } from "../lib/costs.js";
   import { bucketLabel, change, periodLabel, places, statsUrl } from "../lib/stats.js";
@@ -13,7 +14,6 @@
 
   const PERIODS = [{ value: "week", label: "Week" }, { value: "month", label: "Month" }, { value: "year", label: "Year" }];
   const PLACE = ["--charge", "--trip", "--energy", "--p3", "--p4"];
-  const today = dayKey(Date.now()); // only labels the days of the highlights
   let period = $state("week");
   let at = $state(null); // null: the server's today
   let data = $state(null);
@@ -89,7 +89,7 @@
   const costTrend = $derived(t ? trend(t.cost.total, data.previous.cost.total, true) : null); // more spent is the warning, like more energy
   const hl = $derived(data?.highlights);
   const share = $derived(hl?.gross_wh > 0 ? Math.round((hl.recup_wh / hl.gross_wh) * 100) : null);
-  const when = (ms) => dayLabel(dayKey(ms), today);
+  const when = (ms) => dayLabel(dayKey(ms), today()); // at render, so a page left open past midnight labels right
   const trip = (x) => hashOf({ kind: "trip", vehicle_id: x.vehicle_id, start: x.start });
 </script>
 

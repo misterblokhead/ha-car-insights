@@ -1,5 +1,6 @@
 // Pure helpers for showing costs (no runes, so node --test can import them).
 import { NA } from "./format.js";
+import { midnight, nextMidnight } from "./time.js";
 
 export const eur = (x) => (x == null ? NA : `€${x.toFixed(2)}`);
 
@@ -29,18 +30,11 @@ export const tripCostLine = ({ energy, fixed }) =>
 
 export const per100 = (total, distance_m) => (total == null || !distance_m ? NA : `${eur((total / distance_m) * 100000)}/100 km`);
 
-// "2026-10-25" -> the browser's midnight of that day in ms
-export const localMidnight = (date) => {
-  const [y, m, d] = date.split("-").map(Number);
-  return new Date(y, m - 1, d).getTime();
-};
-
 // the valid_from to save for a price changed on `day`: that of a tariff already saved inside the day (a spot's own is at its charge's
 // start), so the save corrects it; else the day's midnight
 export const validFromFor = (tariffs, day) => {
-  const lo = localMidnight(day);
-  const [y, m, d] = day.split("-").map(Number);
-  const hi = new Date(y, m - 1, d + 1).getTime();
+  const lo = midnight(day);
+  const hi = nextMidnight(day);
   return tariffs.find((t) => t.valid_from >= lo && t.valid_from < hi)?.valid_from ?? lo;
 };
 

@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { eur, costLabel, chargeBasis, tripCostLine, per100, localMidnight, currentTariff, validFromFor, uncostedText } from "./costs.js";
+import { eur, costLabel, chargeBasis, tripCostLine, per100, currentTariff, validFromFor, uncostedText } from "./costs.js";
+import { setZone, midnight } from "./time.js";
+
+setZone("Europe/Amsterdam");
 
 test("eur shows two decimals, zero included, and null is not available", () => {
   assert.equal(eur(7.4), "€7.40");
@@ -60,17 +63,13 @@ test("per100 needs a total and a distance", () => {
   assert.equal(per100(null, 200000), "–");
 });
 
-test("localMidnight is the browser's midnight of that day", () => {
-  assert.equal(localMidnight("2026-10-25"), new Date(2026, 9, 25).getTime());
-});
-
 test("validFromFor reuses a tariff saved inside the chosen day, else that day's midnight", () => {
-  const mid = localMidnight("2026-10-25");
+  const mid = midnight("2026-10-25");
   const list = [{ valid_from: mid + 14 * 3600_000 }, { valid_from: mid - 1 }];
   assert.equal(validFromFor(list, "2026-10-25"), mid + 14 * 3600_000); // the spot's 14:00 row is corrected, not shadowed
   assert.equal(validFromFor(list, "2026-10-24"), mid - 1); // the day before holds the other row (its last millisecond)
-  assert.equal(validFromFor(list, "2026-10-23"), localMidnight("2026-10-23"));
-  assert.equal(validFromFor(list, "2026-10-26"), localMidnight("2026-10-26"));
+  assert.equal(validFromFor(list, "2026-10-23"), midnight("2026-10-23"));
+  assert.equal(validFromFor(list, "2026-10-26"), midnight("2026-10-26"));
   assert.equal(validFromFor([{ valid_from: mid }], "2026-10-25"), mid);
   assert.equal(validFromFor([], "2026-10-25"), mid);
 });

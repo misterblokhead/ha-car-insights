@@ -1,6 +1,7 @@
 <script>
   import { get, latest } from "./lib/api.js";
   import { parse } from "./lib/routes.js";
+  import { setZone } from "./lib/time.js";
   import Shell from "./lib/ui/Shell.svelte";
   import Activity from "./pages/Activity.svelte";
   import Settings from "./pages/Settings.svelte";
@@ -58,7 +59,9 @@
 
   (async () => {
     try {
-      [me, views] = await Promise.all([get("api/ui/me"), get("api/ui/views")]);
+      const [m, v] = await Promise.all([get("api/ui/me"), get("api/ui/views")]);
+      setZone(m?.tz); // before `me` is set, so no page renders a date in the browser's zone; no name keeps it
+      [me, views] = [m, v];
       let saved = "";
       try { saved = localStorage.getItem(KEY) || ""; } catch {}
       const values = options.map((o) => o.value);

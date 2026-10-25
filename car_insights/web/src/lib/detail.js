@@ -1,5 +1,6 @@
 // Pure helpers of the trip and charge detail pages (no runes, so node --test can import them).
-import { NA, km, duration, kwhPer100, delta, dayKey, dayLabel, time } from "./format.js";
+import { NA, km, duration, kwhPer100, delta } from "./format.js";
+import { clock, dayKey, dayLabel } from "./time.js";
 
 // "12.3 km" -> ["12.3", "km"]; a value without a unit (the missing "–") keeps an empty unit
 export function split(text) {
@@ -38,7 +39,7 @@ export const kwLabel = (kw) => (kw == null ? NA : `${kw < 0 ? "−" : ""}${Math.
 export const arrow = (a, b, unit) => (a == null && b == null ? NA : `${a ?? NA} → ${b ?? NA} ${unit}`);
 
 // "Today · 14:05 – 14:35", "Thu 22 Oct · 14:05 – now"
-export const rangeLine = (start, end, now = Date.now()) => `${dayLabel(dayKey(start), dayKey(now))} · ${time(start)} – ${end == null ? "now" : time(end)}`;
+export const rangeLine = (start, end, now = Date.now()) => `${dayLabel(dayKey(start), dayKey(now))} · ${clock(start)} – ${end == null ? "now" : clock(end)}`;
 
 // a place outside every zone
 export const place = (name) => name ?? "Unknown";

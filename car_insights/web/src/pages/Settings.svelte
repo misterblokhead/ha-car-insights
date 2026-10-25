@@ -1,7 +1,7 @@
 <script>
   import { tick } from "svelte";
   import { get, latest, send } from "../lib/api.js";
-  import { when } from "../lib/format.js";
+  import { dateTime } from "../lib/time.js";
   import FixedCosts from "./settings/FixedCosts.svelte";
   import Prices from "./settings/Prices.svelte";
   import "./settings/settings.css";
@@ -121,7 +121,7 @@
         <div class="list card">
           {#each data.users as u (u.id)}
             <label class="row split">
-              <span>{u.name || u.id} <span class="muted">(last seen {when(u.last_seen)})</span></span>
+              <span>{u.name || u.id} <span class="muted">(last seen {dateTime(u.last_seen)})</span></span>
               <input type="checkbox" disabled={busy} checked={v.viewers.includes(u.id)} onchange={(e) => { const on = e.currentTarget.checked; control(e, setVehicle(v, v.group_id, on ? [...v.viewers, u.id] : v.viewers.filter((x) => x !== u.id)), (el) => (el.checked = !on)); }} />
             </label>
           {:else}
