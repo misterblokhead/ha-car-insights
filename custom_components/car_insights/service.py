@@ -11,7 +11,7 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 
-from . import ha_adapters, importer
+from . import bridge, ha_adapters, importer
 from .const import DOMAIN
 from .core import capacity as capacity_learning, costs, db, geocode, pipeline, prices
 from .core.access import Viewer
@@ -30,14 +30,9 @@ log = logging.getLogger(__name__)
 SHARE_DIR = Path("/share")  # where the add-on's export is; tests point it elsewhere
 
 
-class _DropSink:
-    def publish(self, messages: list[tuple[str, str]], retain: bool = True) -> None:
-        log.debug("no entity bridge yet, dropping %d messages", len(messages))
-
-
 def make_sink(hass: HomeAssistant) -> Sink:
     """Where the publishers send their discovery and state messages."""
-    return _DropSink()
+    return bridge.async_get(hass)
 
 
 def _now_ms() -> int:

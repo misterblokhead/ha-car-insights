@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.network import NoURLAvailableError
 
+from .bridge import PLATFORMS
 from .const import DOMAIN, MAX_BODY
 from .receiver import body_vehicle_matches, config_file_text, is_https_url, read_limited, verify_signature, write_conf
 from .panel import async_register_http, async_register_panel, remove_panel
@@ -112,6 +113,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:  # a failed setup is never unloaded, so it would not release
         await async_register_http(hass)
         await async_register_panel(hass)
+        # after the service started: the bridge already holds its discovery, so the entities are made here
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
         webhook.async_register(
             hass, DOMAIN, f"Car Insights {vehicle_id}", webhook_id, handler,
             local_only=False, allowed_methods=("POST",),
@@ -132,6 +135,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        return False
     webhook.async_unregister(hass, entry.data["webhook_id"])
     await _release(hass)
     return True
