@@ -32,14 +32,14 @@ def spot(c, name="Home", start=5000, **tariff):
 def test_spot_price(c):
     spot(c, per_kwh=0.50, start_fee=1.00, per_min=0.02)
     r = costs.charge_cost(prices.book(c, "car1"), ch())
-    assert r["amount"] == pytest.approx(13.2)
+    assert r["amount"] == pytest.approx(12.3)
     assert (r["basis"], r["spot"], r["current"]) == ("spot", "Home", "ac")
 
 
 def test_default_ac(c):
     prices.set_tariff(c, "ac", 0, 0.40)
     r = costs.charge_cost(prices.book(c, "car1"), ch())
-    assert r["amount"] == pytest.approx(8.8)
+    assert r["amount"] == pytest.approx(8.08)
     assert (r["basis"], r["current"], r["spot_id"]) == ("default", "ac", None)
 
 
@@ -61,7 +61,7 @@ def test_spot_tariff_not_yet_valid(c):
 def test_card(c):
     prices.set_tariff(c, "ac", 0, 0.40)
     prices.set_card(c, "car1", 10, 0.35)
-    assert costs.charge_cost(prices.book(c, "car1"), ch())["amount"] == pytest.approx(10.03)
+    assert costs.charge_cost(prices.book(c, "car1"), ch())["amount"] == pytest.approx(9.238)
 
 
 def test_receipt_wins(c):
@@ -137,7 +137,7 @@ def test_trip_energy_fallback(c):
     t = {"start": END - 3_600_000, "end": END, "distance_m": 10_000, "net_wh": 3000}
     assert costs.trip_cost(c, "car1", t, TZ)["energy"] is None
     prices.set_tariff(c, "ac", 0, 0.40)
-    assert costs.trip_cost(c, "car1", t, TZ)["energy"] == pytest.approx(1.32)
+    assert costs.trip_cost(c, "car1", t, TZ)["energy"] == pytest.approx(1.212)
 
 
 def test_trip_negative_net(c):
@@ -169,7 +169,7 @@ def test_trip_open(c):
 def test_charge_cost_needs_no_database():
     book = prices.Book(tariffs={"ac": [{"valid_from": 0, "per_kwh": 0.30, "start_fee": 0, "per_min": 0}]})
     r = costs.charge_cost(book, {"start": 0, "end": 3_600_000, "added_wh": 20_000, "avg_w": 11_000, "duration_s": 3600})
-    assert r["amount"] == pytest.approx(20 * 1.10 * 0.30) and r["current"] == "ac" and r["basis"] == "default"
+    assert r["amount"] == pytest.approx(20 * 1.01 * 0.30) and r["current"] == "ac" and r["basis"] == "default"
 
 
 def test_period_costs_loads_one_book_per_vehicle(c, monkeypatch):

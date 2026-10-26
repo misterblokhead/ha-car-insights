@@ -9,7 +9,7 @@ ENERGY_WINDOW_MS = 30 * 86_400_000
 FIXED_DAYS = 365
 MIN_FIXED_KM = 100
 DC_ABOVE_W = 22_000
-LOSS = {"ac": 1.10, "dc": 1.05}  # grid-to-battery losses; the car reports energy added to the battery
+LOSS = {"ac": 1.01, "dc": 1.05}  # grid-to-battery losses; the car reports energy added to the battery (AC: an ANWB meter read 0.5 % above the battery gain, 26 Oct 2026)
 
 
 def charge_cost(book: prices.Book, charge: dict) -> dict:

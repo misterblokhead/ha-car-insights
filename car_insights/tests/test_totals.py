@@ -75,7 +75,7 @@ def test_month_cost():
     for st, wh in ((s, 20_000), (s + 86_400_000, None)):
         seed_charge(c, "a", st, st + 3_600_000, added_wh=wh)
     prices.add_fixed_cost(c, "a", "Insurance", 31.0, "month", date(2026, 10, 1), None)
-    assert totals(c, ["a"], now, TZ)["month"]["cost"] == {"energy": approx(8.8), "fixed": approx(10.0), "total": approx(18.8), "uncosted": 1}
+    assert totals(c, ["a"], now, TZ)["month"]["cost"] == {"energy": approx(8.08), "fixed": approx(10.0), "total": approx(18.08), "uncosted": 1}
 
 
 def test_sums_is_both_sensors_and_stats():
