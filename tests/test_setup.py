@@ -88,3 +88,18 @@ async def test_failed_setup_unloads_its_platforms_and_the_service(hass):
     assert entry.state is ConfigEntryState.SETUP_ERROR
     assert hass.states.get("sensor.invented_car_speed").state == "unavailable"  # the entities were added, then taken away again
     assert bridge.async_get(hass)._adders == {} and DOMAIN not in hass.data
+
+
+async def test_a_setup_that_fails_after_the_webhook_can_be_retried(hass, share):
+    class Unreadable:
+        def __fspath__(self):
+            raise OSError("share is gone")
+
+    (share / "car_insights").rmdir()
+    entry = _entry(hass)
+    with patch.object(service, "SHARE_DIR", Unreadable()):
+        await _setup(hass, entry)
+    assert entry.state is ConfigEntryState.SETUP_ERROR
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    assert entry.state is ConfigEntryState.LOADED
+    await hass.config_entries.async_unload(entry.entry_id)

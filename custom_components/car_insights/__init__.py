@@ -19,7 +19,7 @@ from . import service as service_module
 from .service import Service
 
 _LOGGER = logging.getLogger(__name__)
-_last_warn = 0.0
+_last_warn = float("-inf")  # the first warning counts, however soon after boot
 
 
 def _warn_bad_signature(vehicle_id: str) -> None:
@@ -118,10 +118,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # after the service started: the bridge already holds its discovery, so the entities are made here
         forwarded = True
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-        webhook.async_register(
-            hass, DOMAIN, f"Car Insights {vehicle_id}", webhook_id, handler,
-            local_only=False, allowed_methods=("POST",),
-        )
         if written:
             # the add-on's file is still there on an upgrade: the entry kept its URL and secret, so the car needs nothing
             moved = written == "created" and await hass.async_add_executor_job(Path(service_module.SHARE_DIR, "car_insights", f"{vehicle_id}.conf").exists)
@@ -136,6 +132,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             persistent_notification.async_create(
                 hass, what, title="Car Insights", notification_id=f"{DOMAIN}_{vehicle_id}",
             )
+        webhook.async_register(  # last: a failed setup is not unloaded, so nothing after this may fail
+            hass, DOMAIN, f"Car Insights {vehicle_id}", webhook_id, handler,
+            local_only=False, allowed_methods=("POST",),
+        )
     except BaseException:
         if forwarded:
             await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

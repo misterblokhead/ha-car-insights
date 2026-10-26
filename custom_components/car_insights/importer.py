@@ -95,10 +95,14 @@ def _merge_live(conn: sqlite3.Connection, live: Path, keep: list[str]) -> None:
 def run(config_dir: Path, share_dir: Path, entries: dict[str, str]) -> ImportResult:
     """Import share_dir/car_insights/export.db. A database in config_dir/car_insights that holds samples (the car uploaded to the integration
     before the export arrived, or an earlier import failed) is merged in; a missing or sample-less one is replaced. `entries`: vehicle id -> entry id.
-    Builds the database beside its final place and moves it in only when whole; raises on any failure with nothing left behind, the export
-    and the live database untouched."""
+    The export is renamed first, so an import that cannot mark its export as done never starts (it would merge again at every restart and lose
+    the settings made since). Builds the database beside its final place and moves it in only when whole; raises on any failure with nothing
+    left behind, the export (under its own name again) and the live database untouched."""
     final = config_dir / "car_insights" / "car_insights.db"
     export = share_dir / "car_insights" / "export.db"
+    marker = export.with_name("export.importing.db")
+    if marker.exists() and not export.exists():  # the process died mid-import; one that died after replacing the database imports once more, which is rare
+        os.replace(marker, export)
     if not export.exists():
         return ImportResult()
     merge = final.exists() and _has_samples(final)  # an unreadable one raises here: it is never replaced
@@ -106,10 +110,11 @@ def run(config_dir: Path, share_dir: Path, entries: dict[str, str]) -> ImportRes
     kwh, cloud = _options(export.with_name("export.json"), entries)
     tmp = final.with_name(final.name + ".importing")
     sidecars = [tmp.with_name(tmp.name + s) for s in ("-wal", "-shm", "-journal")]
+    os.replace(export, marker)  # raises when /share cannot be written: nothing is built, the live database is not touched
     try:
         for p in (tmp, *sidecars):  # what an interrupted earlier try left
             p.unlink(missing_ok=True)
-        shutil.copyfile(export, tmp)
+        shutil.copyfile(marker, tmp)
         conn = db.connect(str(tmp))  # runs the migrations
         try:
             dropped = _prune(conn, list(entries))
@@ -123,11 +128,15 @@ def run(config_dir: Path, share_dir: Path, entries: dict[str, str]) -> ImportRes
     except BaseException:
         for p in (tmp, *sidecars):
             p.unlink(missing_ok=True)
+        try:
+            os.replace(marker, export)
+        except OSError:
+            log.error("Could not rename %s back to %s", marker, export, exc_info=True)
         raise
     if dropped:
         log.warning("Not importing vehicles without an entry: %s", ", ".join(sorted(dropped)))
     try:
-        os.replace(export, export.with_name("export.imported.db"))
-    except OSError:
-        log.warning("Imported %s, but could not rename it; it is ignored as long as the database exists", export, exc_info=True)
+        os.replace(marker, export.with_name("export.imported.db"))
+    except OSError:  # it keeps the marker name, which is not imported again: the import is done
+        log.warning("Imported %s, but could not rename %s to export.imported.db", export, marker, exc_info=True)
     return ImportResult(True, kwh, cloud)

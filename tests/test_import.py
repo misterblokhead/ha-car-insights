@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import sqlite3
 import time
 from pathlib import Path
@@ -280,6 +281,50 @@ async def test_failed_import_then_uploads_then_retry_merges(hass, share):
         assert (await svc.ingest(BATCH, 3_000))[1]["acked_seq"] == 1  # the car's ack is still known
     finally:
         await Service.release(hass)
+
+
+def _export_cannot_be_renamed(monkeypatch):
+    real = os.replace
+
+    def replace(src, dst, *a, **k):
+        if Path(src).name == "export.db":
+            raise PermissionError("read-only /share")
+        return real(src, dst, *a, **k)
+
+    monkeypatch.setattr(importer.os, "replace", replace)
+
+
+def test_an_export_that_cannot_be_renamed_is_not_imported(tmp_path, share, monkeypatch):
+    export = make_export(share)
+    final = _live_db(tmp_path)
+    before = final.read_bytes()
+    _export_cannot_be_renamed(monkeypatch)
+    with pytest.raises(PermissionError):
+        importer.run(tmp_path, share, {"car1": "e1"})
+    assert export.exists() and final.read_bytes() == before and sorted(p.name for p in final.parent.iterdir()) == ["car_insights.db"]
+
+
+def test_a_marker_left_by_a_dead_import_is_imported_again(tmp_path, share):
+    make_export(share).rename(share / "car_insights" / "export.importing.db")
+    assert importer.run(tmp_path, share, {"car1": "e1"}).imported
+
+
+async def test_unrenamable_export_keeps_the_settings_made_since(hass, share, monkeypatch):
+    MockConfigEntry(domain=DOMAIN, data={"vehicle_id": "car1"}).add_to_hass(hass)
+    make_export(share)
+    live = _live_db(Path(hass.config.config_dir))
+    conn = db.connect(str(live))
+    db.set_default_capacity_kwh(conn, 77.0)  # a setting made in the integration
+    conn.close()
+    _export_cannot_be_renamed(monkeypatch)
+    for _ in range(2):  # every restart: the same repair, the same untouched database
+        svc = await Service.acquire(hass)
+        try:
+            assert ir.async_get(hass).async_get_issue(DOMAIN, "import_failed") is not None
+            assert await hass.async_add_executor_job(lambda: svc.worker.call(db.default_capacity_kwh, svc.conn).result(10)) == 77.0
+        finally:
+            await Service.release(hass)
+    assert (share / "car_insights" / "export.db").exists()
 
 
 @pytest.mark.parametrize("how", ["not sqlite", "locked"])

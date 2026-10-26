@@ -2,8 +2,9 @@ import asyncio
 from pathlib import Path
 
 import pytest
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 
-from custom_components.car_insights import backup
+from custom_components.car_insights import backup, service
 from custom_components.car_insights.core.access import Viewer
 from custom_components.car_insights.service import Service
 
@@ -59,3 +60,17 @@ async def test_without_a_service_both_are_no_ops(hass):
 async def test_post_without_pre_changes_nothing(hass, svc):
     await backup.async_post_backup(hass)
     assert (await asyncio.wait_for(svc.ui("GET", "/me", {}, None, ADMIN), 5))[0] == 200
+
+
+async def test_a_backup_that_never_ends_does_not_hold_for_ever(hass, svc, monkeypatch, caplog):
+    monkeypatch.setattr(service, "BACKUP_HOLD_MAX_S", 0.2)
+    await backup.async_pre_backup(hass)
+    assert (await asyncio.wait_for(svc.ui("GET", "/me", {}, None, ADMIN), 5))[0] == 200
+    assert "No end of the backup was reported" in caplog.text and not svc.paused
+
+
+async def test_a_backup_ending_after_the_stop_is_harmless(hass, svc):
+    await backup.async_pre_backup(hass)
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)  # shutdown during the backup
+    await hass.async_block_till_done()
+    await backup.async_post_backup(hass)

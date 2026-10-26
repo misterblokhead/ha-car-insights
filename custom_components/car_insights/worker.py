@@ -57,8 +57,10 @@ class Worker:
         self._open.clear()
 
     def release(self) -> None:
-        """From any thread."""
-        self._loop.call_soon_threadsafe(self._open.set)
+        """From any thread; nothing to do once the worker is stopping (a backup that ends during shutdown)."""
+        with self._lock:
+            if not self._stopping:
+                self._loop.call_soon_threadsafe(self._open.set)
 
     def spawn(self, coro_fn: Callable[[], Coroutine]) -> None:
         """A long-running job on the worker loop, cancelled at stop."""

@@ -28,6 +28,7 @@ from .core.zones import ZoneCache
 from .worker import Worker
 
 log = logging.getLogger(__name__)
+BACKUP_HOLD_MAX_S = 1800  # a backup that never reports its end must not hold the car's uploads for ever
 SHARE_DIR = Path("/share")  # where the add-on's export is; tests point it elsewhere
 
 
@@ -45,6 +46,7 @@ class Service:
         self.confs: list[SourceConf] = []  # read when the service starts: an entry added later is polled after the next start
         self._ready: asyncio.Future | None = None
         self.paused = False  # between a backup's start and its end
+        self._unhold: asyncio.TimerHandle | None = None
         self._unsub_stop: CALLBACK_TYPE | None = None
         self.conn = self.zones = self.poller = self.publisher = self.app = self.ui_api = None  # set on the worker by _build
 
@@ -122,6 +124,8 @@ class Service:
             hass.config_entries.async_update_entry(entry, options={**entry.options, "cloud": cloud})
 
     async def _stop(self) -> None:
+        if self._unhold is not None:
+            self._unhold.cancel()
         # off HA's loop: a job on the worker may be waiting for HA's answer (ha_adapters), and the loop must be free to give it
         await self.hass.async_add_executor_job(self._close)
 
@@ -178,9 +182,17 @@ class Service:
         except BaseException:
             self.paused = False
             raise
+        self._unhold = self.hass.loop.call_later(BACKUP_HOLD_MAX_S, self._hold_expired)
+
+    def _hold_expired(self) -> None:
+        log.warning("No end of the backup was reported in %d s; Car Insights goes on", BACKUP_HOLD_MAX_S)
+        self.resume()
 
     def resume(self) -> None:
         self.paused = False
+        if self._unhold is not None:
+            self._unhold.cancel()
+            self._unhold = None
         self.worker.release()
 
     def _checkpoint_and_hold(self) -> None:

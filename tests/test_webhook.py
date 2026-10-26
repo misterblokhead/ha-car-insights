@@ -127,7 +127,7 @@ def _entry(hass, **data):
 @pytest.fixture
 def env(enable_custom_integrations, hass, monkeypatch):
     hass.config.external_url = "https://ci.example.test"
-    monkeypatch.setattr(integration, "_last_warn", 0.0)
+    monkeypatch.setattr(integration, "_last_warn", float("-inf"))
 
 
 @pytest.fixture
@@ -230,3 +230,10 @@ async def test_flow_has_no_addon_url(hass, env):
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {"vehicle_id": "car1", "vehicle_name": "Invented car"})
     assert result["type"] == "create_entry"
     assert set(result["data"]) == {"vehicle_id", "vehicle_name", "webhook_id", "secret"}
+
+
+async def test_the_first_bad_signature_is_warned_whatever_the_uptime(caplog, monkeypatch):
+    monkeypatch.setattr(integration, "_last_warn", float("-inf"))  # what a fresh start holds
+    monkeypatch.setattr(integration.time, "monotonic", lambda: 5.0)  # five seconds after boot
+    integration._warn_bad_signature("car1")
+    assert "bad signature for vehicle car1" in caplog.text
