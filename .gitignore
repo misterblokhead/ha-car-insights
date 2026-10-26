@@ -4,3 +4,4 @@ __pycache__/
 .worktrees/
 car_insights/web/node_modules/
 car_insights/web/dist/
+.venv-ha/
