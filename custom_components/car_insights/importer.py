@@ -57,16 +57,16 @@ def _prune(conn: sqlite3.Connection, keep: list[str]) -> set[str]:
             conn.execute(f'DELETE FROM "{t}" WHERE vehicle_id NOT IN ({marks})', keep)
         for k in KINDS:
             conn.execute(f"UPDATE {k.table} SET algo=?", (STALE_ALGO,))
-    conn.execute("VACUUM")  # the dropped vehicles' data must not linger in free pages
+    conn.execute("VACUUM")  # the dropped vehicles' rows leave the file with the free pages; what is not per vehicle (addresses, spots, groups, prices) stays
     return dropped
 
 
 def _has_samples(path: Path) -> bool:
     conn = sqlite3.connect(path)  # a normal connection: closing it last clears the WAL a crash left
-    try:
+    try:  # any error (locked, unreadable) propagates: a database that cannot be read is never replaced
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='samples'").fetchone() is None:
+            return False  # no samples table: nothing of the owner's in it
         return conn.execute("SELECT 1 FROM samples LIMIT 1").fetchone() is not None
-    except sqlite3.OperationalError:  # no samples table: nothing of the owner's in it
-        return False
     finally:
         conn.close()
 

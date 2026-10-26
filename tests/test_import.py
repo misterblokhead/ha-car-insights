@@ -223,6 +223,27 @@ async def test_failed_then_fixed_export_imports_on_restart(hass, share):
         await Service.release(hass)
 
 
+@pytest.mark.parametrize("how", ["not sqlite", "locked"])
+def test_unreadable_database_is_never_replaced(tmp_path, share, monkeypatch, how):
+    export = make_export(share)
+    final = tmp_path / "car_insights" / "car_insights.db"
+    final.parent.mkdir()
+    if how == "not sqlite":
+        final.write_bytes(b"the owner's data, unreadable" * 50)
+    else:
+        db.connect(str(final)).close()
+
+        def locked(*a, **k):
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(importer.sqlite3, "connect", locked)
+    before = final.read_bytes()
+    with pytest.raises(sqlite3.Error):
+        importer.run(tmp_path, share, {"car1": "e"})
+    assert final.read_bytes() == before and export.exists() and not (export.parent / "export.imported.db").exists()
+    assert sorted(p.name for p in final.parent.iterdir()) == ["car_insights.db"]
+
+
 def test_empty_database_is_replaced(tmp_path, share):
     make_export(share)
     final = tmp_path / "car_insights" / "car_insights.db"

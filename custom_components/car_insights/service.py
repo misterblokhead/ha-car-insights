@@ -110,7 +110,7 @@ class Service:
     async def _import_export(self) -> None:
         """The add-on's export, on the first start after it: the database comes in beside the new one's place, the options go to the entries."""
         hass = self.hass
-        entries = {e.data["vehicle_id"]: e.entry_id for e in hass.config_entries.async_entries(DOMAIN)}
+        entries = {e.data["vehicle_id"]: e.entry_id for e in hass.config_entries.async_entries(DOMAIN) if "vehicle_id" in e.data}
         try:
             self.imported = await hass.async_add_executor_job(importer.run, Path(hass.config.config_dir), SHARE_DIR, entries)
         except Exception as err:
