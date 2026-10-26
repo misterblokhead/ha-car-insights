@@ -47,10 +47,9 @@ sections:
       - type: shortcut
         label: Trips & charging
         icon: mdi:chart-timeline-variant
-        # replace the slug (local_car_insights) if the add-on is installed from a repository
         tap_action:
           action: navigate
-          navigation_path: /hassio/ingress/local_car_insights
+          navigation_path: /car_insights
         grid_options:
           columns: 12
   - type: grid

@@ -5,7 +5,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.components import webhook
 
-from .const import DEFAULT_ADDON_URL, DOMAIN
+from .const import DOMAIN
 
 _VEHICLE_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
@@ -35,6 +35,5 @@ class CarInsightsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         schema = vol.Schema({
             vol.Required("vehicle_id", default=prev.get("vehicle_id", "")): str,
             vol.Required("vehicle_name", default=prev.get("vehicle_name", "")): str,
-            vol.Required("addon_url", default=prev.get("addon_url", DEFAULT_ADDON_URL)): str,
         })
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)

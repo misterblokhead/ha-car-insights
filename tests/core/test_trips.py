@@ -1,0 +1,189 @@
+import pytest
+
+from custom_components.car_insights.core.trips import KEYS, MERGE_GAP_MS, find_trips
+from conftest import s
+
+
+def drive(t0, t1, v=10.0, step=1000):
+    return [s(t, "speed", v) for t in range(t0, t1 + 1, step)]
+
+
+def trips(samples, seed=None, has_ignition=True, quiet=False):
+    samples = sorted(samples, key=lambda x: (x.t, x.seq))
+    return find_trips(samples, seed or {}, has_ignition, quiet)
+
+
+def test_trip_ends_on_ignition_off():
+    samples = [s(0, "gear", 1.0), *drive(0, 120_000, step=200), s(121_000, "gear", 4.0),
+               s(0, "ignition", 4.0), s(400_000, "ignition", 2.0),
+               s(0, "battery_wh", 33050), s(60_000, "battery_wh", 33000), s(90_000, "battery_wh", 33100), s(300_000, "battery_wh", 32550)]
+    (t,) = trips(samples)
+    assert (t.start, t.end) == (0, 400_000)
+    assert t.duration_s == 400
+    assert t.distance_m == pytest.approx(1200, rel=0.01)
+    assert (t.gross_wh, t.recup_wh, t.net_wh) == (600, 100, 500)
+    assert t.start_wh == 33050 and t.end_wh == 32550 and t.net_wh == t.start_wh - t.end_wh
+
+
+def test_short_battery_flicker_is_not_energy():
+    """the Mégane's level jumps 50-100 Wh up or down for ~0.2 s; such a reading is no real step (Aximote agrees, 2026-10-24)"""
+    wh = [(0, 33050), (60_000, 33000), (60_200, 33100), (60_400, 33000), (70_000, 32900), (70_200, 33000),  # two blips
+          (80_000, 33050), (300_000, 32550), (300_300, 32650)]  # a real 50 Wh rise held 220 s, a third blip; the last reading counts however short
+    samples = [s(0, "gear", 1.0), *drive(0, 120_000, step=200), s(0, "ignition", 4.0), s(400_000, "ignition", 2.0),
+               *(s(t, "battery_wh", v) for t, v in wh)]
+    (t,) = trips(samples)
+    assert (t.gross_wh, t.recup_wh, t.net_wh, t.end_wh) == (450, 50, 400, 32650)  # unfiltered: 750 / 350
+
+
+def test_stop_in_p_with_ignition_on_stays_one_trip():
+    samples = [s(0, "gear", 1.0), *drive(0, 60_000), s(60_000, "gear", 4.0),
+               *drive(60_000, 330_000, v=0.0, step=30_000),  # samples keep arriving, so the car is not asleep
+               s(330_000, "gear", 1.0), *drive(330_000, 390_000), s(400_000, "ignition", 2.0)]
+    (t,) = trips(samples)
+    assert (t.start, t.end) == (0, 400_000)
+
+
+STOP = [s(0, "gear", 1.0), *drive(0, 60_000), s(60_000, "gear", 4.0)]  # parks at 60 s
+
+
+def test_without_ignition_p_for_merge_gap_ends_trip():
+    (t,) = trips(STOP + [s(60_000 + MERGE_GAP_MS, "speed", 0.0)], has_ignition=False)
+    assert t.end == 60_000
+    assert t.distance_m == pytest.approx(600)
+    (t,) = trips(STOP + [s(60_000 + MERGE_GAP_MS - 1, "speed", 0.0)], has_ignition=False)
+    assert t.end is None  # not yet P for the whole merge gap
+    (t,) = trips(STOP, has_ignition=False)
+    assert t.end is None  # no later sample proves it, however long ago the car parked
+
+
+def test_without_ignition_leaving_p_after_the_gap_ends_trip_and_starts_the_next():
+    a, b = trips(STOP + [s(300_000, "gear", 1.0), *drive(300_000, 400_000)], has_ignition=False)
+    assert (a.start, a.end, b.start, b.end) == (0, 60_000, 300_000, None)
+
+
+def test_without_ignition_short_p_stays_one_trip():
+    samples = [s(0, "gear", 1.0), *drive(0, 60_000), s(60_000, "gear", 4.0), s(200_000, "gear", 1.0), *drive(200_000, 260_000)]
+    (t,) = trips(samples, has_ignition=False)
+    assert t.end is None and t.start == 0
+
+
+def test_car_asleep_ends_trip():
+    (t,) = trips(STOP + [s(60_000 + MERGE_GAP_MS, "gps", [52.0, 5.0])])
+    assert t.end == 60_000
+    (t,) = trips(STOP + [s(60_000 + MERGE_GAP_MS - 1, "gps", [52.0, 5.0])])
+    assert t.end is None
+    (t,) = trips(STOP)
+    assert t.end is None  # silence is no proof: the next sample may still continue the trip
+
+
+def test_quiet_car_with_tail_in_p_ends_trip_at_the_first_p_sample():
+    for has_ignition in (True, False):
+        (t,) = trips(STOP + [s(70_000, "gear", 4.0)], has_ignition=has_ignition, quiet=True)
+        assert t.end == 60_000
+    (t,) = trips(STOP + [s(70_000, "gear", 1.0)], quiet=True)
+    assert t.end is None  # not in P: it may still be driving with its batches held back
+
+
+@pytest.mark.parametrize("has_ignition", [False, True])
+def test_silence_without_park_ends_the_trip(has_ignition):
+    t1 = 12 * 3600_000 + 600_000
+    samples = [s(0, "gear", 1.0), *drive(0, 600_000), s(t1, "gear", 4.0), s(t1 + 1000, "gear", 3.0), *drive(t1 + 2000, t1 + 602_000)]
+    first, second = trips(samples, has_ignition=has_ignition)
+    assert first.end == 600_000
+    assert second.start == t1 + 2000
+
+
+def test_parked_with_ignition_on_and_samples_keeps_trip_open():
+    parked = [s(t, "gps", [52.0, 5.0]) for t in range(120_000, 600_001, 60_000)]  # a sample every minute, never asleep
+    (t,) = trips(STOP + parked)
+    assert t.end is None
+
+
+def test_open_trip_returned_last():
+    first = [s(0, "gear", 1.0), *drive(0, 100_000), s(100_000, "ignition", 2.0)]
+    second = drive(500_000, 560_000)
+    a, b = trips(first + second)
+    assert a.end == 100_000
+    assert b.end is None and b.start == 500_000 and b.duration_s == 60
+
+
+def test_noise_filter_applies_to_closed_trips_only():
+    slow = [s(0, "gear", 1.0), *drive(0, 20_000, v=1.0)]  # 20 m in 20 s
+    (t,) = trips(slow)
+    assert t.end is None and t.distance_m == 20  # an open trip shows from its first second
+    assert trips(slow + [s(20_000, "ignition", 2.0)]) == []
+
+
+def test_noise_trip_discarded():
+    samples = [s(0, "gear", 1.0), *drive(0, 10_000, v=5.0), s(30_000, "ignition", 2.0)]
+    assert trips(samples) == []
+
+
+def test_short_but_long_distance_trip_kept():
+    samples = [s(0, "gear", 1.0), *drive(0, 10_000, v=20.0), s(30_000, "ignition", 2.0)]
+    (t,) = trips(samples)
+    assert t.distance_m == pytest.approx(200)
+
+
+def test_trip_without_battery_has_null_energy():
+    samples = [s(0, "gear", 1.0), *drive(0, 100_000), s(100_000, "ignition", 2.0)]
+    (t,) = trips(samples)
+    assert t.net_wh is t.gross_wh is t.recup_wh is t.start_wh is t.end_wh is None
+
+
+def test_avg_speed_uses_moving_time():
+    samples = [s(0, "gear", 1.0), *drive(0, 99_000), *drive(100_000, 290_000, v=0.0, step=10_000), s(300_000, "ignition", 2.0)]
+    (t,) = trips(samples)
+    assert t.avg_speed_mps == pytest.approx(10, rel=0.02)
+    assert t.max_speed_mps == 10
+    assert t.duration_s == pytest.approx(300)
+    assert t.distance_m == pytest.approx(1000, rel=0.01)
+
+
+def test_seed_supplies_start_battery_and_gear():
+    samples = [*drive(0, 100_000), s(50_000, "battery_wh", 39950), s(100_000, "ignition", 2.0)]
+    (t,) = trips(samples, seed={"battery_wh": 40000, "gear": 1.0})
+    assert t.start_wh == 40000 and t.end_wh == 39950 and t.net_wh == 50 and t.gross_wh == 50 and t.recup_wh == 0
+
+
+def test_speed_while_in_park_does_not_start_trip():
+    assert trips(drive(0, 100_000), seed={"gear": 4.0}) == []
+
+
+def test_fixes_and_temp():
+    samples = [s(0, "gear", 1.0), *drive(0, 100_000),
+               s(1_000, "gps", [50.0, 4.0, 5.0, 90.0, 10.0, 12.0]), s(90_000, "gps", [50.1, 4.1, 5.0, 90.0, 10.0, 12.0]),
+               s(10_000, "outside_temp", 7.0), s(20_000, "outside_temp", 9.0), s(100_000, "ignition", 2.0)]
+    (t,) = trips(samples)
+    assert t.first_fix == (50.0, 4.0) and t.last_fix == (50.1, 4.1)
+    assert t.avg_temp_c == 8.0
+    (t,) = trips(samples, seed={"outside_temp": 5.0})
+    assert t.avg_temp_c == pytest.approx(7.0)
+
+
+def test_reverse_speed_counts_as_distance():
+    samples = [s(0, "gear", 1.0), *drive(0, 60_000), *drive(61_000, 121_000, v=-2.0), s(130_000, "ignition", 2.0)]
+    (t,) = trips(samples)
+    assert t.distance_m == pytest.approx(730)  # 600 forward + 10 for the 1 s hop into reverse + 120 reverse
+    assert t.max_speed_mps == 10
+    (t,) = trips([s(0, "gear", 2.0), *drive(0, 100_000, v=-5.0), s(100_000, "ignition", 2.0)])
+    assert t.distance_m == pytest.approx(500) and t.max_speed_mps == 5 and t.avg_speed_mps == pytest.approx(5)
+
+
+def test_no_battery_before_start_gives_null_energy():
+    samples = [s(0, "gear", 1.0), *drive(0, 100_000), s(30_000, "battery_wh", 33000), s(60_000, "battery_wh", 32900), s(100_000, "ignition", 2.0)]
+    (t,) = trips(samples)
+    assert t.net_wh is t.gross_wh is t.recup_wh is t.start_wh is t.end_wh is None
+
+
+def test_ignition_undefined_does_not_end_trip():
+    samples = [s(0, "gear", 1.0), *drive(0, 100_000), s(50_000, "ignition", 0.0), s(200_000, "ignition", 1.0)]
+    (t,) = trips(samples)
+    assert t.end == 200_000
+
+
+def test_keys_cover_what_the_trip_derivation_reads():
+    samples = sorted([s(0, "gear", 1.0), *drive(0, 100_000), s(1_000, "gps", [50.0, 4.0]), s(10_000, "outside_temp", 7.0),
+                      s(0, "battery_wh", 33000), s(60_000, "battery_wh", 32900), s(0, "ignition", 4.0), s(100_000, "ignition", 2.0),
+                      s(5_000, "soc", 50.0), s(6_000, "range_m", 100.0), s(7_000, "plugged", True)], key=lambda x: (x.t, x.seq))
+    assert find_trips([x for x in samples if x.k in KEYS], {}, True) == find_trips(samples, {}, True) != []

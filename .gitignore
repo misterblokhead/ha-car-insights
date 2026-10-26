@@ -2,5 +2,6 @@
 __pycache__/
 .pytest_cache/
 .worktrees/
-car_insights/web/node_modules/
-car_insights/web/dist/
+web/node_modules/
+web/dist/
+.venv-ha/

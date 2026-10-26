@@ -1,20 +1,25 @@
-"""Car Insights receiver: verifies HMAC-signed car batches and forwards them to the add-on."""
+"""Car Insights: verifies HMAC-signed car batches and ingests them in Home Assistant."""
+import asyncio
 import logging
 import time
+from pathlib import Path
 
 from aiohttp import web
 from homeassistant.components import cloud, persistent_notification, webhook
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.network import NoURLAvailableError
 
-from .const import CONF_DIR, DOMAIN, MAX_BODY, TOKEN_PATH
-from .receiver import TokenCache, body_vehicle_matches, config_file_text, forward, is_https_url, map_addon_status, read_limited, verify_signature, write_conf
+from .bridge import PLATFORMS
+from .const import DOMAIN, MAX_BODY
+from .receiver import body_vehicle_matches, config_file_text, is_https_url, read_limited, verify_signature, write_conf
+from .panel import async_register_http, async_register_panel, remove_panel
+from . import service as service_module
+from .service import Service
 
 _LOGGER = logging.getLogger(__name__)
-_last_warn = 0.0
+_last_warn = float("-inf")  # the first warning counts, however soon after boot
 
 
 def _warn_bad_signature(vehicle_id: str) -> None:
@@ -39,12 +44,16 @@ async def _webhook_url(hass: HomeAssistant, webhook_id: str) -> str:
     return webhook.async_generate_url(hass, webhook_id, allow_internal=False, prefer_external=True)
 
 
+async def _release(hass: HomeAssistant) -> None:
+    await Service.release(hass)
+    if DOMAIN not in hass.data:  # the last entry is gone
+        remove_panel(hass)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     vehicle_id = entry.data["vehicle_id"]
     secret = entry.data["secret"]
-    addon_url = entry.data["addon_url"]
     webhook_id = entry.data["webhook_id"]
-    tokens = TokenCache(TOKEN_PATH)
 
     async def handler(hass: HomeAssistant, webhook_id: str, request: web.Request) -> web.Response:
         # cloud-relayed (MockRequest) requests have no content_length; chunked uploads have none either
@@ -61,19 +70,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             return web.Response(status=401)
         if not body_vehicle_matches(body, vehicle_id):
             return web.Response(status=400)
-        token = await hass.async_add_executor_job(tokens.get)
-        if token is None:
+        service = hass.data.get(DOMAIN)
+        if service is None:  # the last entry is unloading
             return web.Response(status=503)
-        session = async_get_clientsession(hass)
-        status, resp_body = await forward(session, addon_url, token, body)
-        if status == 401:  # token file recreated: reread once and retry
-            fresh = await hass.async_add_executor_job(tokens.refresh)
-            if fresh is not None and fresh != token:
-                status, resp_body = await forward(session, addon_url, fresh, body)
-        mapped_status, mapped_body = map_addon_status(status, resp_body)
-        if mapped_status != status:
-            _LOGGER.warning("Add-on returned status %s for vehicle %s", status, vehicle_id)
-        return web.Response(status=mapped_status, body=mapped_body, content_type="application/json")
+        try:
+            status, reply = await service.ingest(body, int(time.time() * 1000))
+        except (asyncio.CancelledError, RuntimeError) as err:  # the worker is stopping: HA is shutting down or the entry is unloading
+            if isinstance(err, asyncio.CancelledError) and asyncio.current_task().cancelling():
+                raise  # the request itself was cancelled (client gone)
+            _LOGGER.warning("Car Insights is stopping, batch for vehicle %s not stored", vehicle_id)
+            return web.Response(status=503)
+        except Exception:
+            _LOGGER.exception("Ingest failed for vehicle %s", vehicle_id)
+            return web.Response(status=500)
+        return web.json_response(reply, status=status)
 
     try:
         url = await _webhook_url(hass, webhook_id)
@@ -82,7 +92,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass,
             "Car Insights needs an external URL for Home Assistant (Nabu Casa or your own domain) "
             "so the car can reach the webhook. Configure one; setup will retry.",
-            title="Car Insights receiver",
+            title="Car Insights",
             notification_id=f"{DOMAIN}_{vehicle_id}_nourl",
         )
         raise ConfigEntryNotReady("No external URL available") from err
@@ -91,40 +101,60 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass,
             f"Car Insights needs an https external URL for Home Assistant (Nabu Casa, or your own domain with TLS); "
             "the car rejects http. Fix it in Settings > System > Network; setup will retry.",
-            title="Car Insights receiver",
+            title="Car Insights",
             notification_id=f"{DOMAIN}_{vehicle_id}_nohttps",
         )
         raise ConfigEntryNotReady("External URL is not https")
 
-    conf_path = CONF_DIR / f"{vehicle_id}.conf"
+    conf_path = Path(hass.config.path("car_insights", f"{vehicle_id}.conf"))
     text = config_file_text(url, secret, vehicle_id, entry.data["vehicle_name"])
     written = await hass.async_add_executor_job(write_conf, conf_path, text, url)
 
-    webhook.async_register(
-        hass, DOMAIN, f"Car Insights {vehicle_id}", webhook_id, handler,
-        local_only=False, allowed_methods=("POST",),
-    )
-
-    if written:
-        what = (
-            f"Config file for {entry.data['vehicle_name']} written to {conf_path}. Copy it to the car USB stick."
-            if written == "created"
-            else f"The car's webhook URL changed. Copy the new {conf_path} to the USB stick and import it in the car app."
+    await Service.acquire(hass)
+    forwarded = False
+    try:  # a failed setup is never unloaded, so it would not release
+        await async_register_http(hass)
+        await async_register_panel(hass)
+        # after the service started: the bridge already holds its discovery, so the entities are made here
+        forwarded = True
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        if written:
+            # the add-on's file is still there on an upgrade: the entry kept its URL and secret, so the car needs nothing
+            moved = written == "created" and await hass.async_add_executor_job(Path(service_module.SHARE_DIR, "car_insights", f"{vehicle_id}.conf").exists)
+            what = (
+                f"The config file for {entry.data['vehicle_name']} moved to {conf_path} (same URL and secret as the add-on's): "
+                "no new copy to the car is needed."
+                if moved
+                else f"Config file for {entry.data['vehicle_name']} written to {conf_path}. Copy it to the car USB stick."
+                if written == "created"
+                else f"The car's webhook URL changed. Copy the new {conf_path} to the USB stick and import it in the car app."
+            )
+            persistent_notification.async_create(
+                hass, what, title="Car Insights", notification_id=f"{DOMAIN}_{vehicle_id}",
+            )
+        webhook.async_register(  # last: a failed setup is not unloaded, so nothing after this may fail
+            hass, DOMAIN, f"Car Insights {vehicle_id}", webhook_id, handler,
+            local_only=False, allowed_methods=("POST",),
         )
-        persistent_notification.async_create(
-            hass, what, title="Car Insights receiver", notification_id=f"{DOMAIN}_{vehicle_id}",
-        )
+    except BaseException:
+        if forwarded:
+            await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+        await _release(hass)
+        raise
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        return False
     webhook.async_unregister(hass, entry.data["webhook_id"])
+    await _release(hass)
     return True
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     # a re-added vehicle gets a new secret, so the stale .conf must go
-    path = CONF_DIR / f"{entry.data['vehicle_id']}.conf"
+    path = Path(hass.config.path("car_insights", f"{entry.data['vehicle_id']}.conf"))
     await hass.async_add_executor_job(lambda: path.unlink(missing_ok=True))
     if _uses_cloud(hass):
         try:

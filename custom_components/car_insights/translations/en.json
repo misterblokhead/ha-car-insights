@@ -5,11 +5,7 @@
         "title": "Add a vehicle",
         "data": {
           "vehicle_id": "Vehicle ID (letters, digits, - and _)",
-          "vehicle_name": "Vehicle name",
-          "addon_url": "Car Insights add-on URL"
-        },
-        "data_description": {
-          "addon_url": "`http://local-car-insights:8099` for a local install; a repository install uses `http://<repo-hash>-car-insights:8099` (shown on the add-on's Info page as its hostname)."
+          "vehicle_name": "Vehicle name"
         }
       }
     },
@@ -19,6 +15,12 @@
     },
     "abort": {
       "already_configured": "This vehicle is already configured."
+    }
+  },
+  "issues": {
+    "import_failed": {
+      "title": "The add-on's export could not be imported",
+      "description": "Car Insights could not import the export of the Car Insights add-on, so it started with an empty database. The error was: {error}\n\nThe export file (/share/car_insights/export.db) is untouched. Fix the cause and restart Home Assistant to try again. The retry adds the export to the database: the car data received meanwhile is kept, but settings made in the meantime (prices, groups, viewers, costs) are not carried over."
     }
   }
 }

@@ -1,6 +1,6 @@
 # Wire protocol (v1)
 
-How a sender (a car app, logger or script) delivers data to the Car Insights receiver. Car-agnostic: keys and units are the sender's business, except those listed below.
+How a sender (a car app, logger or script) delivers data to the Car Insights integration. Car-agnostic: keys and units are the sender's business, except those listed below.
 
 ## Request
 
@@ -29,9 +29,9 @@ How a sender (a car app, logger or script) delivers data to the Car Insights rec
 - Samples with `t` more than 24 h in the future are ignored for live state and for trips/charges.
 - `summary_rev` (optional string, at most 64 chars; `null` counts as absent): the `rev` of the last summary the sender holds. Any other type or a longer string is a `400`. An empty `samples` list is valid: it only asks for the current summary.
 
-## Keys the add-on understands
+## Keys the integration understands
 
-Everything is stored. These drive the live MQTT sensors (latest `t` wins per key):
+Everything is stored. These drive the live sensors (latest `t` wins per key):
 
 | `k` | `v` | Used for |
 |---|---|---|
@@ -51,7 +51,7 @@ Status: a `mode` sample is used as the status only when its `t` is >= the newest
 
 ## Size limits
 
-Sender batches should stay <= 256 KB. The receiver integration accepts up to 300 KB, the add-on up to 1 MiB (largest, so it never rejects what the receiver forwarded).
+Sender batches should stay <= 256 KB. The integration's webhook accepts up to 300 KB.
 
 ## Responses
 
@@ -61,13 +61,13 @@ Sender batches should stay <= 256 KB. The receiver integration accepts up to 300
 | `400` | Vehicle id mismatch or invalid batch | Back off and retry; check vehicle id / sender version |
 | `401` | Bad signature | Stop uploading; check the secret |
 | `413` | Batch too large | Halve the batch size |
-| `503` | Add-on or token unavailable | Back off and retry |
+| `503` | Car Insights is starting or stopping | Back off and retry |
 
 ## Summary
 
-The add-on derives trips and charging sessions and answers in the 200 body with two optional keys. Add-ons older than 0.2.0 send neither, and the add-on omits both when it could not derive them (the ack is never held back); a sender must treat both as optional. The receiver passes the body through unchanged. Units are SI (m, m/s, Wh, s, deg C), times are epoch ms, `null` means not available.
+The integration derives trips and charging sessions and answers in the 200 body with two optional keys. Versions before 0.2.0 send neither, and the integration omits both when it could not derive them (the ack is never held back); a sender must treat both as optional. Units are SI (m, m/s, Wh, s, deg C), times are epoch ms, `null` means not available.
 
-- `current_trip`: the trip in progress (a Trip, below, with `end` `null`) or `null` when there is none. Present in every 200 whenever the add-on derived anything, so it is the only part that is resent every few seconds while driving. A sender replaces its open trip with it, `null` included.
+- `current_trip`: the trip in progress (a Trip, below, with `end` `null`) or `null` when there is none. Present in every 200 whenever the integration derived anything, so it is the only part that is resent every few seconds while driving. A sender replaces its open trip with it, `null` included.
 - `summary`: present when its `rev` differs from the `summary_rev` in the request (or none was sent). It covers closed trips and charges only, so its `rev` does not change while a trip is merely in progress.
 
 Summary keys: `rev` (first 12 hex chars of the sha1 of the compact, key-sorted JSON of everything except `rev` and `updated`), `updated` (ms), `today`, `last_trip` (or `null`), `last_charge` (or `null`), `trips` (closed, newest first, at most 20), `charges` (closed, newest first, at most 20), `week` (7 days, oldest first, today last), `capacity_wh` (the vehicle's usable capacity in Wh, or `null`).
@@ -76,11 +76,11 @@ Summary keys: `rev` (first 12 hex chars of the sha1 of the compact, key-sorted J
 - Charge: `start`, `end`, `place` (zone name or `null`), `start_wh`, `end_wh`, `added_wh`, `duration_s`, `range_added_m`, `avg_w`, `times_source` (`"car"` or `"cloud"`: whether start and end come from the car or from the cloud source), `energy_source` (`"car"`: from the car's `battery_wh` before and after; `"soc_estimate"`: estimated from the cloud's state of charge and the learned usable capacity; `null`: unknown).
 - Day (`today` and each `week` entry): `date` (`YYYY-MM-DD`, local date in the Home Assistant time zone), `distance_m`, `net_wh`, `charged_wh`. A trip or charge counts on the day it started; only closed ones count, so the open trip joins the totals when it ends. Days without data are zeros (sums, not measurements).
 
-When a trip ends: an ignition off/lock sample ends it; without proof it stays open until its next sample arrives, except when the trip's last sample is in P and the car has sent no batch for 10 minutes (it switched off and its ignition-off batch was lost): the add-on then ends the trip at that first P sample, checked every minute. Trips under 100 m and 60 s are dropped once closed, but shown while open. An open charge ends at the next trip start if the unplug was never seen.
+When a trip ends: an ignition off/lock sample ends it; without proof it stays open until its next sample arrives, except when the trip's last sample is in P and the car has sent no batch for 10 minutes (it switched off and its ignition-off batch was lost): the integration then ends the trip at that first P sample, checked every minute. Trips under 100 m and 60 s are dropped once closed, but shown while open. An open charge ends at the next trip start if the unplug was never seen.
 
 ## Cloud source
 
-A vehicle can also be read from a cloud-connected car integration in Home Assistant, as a second source next to the car. Set the add-on option `sources: [{vehicle_id, mapping, entity_stem}]`; `mapping` is `renault` and `entity_stem` is the shared prefix of the car's entities (`sensor.<stem>_battery`, `sensor.<stem>_mileage`, ...). The add-on polls their history every 60 s and stores the changes as samples of their own source (`ha_entities-<hex>`) with these keys:
+A vehicle can also be read from a cloud-connected car integration in Home Assistant, as a second source next to the car. The source is set in the vehicle's config entry options (`cloud: {mapping, entity_stem}`; there is no page for it yet, a later release makes it editable); `mapping` is `renault` and `entity_stem` is the shared prefix of the car's entities (`sensor.<stem>_battery`, `sensor.<stem>_mileage`, ...). The integration polls their history every 60 s and stores the changes as samples of their own source (`ha_entities-<hex>`) with these keys:
 
 | `k` | `v` | Used for |
 |---|---|---|
@@ -96,7 +96,7 @@ A cloud charge session may start and end while the car sleeps, so its energy is 
 
 ## UI API
 
-The add-on's `/api/ui/...` endpoints serve the sidebar page only. They are internal (Supervisor ingress, with the viewer's id and name in the ingress headers; whether the viewer is an admin is read from Home Assistant's user list, not from any header) and not part of this protocol; senders never call them. The summary above is unchanged.
+The integration's `/api/car_insights/ui/...` endpoints serve the sidebar page only. They are internal (Home Assistant's own authentication, with the logged-in user as the viewer; no ingress) and not part of this protocol; senders never call them. The summary above is unchanged.
 
 ## Acknowledgement and gaps
 
