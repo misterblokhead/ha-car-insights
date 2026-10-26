@@ -5,7 +5,6 @@ from homeassistant.components import frontend
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 import custom_components.car_insights as integration
-from custom_components.car_insights import service
 from custom_components.car_insights.const import DOMAIN
 
 BATCH = json.dumps({"v": 1, "vehicle_id": "car1", "source_id": "car_app-0000abcd",
@@ -13,14 +12,8 @@ BATCH = json.dumps({"v": 1, "vehicle_id": "car1", "source_id": "car_app-0000abcd
 UI = "/api/car_insights/ui"
 
 
-class _Sink:
-    def publish(self, messages, retain=True):
-        pass
-
-
 @pytest.fixture
-async def entry(enable_custom_integrations, hass, monkeypatch):
-    monkeypatch.setattr(service, "make_sink", lambda hass: _Sink())
+async def entry(enable_custom_integrations, hass):
     hass.config.external_url = "https://ci.example.test"
     e = MockConfigEntry(domain=DOMAIN, title="Invented car", data={
         "vehicle_id": "car1", "vehicle_name": "Invented car", "secret": "invented-secret-0123", "webhook_id": "invented_webhook_id"})
@@ -62,7 +55,7 @@ async def test_admin_writes_with_json(hass, entry, hass_client):
     resp = await c.post(f"{UI}/groups", json={"name": "Fleet"})
     assert resp.status == 200 and "id" in await resp.json()
     gid = (await resp.json())["id"]
-    assert (await c.delete(f"{UI}/groups/{gid}")).status in (200, 204)
+    assert (await c.delete(f"{UI}/groups/{gid}")).status == 200
 
 
 async def test_unauthenticated_is_401(hass, entry, hass_client_no_auth):

@@ -96,7 +96,7 @@ def connect(path: str) -> sqlite3.Connection:
 def _migrate(conn: sqlite3.Connection) -> None:
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version > len(_MIGRATIONS):
-        raise RuntimeError(f"database schema v{version} is newer than this add-on supports (v{len(_MIGRATIONS)})")
+        raise RuntimeError(f"database schema v{version} is newer than this version of Car Insights supports (v{len(_MIGRATIONS)})")
     for i in range(version, len(_MIGRATIONS)):
         with tx(conn):  # user_version is transactional, so a step and its version bump commit together
             for stmt in _MIGRATIONS[i].split(";"):  # executescript would commit first; no migration holds a ';' inside a literal

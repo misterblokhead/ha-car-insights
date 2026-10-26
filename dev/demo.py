@@ -238,7 +238,7 @@ def main(frontend: Path) -> None:
     async def ui(request):
         body = await request.json() if request.can_read_body else None
         status, reply = await request.app["ui"].handle(request.method, "/" + request.match_info["path"], dict(request.query), body, viewer)
-        return web.Response(status=204) if status == 204 else web.json_response(reply, status=status)
+        return web.json_response(reply, status=status)
 
     app = web.Application()
     app.on_startup.append(start)

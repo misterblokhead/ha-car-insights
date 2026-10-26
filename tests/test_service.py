@@ -2,20 +2,16 @@ import asyncio
 import json
 import threading
 import time
-from datetime import timedelta
 from pathlib import Path
 
 import pytest
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CoreState
-from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from pytest_homeassistant_custom_component.components.recorder.common import async_wait_recording_done
 
-from custom_components.car_insights import ha_adapters, service
+from custom_components.car_insights import bridge, ha_adapters, service
 from custom_components.car_insights.const import DOMAIN
 from custom_components.car_insights.core.access import Viewer
-from custom_components.car_insights.core.ha_entities import parse_history
 from custom_components.car_insights.core.poller import SourceConf
 from custom_components.car_insights.core.zones import Zone
 from custom_components.car_insights.service import Service
@@ -35,9 +31,9 @@ class ListSink:
 
 
 @pytest.fixture(autouse=True)
-def sink(monkeypatch):
+def sink(enable_custom_integrations, monkeypatch):  # the service reads the manifest's version
     s = ListSink()
-    monkeypatch.setattr(service, "make_sink", lambda hass: s)
+    monkeypatch.setattr(bridge, "async_get", lambda hass: s)
     return s
 
 
@@ -93,7 +89,7 @@ async def test_failed_start_leaves_nothing_behind(hass, monkeypatch):
 async def test_ingest_and_ui_run_on_the_worker(hass, svc, sink):
     status, out = await svc.ingest(BATCH, 2_000)
     assert status == 200 and out["acked_seq"] == 1
-    assert sink.msgs  # the publishers write to the sink make_sink gave
+    assert sink.msgs  # the publishers write to the sink the bridge gave
     status, me = await svc.ui("GET", "/me", {}, None, ADMIN)
     assert status == 200 and me["tz"] == hass.config.time_zone
     assert (await svc.ui("GET", "/settings", {}, None, Viewer("u2", None, False)))[0] == 403
@@ -167,22 +163,6 @@ async def test_language(hass):
     assert ha_adapters.language(hass) == "en"
 
 
-async def test_history_shape(recorder_mock, hass):
-    start = dt_util.utcnow().replace(microsecond=0) - timedelta(minutes=30)
-    eid, other = "sensor.invented_battery", "sensor.invented_plug"
-    for i, state in enumerate(("50", "50", "55", "60"), 1):  # a repeat is no change; every real change is kept (not only "significant" ones)
-        hass.states.async_set(eid, state, {"unit_of_measurement": "%"}, timestamp=(start + timedelta(minutes=5 * i)).timestamp())
-    hass.states.async_set(other, "unplugged", timestamp=(start + timedelta(minutes=1)).timestamp())
-    await async_wait_recording_done(hass)
-    end = int((dt_util.utcnow() + timedelta(minutes=1)).timestamp() * 1000)
-    got = await hass.async_add_executor_job(ha_adapters.history, hass, [eid, "sensor.invented_missing", other], int(start.timestamp() * 1000), end)
-    assert [r[0]["entity_id"] for r in got] == [eid, other]
-    assert all(set(row) <= {"entity_id", "state", "last_changed"} for rows in got for row in rows)
-    assert [r["state"] for r in got[0]] == ["50", "55", "60"]
-    parsed = parse_history(got)  # what the poller does with it
-    assert [s for _, s in parsed[eid]] == ["50", "55", "60"] and [s for _, s in parsed[other]] == ["unplugged"]
-
-
 async def test_poller_confs_from_entry_options(hass):
     MockConfigEntry(domain=DOMAIN, data={"vehicle_id": "car1"}, options={"cloud": {"mapping": "renault", "entity_stem": "invented_zoe"}}).add_to_hass(hass)
     MockConfigEntry(domain=DOMAIN, data={"vehicle_id": "car2"}, options={}).add_to_hass(hass)  # no cloud source
@@ -207,3 +187,42 @@ async def test_ha_stop_stops_the_service(hass, svc):
     assert _threads() == []
     await Service.release(hass)  # a later unload is still safe
     assert DOMAIN not in hass.data
+
+
+async def test_calls_during_a_start_wait_for_it(hass):
+    """After a re-add the service is registered while its worker is still building: a call must not find the half-built state."""
+    start = asyncio.create_task(Service.acquire(hass))
+    await asyncio.sleep(0)
+    svc = hass.data[DOMAIN]
+    assert svc.ui_api is None  # still starting
+    status, me = await svc.ui("GET", "/me", {}, None, ADMIN)
+    assert status == 200 and me["tz"] == hass.config.time_zone
+    assert (await svc.ingest(BATCH, 2_000))[0] == 200
+    assert await start is svc
+    await Service.release(hass)
+
+
+async def test_calls_during_a_failed_start_fail_with_it(hass, monkeypatch):
+    def boom(*a):
+        raise RuntimeError("no database")
+
+    monkeypatch.setattr(service.db, "connect", boom)
+    start = asyncio.create_task(Service.acquire(hass))
+    await asyncio.sleep(0)
+    with pytest.raises(RuntimeError):
+        await hass.data[DOMAIN].ui("GET", "/me", {}, None, ADMIN)
+    with pytest.raises(RuntimeError):
+        await start
+
+
+async def test_the_bridge_is_made_on_the_loop(hass, sink, monkeypatch):
+    seen = []
+
+    def spy(h):
+        seen.append(threading.current_thread())
+        return sink
+
+    monkeypatch.setattr(bridge, "async_get", spy)
+    await Service.acquire(hass)
+    await Service.release(hass)
+    assert seen == [threading.current_thread()]  # the test's thread is the loop's

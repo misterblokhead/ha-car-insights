@@ -24,14 +24,9 @@ OPTIONS = {"default_capacity_kwh": 52.5, "sources": [
     {"vehicle_id": "ghost", "mapping": "kia", "entity_stem": "invented_ev6"}]}
 
 
-class _Sink:
-    def publish(self, messages, retain=True):
-        pass
-
-
 @pytest.fixture(autouse=True)
-def quiet_sink(monkeypatch):
-    monkeypatch.setattr(service, "make_sink", lambda hass: _Sink())
+def custom_integrations(enable_custom_integrations):  # the service reads the manifest's version
+    pass
 
 
 @pytest.fixture

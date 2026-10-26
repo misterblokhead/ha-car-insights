@@ -2,7 +2,6 @@
 import asyncio
 import json
 import logging
-import os
 import urllib.request
 from typing import Callable
 
@@ -37,10 +36,10 @@ def label(answer: dict) -> str | None:
     return ", ".join(p for p in (street if street != town else None, town) if p) or None  # a town's own name is no street
 
 
-def fetch(lat: float, lon: float, language: str, timeout: float = 10) -> dict:
+def fetch(lat: float, lon: float, language: str, timeout: float = 10, version: str = "dev") -> dict:
     """Nominatim's answer for a point; raises on a network error, a timeout or a status other than 200. A body that is no JSON object is {}:
     the answer is final (no address), not a failure that would block the queue."""
-    ua = f"ha-car-insights/{os.environ.get('CAR_INSIGHTS_VERSION') or 'dev'} (+https://github.com/misterblokhead/ha-car-insights)"
+    ua = f"ha-car-insights/{version} (+https://github.com/misterblokhead/ha-car-insights)"
     req = urllib.request.Request(_URL.format(lat, lon), headers={"User-Agent": ua, "Accept-Language": language})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         if r.status != 200:  # urlopen raised for the rest of non-2xx

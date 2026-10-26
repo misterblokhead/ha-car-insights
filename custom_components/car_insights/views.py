@@ -4,6 +4,7 @@ from http import HTTPStatus
 
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
+from homeassistant.helpers.http import KEY_HASS
 
 from .const import DOMAIN
 from .core.access import Viewer
@@ -22,7 +23,7 @@ class UiView(HomeAssistantView):
     requires_auth = True
 
     async def _handle(self, request: web.Request, path: str) -> web.Response:
-        service = request.app["hass"].data.get(DOMAIN)
+        service = request.app[KEY_HASS].data.get(DOMAIN)
         if service is None:
             return self.json({"detail": "not ready"}, status_code=HTTPStatus.SERVICE_UNAVAILABLE)
         body = None
@@ -39,8 +40,6 @@ class UiView(HomeAssistantView):
                     return self.json({"detail": "invalid JSON"}, status_code=HTTPStatus.BAD_REQUEST)
         user = request["hass_user"]
         status, reply = await service.ui(request.method, "/" + path, dict(request.query), body, Viewer(user.id, user.name, user.is_admin))
-        if status == HTTPStatus.NO_CONTENT or reply is None:
-            return web.Response(status=status)
         return self.json(reply, status_code=status)
 
     async def get(self, request, path):

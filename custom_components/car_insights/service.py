@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.loader import async_get_integration
 
 from . import bridge, ha_adapters, importer
 from .const import DOMAIN
@@ -28,11 +29,6 @@ from .worker import Worker
 
 log = logging.getLogger(__name__)
 SHARE_DIR = Path("/share")  # where the add-on's export is; tests point it elsewhere
-
-
-def make_sink(hass: HomeAssistant) -> Sink:
-    """Where the publishers send their discovery and state messages."""
-    return bridge.async_get(hass)
 
 
 def _now_ms() -> int:
@@ -95,9 +91,11 @@ class Service:
                     self.confs.append(SourceConf(vehicle_id=e.data["vehicle_id"], **e.options["cloud"]))
                 except (TypeError, KeyError):
                     log.warning("Skipping the cloud source of %s: its options do not fit", e.title)
+        sink = bridge.async_get(hass)  # made here, on HA's loop: the worker thread only publishes to it
+        version = (await async_get_integration(hass, DOMAIN)).version
         self.worker.start()
         try:
-            await asyncio.wrap_future(self.worker.call(self._build, str(directory / "car_insights.db")))
+            await asyncio.wrap_future(self.worker.call(self._build, str(directory / "car_insights.db"), sink, version))
         except BaseException:
             await self._stop()
             raise
@@ -131,7 +129,7 @@ class Service:
         if self.conn is not None:
             self.conn.close()
 
-    def _build(self, db_path: str) -> None:
+    def _build(self, db_path: str, sink: Sink, version: str) -> None:
         """On the worker: what the add-on's __main__ built, then the start-up work and the background jobs."""
         hass = self.hass
         conn = self.conn = db.connect(db_path)
@@ -139,7 +137,6 @@ class Service:
             db.set_default_capacity_kwh(conn, self.imported.default_capacity_kwh)
         tz = ZoneInfo(hass.config.time_zone)
         language = ha_adapters.language(hass)
-        sink = make_sink(hass)
 
         def capacity(vid: str) -> float:
             return db.capacity_wh(conn, vid, db.default_capacity_kwh(conn) * 1000)
@@ -157,14 +154,22 @@ class Service:
                             relabel=partial(pipeline.relabel, app))
         # before the first ingest and run_daily's first publish: an ALGO bump emptied the rows
         zones.refresh()  # a success renames the stored rows through on_change; a failure changes nothing and zones.run retries
-        pipeline.rebuild(app, _now_ms())
+        now = _now_ms()
+        pipeline.rebuild(app, now)
+        for (vid,) in conn.execute("SELECT vehicle_id FROM vehicles").fetchall():  # nothing is retained any more: announce what is stored
+            try:
+                self.publisher.on_ingested(vid, [], now)
+            except Exception:
+                log.exception("announcing %s failed", vid)
         for job in (self.poller.run, app.totals.run_daily, partial(capacity_learning.run, conn), zones.run, partial(pipeline.run_close_quiet, app),
-                    partial(geocode.run, conn, partial(geocode.fetch, language=language), _now_ms, lambda: zones.loaded,
+                    partial(geocode.run, conn, partial(geocode.fetch, language=language, version=version), _now_ms, lambda: zones.loaded,
                             lambda lat, lon: zones.covers(lat, lon) or prices.spot_name_at(conn, lat, lon) is not None)):
             self.worker.spawn(job)
 
     async def ingest(self, body: bytes, received: int) -> tuple[int, dict]:
+        await asyncio.shield(self._ready)  # a re-added service is registered while its worker still builds
         return await asyncio.wrap_future(self.worker.call(handle_batch, self.app, self.publisher, body, received))
 
     async def ui(self, method: str, path: str, query: dict[str, str], body: Any, viewer: Viewer) -> tuple[int, Any]:
+        await asyncio.shield(self._ready)
         return await asyncio.wrap_future(self.worker.call(self.ui_api.handle, method, path, query, body, viewer))

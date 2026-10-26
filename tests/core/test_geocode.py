@@ -224,15 +224,13 @@ def _nominatim(monkeypatch, body=b"{}", status=200):
 
 def test_fetch_asks_nominatim_politely(monkeypatch):
     seen = _nominatim(monkeypatch, json.dumps(answer("house")).encode())
-    monkeypatch.setenv("CAR_INSIGHTS_VERSION", "1.2.3")
-    assert geocode.fetch(51.2, -4.3, "nl") == answer("house")
+    assert geocode.fetch(51.2, -4.3, "nl", version="1.2.3") == answer("house")
     assert seen == {"url": "https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=51.2&lon=-4.3&zoom=18&addressdetails=1",
                     "ua": "ha-car-insights/1.2.3 (+https://github.com/misterblokhead/ha-car-insights)", "lang": "nl", "timeout": 10}
 
 
-def test_fetch_user_agent_version_is_dev_when_unset(monkeypatch):
+def test_fetch_user_agent_version_is_dev_when_not_given(monkeypatch):
     seen = _nominatim(monkeypatch)
-    monkeypatch.delenv("CAR_INSIGHTS_VERSION", raising=False)
     geocode.fetch(51.2, 4.3, "en")
     assert seen["ua"] == "ha-car-insights/dev (+https://github.com/misterblokhead/ha-car-insights)"
 
