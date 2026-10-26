@@ -1,14 +1,12 @@
-"""The sidebar page's API: answers only Supervisor ingress requests, and only with what the viewer may see."""
-import asyncio
-import dataclasses
+"""The page's API as plain Python: a request in, `(status, json-able)` out, and only what the viewer may see.
+Whoever serves it (Home Assistant's views, the demo server) owns transport and authentication and passes the authenticated `Viewer`."""
 import logging
+import re
 import time
-from concurrent.futures import ThreadPoolExecutor
 from datetime import date
-from typing import Annotated, Any, Awaitable, Callable, Literal
+from typing import Any, Callable
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
-from pydantic import BaseModel, Field
+import voluptuous as vol
 
 from . import access, activity, costs, db, prices, stats, store
 from .access import Viewer
@@ -19,318 +17,344 @@ from .kinds import CHARGE, TRIP, Kind
 from .protocol import fix, num
 
 log = logging.getLogger(__name__)
-EpochMs = Annotated[int, Query(ge=0, lt=2**62)]  # sqlite integers are 64-bit: anything larger would be a 500, not a 422
-StartMs = Annotated[int, Path(ge=0, lt=2**62)]
 RAW_SPAN_MS = 86_400_000
-TILE_LOG_EVERY_MS = 60_000
-_TILES = ThreadPoolExecutor(max_workers=4, thread_name_prefix="tiles")  # its own pool: a slow tile proxy must not starve the poller or AdminCache
 
 
-class QuietTiles(logging.Filter):
-    """For uvicorn.access: drops the tile requests (their z/x/y say where the map was looking); every other line stays."""
+class ApiError(Exception):
+    """An error reply: `handle` answers `(status, {"detail": detail})`."""
 
-    def filter(self, record: logging.LogRecord) -> bool:
-        path = record.args[2] if isinstance(record.args, tuple) and len(record.args) > 2 else ""
-        return not str(path).startswith("/api/ui/tiles/")
-
-
-def _not_found() -> HTTPException:
-    return HTTPException(404, "not found")  # one body for unknown and hidden alike: a viewer cannot probe for other vehicles
+    def __init__(self, status: int, detail: str):
+        super().__init__(detail)
+        self.status, self.detail = status, detail
 
 
-class _Name(BaseModel):
-    name: str
+def _not_found() -> ApiError:
+    return ApiError(404, "not found")  # one body for unknown and hidden alike: a viewer cannot probe for other vehicles
 
 
-class _VehicleSettings(BaseModel):
-    group_id: str | None
-    viewers: list[str]
+# --- validation: query and path values are strings, a body is parsed JSON ---
+
+def _ms(v):
+    """epoch ms: a whole number (not a boolean), and below 2**62 because sqlite integers are 64-bit: larger would be a 500, not a 422"""
+    if type(v) is not int or not 0 <= v < 2**62:
+        raise vol.Invalid("expected whole milliseconds")
+    return v
 
 
-# strict: prices._num would take a JSON true as 1
-Num = Annotated[float, Field(strict=True)]
-Ms = Annotated[int, Field(strict=True, ge=0, lt=2**62)]
+def _digits(raw):
+    if not (isinstance(raw, str) and raw.isascii() and raw.isdigit() and len(raw) <= 19):  # the length keeps int() clear of its digit limit
+        raise vol.Invalid("expected whole milliseconds")
+    return int(raw)
 
 
-class _Tariff(BaseModel):
-    valid_from: Ms
-    per_kwh: Num
-    start_fee: Num = 0
-    per_min: Num = 0
+def _num(v):
+    """a JSON number as a float; strict: a boolean is none (prices._num would take a JSON true as 1)"""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        raise vol.Invalid("expected a number")
+    try:
+        return float(v)
+    except OverflowError:
+        raise vol.Invalid("number too large")
 
 
-class _Spot(BaseModel):
-    vehicle_id: str
-    start: Ms
-    name: str
-    per_kwh: Num
-    start_fee: Num = 0
-    per_min: Num = 0
+def _date(v):
+    try:
+        return date.fromisoformat(v)
+    except (TypeError, ValueError):
+        raise vol.Invalid("expected a date as YYYY-MM-DD")
 
 
-class _Receipt(BaseModel):
-    amount: Num | None
+_EPOCH, _DAY, _STR = vol.Schema(vol.All(_digits, _ms)), vol.Schema(_date), vol.Schema(str)
+_PERIOD = vol.Schema(vol.In(("week", "month", "year")))
 
 
-class _FixedCost(BaseModel):
-    name: str
-    amount: Num
-    period: str
-    start: date
-    end: date | None
+def _shape(fields: dict) -> vol.Schema:
+    """a body with all its fields required (Optional ones aside); fields it does not know are ignored"""
+    return vol.Schema(fields, required=True, extra=vol.REMOVE_EXTRA)
 
 
-class _End(BaseModel):
-    end: date | None
+_NAME = _shape({"name": str})
+_VEHICLE = _shape({"group_id": vol.Any(None, str), "viewers": [str]})
+_TARIFF = _shape({"valid_from": _ms, "per_kwh": _num, vol.Optional("start_fee", default=0): _num, vol.Optional("per_min", default=0): _num})
+_SPOT = _shape({"vehicle_id": str, "start": _ms, "name": str, "per_kwh": _num,
+                vol.Optional("start_fee", default=0): _num, vol.Optional("per_min", default=0): _num})
+_RECEIPT = _shape({"amount": vol.Any(None, _num)})
+_FIXED_COST = _shape({"name": str, "amount": _num, "period": str, "start": _date, "end": vol.Any(None, _date)})
+_END = _shape({"end": vol.Any(None, _date)})
+_CARD = _shape({"markup_pct": _num, "start_fee": _num})
 
 
-class _Card(BaseModel):
-    markup_pct: Num
-    start_fee: Num
+def _body(schema: vol.Schema, body: Any) -> dict:
+    try:
+        return schema(body)
+    except vol.Invalid as e:
+        raise ApiError(422, f"invalid body: {e}")
 
 
-def _no_tiles(z: int, x: int, y: int) -> bytes:
-    raise RuntimeError("no tile source")
+def _arg(check: vol.Schema, raw: str, what: str) -> Any:
+    try:
+        return check(raw)
+    except vol.Invalid as e:
+        raise ApiError(422, f"invalid {what}: {e.msg}")
 
 
-def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
-           is_admin: Callable[[str], Awaitable[bool]], on_settings: Callable[[], None] = lambda: None,
-           on_costs: Callable[[list[str] | None], None] = lambda vids: None, relabel: Callable[[], None] = lambda: None,
-           tile: Callable[[int, int, int], bytes] = _no_tiles,
-           ingress_hosts: tuple[str, ...] = ("172.30.32.2",), now_ms: Callable[[], int] = lambda: int(time.time() * 1000)) -> APIRouter:
-    # handlers are async def with no awaits around the DB work (like /ingest): the event loop serializes access to the connection
-    async def ingress_guard(request: Request) -> None:
-        """Router dependency: runs before FastAPI reports body/query/path errors, so every /api/ui/* request that is not from
-        the ingress address, or has no user, gets 403 and never a 422 that tells it about the API."""
-        if request.client is None or request.client.host not in ingress_hosts or access.viewer_from_headers(request.headers) is None:
-            raise HTTPException(403, "forbidden")
+def _query(q: dict[str, str], key: str, check: vol.Schema, required: bool = False) -> Any:
+    if key not in q:
+        if required:
+            raise ApiError(422, f"{key} is required")
+        return None
+    return _arg(check, q[key], key)
 
-    tile_logged = -TILE_LOG_EVERY_MS
-    r = APIRouter(prefix="/api/ui", dependencies=[Depends(ingress_guard)])
 
-    async def who(request: Request, admin: bool = False) -> Viewer:
-        """Called first by every route: the viewer (admin when asked), whom it then notes as seen.
-        Admin status comes from HA's user list, never from a header."""
-        viewer = access.viewer_from_headers(request.headers)
-        if viewer is None:
-            raise HTTPException(403, "forbidden")
-        viewer = dataclasses.replace(viewer, is_admin=await is_admin(viewer.user_id))
-        if admin and not viewer.is_admin:
-            raise HTTPException(403, "forbidden")
-        access.see(conn, viewer, now_ms())
-        return viewer
+def _admin(fn):
+    """Marks a handler for admins only: `handle` answers 403 to anyone else before reading the request."""
+    fn.admin = True
+    return fn
 
-    def vids_of(viewer: Viewer, view: str) -> list[str]:
-        v = access.resolve(conn, viewer, view)
+
+class UiApi:
+    """The page's routes over `conn`. Handlers are plain functions with no awaits: `handle` is async so a caller can run it on its own
+    worker loop, one call at a time, which keeps the connection to one thread."""
+
+    def __init__(self, conn, zones: Zones, tz, capacity: Callable[[str], float], on_settings: Callable[[], None] = lambda: None,
+                 on_costs: Callable[[list[str] | None], None] = lambda vids: None, relabel: Callable[[], None] = lambda: None,
+                 now_ms: Callable[[], int] = lambda: int(time.time() * 1000)):
+        self.conn, self.zones, self.tz, self.capacity = conn, zones, tz, capacity
+        self.on_settings, self.on_costs, self.relabel, self.now_ms = on_settings, on_costs, relabel, now_ms
+
+    async def handle(self, method: str, path: str, query: dict[str, str], body: Any, viewer: Viewer) -> tuple[int, Any]:
+        """`path` is relative to /api/car_insights/ui. An admin-only route answers a non-admin 403 before anything else (so before a bad
+        body is a 422 that describes the API); every other answered request notes the viewer as seen."""
+        try:
+            hits = [(m, fn, hit.groupdict()) for m, pattern, fn in ROUTES if (hit := pattern.fullmatch(path))]
+            if not hits:
+                raise _not_found()
+            route = next((h for h in hits if h[0] == method), None)
+            if route is None:
+                raise ApiError(405, "method not allowed")
+            _, fn, params = route
+            if getattr(fn, "admin", False) and not viewer.is_admin:
+                raise ApiError(403, "forbidden")
+            access.see(self.conn, viewer, self.now_ms())
+            return 200, fn(self, viewer, params, query, body)
+        except ApiError as e:
+            return e.status, {"detail": e.detail}
+
+    def _vids(self, viewer: Viewer, view: str) -> list[str]:
+        v = access.resolve(self.conn, viewer, view)
         if v is None:
             raise _not_found()
         return v
 
-    async def scope(request: Request, view: str, at: date | None) -> tuple[list[str], date]:
-        """The viewer's vehicles for `view` and the date a period page is about (today when `at` is not given; a future one is a 422)."""
-        vids, today = vids_of(await who(request), view), local_date(now_ms(), tz)
+    def _scope(self, viewer: Viewer, q: dict[str, str]) -> tuple[list[str], date, str]:
+        """The viewer's vehicles for the query's `view`, the date a period page is about (today when `at` is not given; a future one is a 422)
+        and the period. A malformed value is a 422 before a hidden view is a 404."""
+        period, at = _arg(_PERIOD, q.get("period", "week"), "period"), _query(q, "at", _DAY)
+        vids, today = self._vids(viewer, q.get("view", "")), local_date(self.now_ms(), self.tz)
         if at is not None and at > today:
-            raise HTTPException(422, "at is in the future")
-        return vids, at or today
+            raise ApiError(422, "at is in the future")
+        return vids, at or today, period
 
-    def visible(viewer: Viewer, vid: str) -> None:
-        if vid not in access.visible_vehicles(conn, viewer):
+    def _visible(self, viewer: Viewer, vid: str) -> None:
+        if vid not in access.visible_vehicles(self.conn, viewer):
             raise _not_found()
 
-    def attempt(fn, *args):
+    def _attempt(self, fn, *args):
         try:
             return fn(*args)
         except ValueError as e:
-            raise HTTPException(400, str(e))
+            raise ApiError(400, str(e))
         except KeyError:
             raise _not_found()
 
-    def edit(fn, *args) -> dict:
-        attempt(fn, *args)
-        on_settings()
+    def _edit(self, fn, *args) -> dict:
+        self._attempt(fn, *args)
+        self.on_settings()
         return {}
 
-    def cost_edit(fn, *args, vids: list[str] | Callable[[Any], list[str]] | None = None, spot: bool = False) -> Any:
+    def _cost_edit(self, fn, *args, vids: list[str] | Callable[[Any], list[str]] | None = None, spot: bool = False) -> Any:
         """Every admin cost write: run it, rename the places when it changed a charge spot, then republish the cost sensors of `vids`
         (a list, None for all, or a function of the result)."""
-        out = attempt(fn, *args)
+        out = self._attempt(fn, *args)
         if spot:
             try:
-                relabel()
+                self.relabel()
             except Exception:  # the write is committed: the answer stays, the names follow at the next zone or spot change
                 log.exception("renaming places after a spot change failed")
-        on_costs(vids(out) if callable(vids) else vids)
+        self.on_costs(vids(out) if callable(vids) else vids)
         return out
 
-    def vehicle_card(vid: str, now: int) -> dict:
+    def _vehicle_card(self, vid: str, now: int) -> dict:
+        conn = self.conn
         got = db.latest_at_or_before(conn, vid, now, ("battery_wh", "range_m", "gps"))
-        wh, cap, pos = got.get("battery_wh"), capacity(vid), fix(got.get("gps"))
+        wh, cap, pos = got.get("battery_wh"), self.capacity(vid), fix(got.get("gps"))
         return {
             "id": vid, "name": db.device_info(conn, vid)[0],
             "status": "driving" if store.has_open(conn, TRIP, vid) else "charging" if store.has_open(conn, CHARGE, vid) else "parked",
             "battery_wh": wh, "soc_percent": pct(wh, cap),
             "range_m": got.get("range_m"),
-            "position": None if pos is None else {"lat": pos[0], "lon": pos[1], "place": zones(*pos)},
+            "position": None if pos is None else {"lat": pos[0], "lon": pos[1], "place": self.zones(*pos)},
             "updated": conn.execute("SELECT MAX(t) FROM samples WHERE vehicle_id=? AND t<=? AND key NOT IN ('meta','gap')",
                                     (vid, now)).fetchone()[0],
         }
 
-    def detail(kind: Kind, viewer: Viewer, vid: str, start: int) -> tuple[dict, dict | None]:
-        visible(viewer, vid)
-        row = store.row(conn, kind, vid, start)
+    def _detail(self, kind: Kind, viewer: Viewer, vid: str, start: int) -> tuple[dict, dict | None]:
+        self._visible(viewer, vid)
+        row = store.row(self.conn, kind, vid, start)
         if row is None:
             raise _not_found()
-        return row, store.series(conn, kind, vid, start)
+        return row, store.series(self.conn, kind, vid, start)
 
-    @r.get("/me")
-    async def me(request: Request):
-        v = await who(request)
+    def _me(self, viewer, p, q, body):
         # the zone name for the page's dates; the host's fixed-offset fallback has none, and the page then keeps the browser's
-        return {"user_id": v.user_id, "name": v.name, "is_admin": v.is_admin, "tz": getattr(tz, "key", None)}
+        return {"user_id": viewer.user_id, "name": viewer.name, "is_admin": viewer.is_admin, "tz": getattr(self.tz, "key", None)}
 
-    @r.get("/views")
-    async def get_views(request: Request):
-        return access.views(conn, await who(request))
+    def _views(self, viewer, p, q, body):
+        return access.views(self.conn, viewer)
 
-    @r.get("/overview")
-    async def overview(request: Request, view: str = ""):
-        vids, now = vids_of(await who(request), view), now_ms()
-        return {"vehicles": [vehicle_card(v, now) for v in vids]}
+    def _overview(self, viewer, p, q, body):
+        vids, now = self._vids(viewer, q.get("view", "")), self.now_ms()
+        return {"vehicles": [self._vehicle_card(v, now) for v in vids]}
 
-    @r.get("/activity")
-    async def get_activity(request: Request, view: str = "", before: EpochMs | None = None):
-        return activity.page(conn, vids_of(await who(request), view), before, now_ms(), tz, lambda v: db.device_info(conn, v)[0], capacity)
+    def _activity(self, viewer, p, q, body):
+        before = _query(q, "before", _EPOCH)
+        return activity.page(self.conn, self._vids(viewer, q.get("view", "")), before, self.now_ms(), self.tz,
+                             lambda v: db.device_info(self.conn, v)[0], self.capacity)
 
-    @r.get("/stats")
-    async def get_stats(request: Request, view: str = "", period: Literal["week", "month", "year"] = "week", at: date | None = None):
-        vids, day = await scope(request, view, at)
-        return stats.stats(conn, vids, period, day, tz, (lambda v: db.device_info(conn, v)[0]) if view.startswith("g:") else None, now_ms())
+    def _stats(self, viewer, p, q, body):
+        vids, day, period = self._scope(viewer, q)
+        return stats.stats(self.conn, vids, period, day, self.tz, (lambda v: db.device_info(self.conn, v)[0]) if q.get("view", "").startswith("g:") else None,
+                           self.now_ms())
 
-    @r.get("/map")
-    async def get_map(request: Request, view: str = "", period: Literal["week", "month", "year"] = "week", at: date | None = None):
-        vids, day = await scope(request, view, at)
-        return stats.map_items(conn, vids, period, day, tz)
+    def _map(self, viewer, p, q, body):
+        vids, day, period = self._scope(viewer, q)
+        return stats.map_items(self.conn, vids, period, day, self.tz)
 
-    @r.get("/tiles/{z}/{x}/{y}.png")
-    async def get_tile(request: Request, z: int, x: int, y: int):
-        nonlocal tile_logged
-        await who(request)
-        if not (0 <= z <= 19 and 0 <= x < 2**z and 0 <= y < 2**z):
-            raise _not_found()
-        try:
-            png = await asyncio.get_running_loop().run_in_executor(_TILES, tile, z, x, y)
-        except Exception as err:  # never the tile: its z/x/y say where the map was looking; and at most one line a minute
-            if (now := now_ms()) - tile_logged >= TILE_LOG_EVERY_MS:
-                tile_logged = now
-                log.warning("tile fetch failed: %r", err)
-            return Response(status_code=502)
-        return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=604800"})
+    def _trip(self, viewer, p, q, body):
+        vid, start = p["vid"], _arg(_EPOCH, p["start"], "start")
+        row, series = self._detail(TRIP, viewer, vid, start)
+        return {"trip": with_figures(TRIP, row, self.capacity(vid)), "cost": costs.trip_cost(self.conn, vid, row, self.tz), "series": series,
+                "route": store.route(self.conn, vid, start), "similar": stats.similar_trips(self.conn, vid, row)}
 
-    @r.get("/trips/{vid}/{start}")
-    async def trip(request: Request, vid: str, start: StartMs):
-        row, series = detail(TRIP, await who(request), vid, start)
-        return {"trip": with_figures(TRIP, row, capacity(vid)), "cost": costs.trip_cost(conn, vid, row, tz), "series": series,
-                "route": store.route(conn, vid, start), "similar": stats.similar_trips(conn, vid, row)}
+    def _charge(self, viewer, p, q, body):
+        vid, start = p["vid"], _arg(_EPOCH, p["start"], "start")
+        row, series = self._detail(CHARGE, viewer, vid, start)
+        return {"charge": with_figures(CHARGE, row, self.capacity(vid)), "cost": costs.charge_cost(prices.book(self.conn, vid), row),
+                "series": series, "capacity_wh": self.capacity(vid),
+                "outside_temp_c": num(db.latest_at_or_before(self.conn, vid, start, ("outside_temp",)).get("outside_temp"))}
 
-    @r.get("/charges/{vid}/{start}")
-    async def charge(request: Request, vid: str, start: StartMs):
-        row, series = detail(CHARGE, await who(request), vid, start)
-        return {"charge": with_figures(CHARGE, row, capacity(vid)), "cost": costs.charge_cost(prices.book(conn, vid), row),
-                "series": series, "capacity_wh": capacity(vid),
-                "outside_temp_c": num(db.latest_at_or_before(conn, vid, start, ("outside_temp",)).get("outside_temp"))}
-
-    @r.get("/samples/{vid}")
-    async def raw_samples(request: Request, vid: str, key: str, start: EpochMs, end: EpochMs):
-        """admin only: one key's stored samples with start <= t <= end, at most a day, for checking derived figures"""
-        await who(request, admin=True)
-        if db.vehicle(conn, vid) is None:
+    @_admin
+    def _raw_samples(self, viewer, p, q, body):
+        """one key's stored samples with start <= t <= end, at most a day, for checking derived figures"""
+        key, start, end = _query(q, "key", _STR, True), _query(q, "start", _EPOCH, True), _query(q, "end", _EPOCH, True)
+        if db.vehicle(self.conn, p["vid"]) is None:
             raise _not_found()
         if not 0 <= end - start <= RAW_SPAN_MS:
-            raise HTTPException(400, "span must be 0 to 1 day")
-        return {"key": key, "rows": [[x.t, x.v] for x in db.samples_after(conn, vid, start - 1, end, (key,))]}
+            raise ApiError(400, "span must be 0 to 1 day")
+        return {"key": key, "rows": [[x.t, x.v] for x in db.samples_after(self.conn, p["vid"], start - 1, end, (key,))]}
 
-    @r.get("/settings")
-    async def get_settings(request: Request):
-        await who(request, admin=True)
-        return access.settings(conn) | {"prices": prices.settings(conn)}
+    @_admin
+    def _settings(self, viewer, p, q, body):
+        return access.settings(self.conn) | {"prices": prices.settings(self.conn)}
 
-    @r.post("/groups")
-    async def create_group(request: Request, body: _Name):
-        await who(request, admin=True)
-        try:
-            gid = access.create_group(conn, body.name)
-        except ValueError as e:
-            raise HTTPException(400, str(e))
-        on_settings()
+    @_admin
+    def _create_group(self, viewer, p, q, body):
+        gid = self._attempt(access.create_group, self.conn, _body(_NAME, body)["name"])
+        self.on_settings()
         return {"id": gid}
 
-    @r.put("/groups/{gid}")
-    async def rename_group(request: Request, gid: str, body: _Name):
-        await who(request, admin=True)
-        return edit(access.rename_group, conn, gid, body.name)
+    @_admin
+    def _rename_group(self, viewer, p, q, body):
+        return self._edit(access.rename_group, self.conn, p["gid"], _body(_NAME, body)["name"])
 
-    @r.delete("/groups/{gid}")
-    async def delete_group(request: Request, gid: str):
-        await who(request, admin=True)
-        return edit(access.delete_group, conn, gid)
+    @_admin
+    def _delete_group(self, viewer, p, q, body):
+        return self._edit(access.delete_group, self.conn, p["gid"])
 
-    @r.put("/vehicles/{vid}")
-    async def put_vehicle(request: Request, vid: str, body: _VehicleSettings):
-        await who(request, admin=True)
-        return edit(access.set_vehicle, conn, vid, body.group_id, body.viewers)
+    @_admin
+    def _put_vehicle(self, viewer, p, q, body):
+        b = _body(_VEHICLE, body)
+        return self._edit(access.set_vehicle, self.conn, p["vid"], b["group_id"], b["viewers"])
 
-    @r.put("/prices/{target}")
-    async def put_price(request: Request, target: str, body: _Tariff):
-        await who(request, admin=True)
-        cost_edit(prices.set_tariff, conn, target, body.valid_from, body.per_kwh, body.start_fee, body.per_min)
+    @_admin
+    def _put_price(self, viewer, p, q, body):
+        b = _body(_TARIFF, body)
+        self._cost_edit(prices.set_tariff, self.conn, p["target"], b["valid_from"], b["per_kwh"], b["start_fee"], b["per_min"])
         return {}
 
-    @r.post("/spots")
-    async def create_spot(request: Request, body: _Spot):
-        await who(request, admin=True)
+    @_admin
+    def _create_spot(self, viewer, p, q, body):
+        b = _body(_SPOT, body)
         # from the charge day's midnight, like every price on Settings: a re-derived charge may start a little earlier
-        return {"id": cost_edit(prices.create_spot, conn, body.vehicle_id, body.start, body.name, body.per_kwh, body.start_fee, body.per_min,
-                                midnight_ms(local_date(body.start, tz), tz), spot=True)}
+        return {"id": self._cost_edit(prices.create_spot, self.conn, b["vehicle_id"], b["start"], b["name"], b["per_kwh"], b["start_fee"], b["per_min"],
+                                      midnight_ms(local_date(b["start"], self.tz), self.tz), spot=True)}
 
-    @r.put("/spots/{sid}")
-    async def rename_spot(request: Request, sid: str, body: _Name):
-        await who(request, admin=True)
-        cost_edit(prices.rename_spot, conn, sid, body.name, spot=True)
+    @_admin
+    def _rename_spot(self, viewer, p, q, body):
+        self._cost_edit(prices.rename_spot, self.conn, p["sid"], _body(_NAME, body)["name"], spot=True)
         return {}
 
-    @r.delete("/spots/{sid}")
-    async def delete_spot(request: Request, sid: str):
-        await who(request, admin=True)
-        cost_edit(prices.delete_spot, conn, sid, spot=True)
+    @_admin
+    def _delete_spot(self, viewer, p, q, body):
+        self._cost_edit(prices.delete_spot, self.conn, p["sid"], spot=True)
         return {}
 
-    @r.put("/charges/{vid}/{start}/receipt")
-    async def put_receipt(request: Request, vid: str, start: StartMs, body: _Receipt):
-        await who(request, admin=True)
-        cost_edit(prices.set_receipt, conn, vid, start, body.amount, vids=[vid])
+    @_admin
+    def _put_receipt(self, viewer, p, q, body):
+        start = _arg(_EPOCH, p["start"], "start")
+        self._cost_edit(prices.set_receipt, self.conn, p["vid"], start, _body(_RECEIPT, body)["amount"], vids=[p["vid"]])
         return {}
 
-    @r.post("/vehicles/{vid}/fixed_costs")
-    async def add_fixed_cost(request: Request, vid: str, body: _FixedCost):
-        await who(request, admin=True)
-        return {"id": cost_edit(prices.add_fixed_cost, conn, vid, body.name, body.amount, body.period, body.start, body.end, vids=[vid])}
+    @_admin
+    def _add_fixed_cost(self, viewer, p, q, body):
+        b = _body(_FIXED_COST, body)
+        return {"id": self._cost_edit(prices.add_fixed_cost, self.conn, p["vid"], b["name"], b["amount"], b["period"], b["start"], b["end"],
+                                      vids=[p["vid"]])}
 
-    @r.put("/fixed_costs/{cid}")
-    async def end_fixed_cost(request: Request, cid: str, body: _End):
-        await who(request, admin=True)
-        cost_edit(prices.end_fixed_cost, conn, cid, body.end, vids=lambda vid: [vid])
+    @_admin
+    def _end_fixed_cost(self, viewer, p, q, body):
+        self._cost_edit(prices.end_fixed_cost, self.conn, p["cid"], _body(_END, body)["end"], vids=lambda vid: [vid])
         return {}
 
-    @r.delete("/fixed_costs/{cid}")
-    async def delete_fixed_cost(request: Request, cid: str):
-        await who(request, admin=True)
-        cost_edit(prices.delete_fixed_cost, conn, cid, vids=lambda vid: [vid])
+    @_admin
+    def _delete_fixed_cost(self, viewer, p, q, body):
+        self._cost_edit(prices.delete_fixed_cost, self.conn, p["cid"], vids=lambda vid: [vid])
         return {}
 
-    @r.put("/vehicles/{vid}/card")
-    async def put_card(request: Request, vid: str, body: _Card):
-        await who(request, admin=True)
-        cost_edit(prices.set_card, conn, vid, body.markup_pct, body.start_fee, vids=[vid])
+    @_admin
+    def _put_card(self, viewer, p, q, body):
+        b = _body(_CARD, body)
+        self._cost_edit(prices.set_card, self.conn, p["vid"], b["markup_pct"], b["start_fee"], vids=[p["vid"]])
         return {}
 
-    return r
+
+def _route(method: str, template: str, handler: Callable) -> tuple[str, re.Pattern, Callable]:
+    """`{name}` in the template matches one path segment"""
+    return method, re.compile(re.sub(r"\{(\w+)\}", r"(?P<\1>[^/]+)", template)), handler
+
+
+ROUTES = [_route(*r) for r in (
+    ("GET", "/me", UiApi._me),
+    ("GET", "/views", UiApi._views),
+    ("GET", "/overview", UiApi._overview),
+    ("GET", "/activity", UiApi._activity),
+    ("GET", "/stats", UiApi._stats),
+    ("GET", "/map", UiApi._map),
+    ("GET", "/trips/{vid}/{start}", UiApi._trip),
+    ("GET", "/charges/{vid}/{start}", UiApi._charge),
+    ("GET", "/samples/{vid}", UiApi._raw_samples),
+    ("GET", "/settings", UiApi._settings),
+    ("POST", "/groups", UiApi._create_group),
+    ("PUT", "/groups/{gid}", UiApi._rename_group),
+    ("DELETE", "/groups/{gid}", UiApi._delete_group),
+    ("PUT", "/vehicles/{vid}", UiApi._put_vehicle),
+    ("PUT", "/prices/{target}", UiApi._put_price),
+    ("POST", "/spots", UiApi._create_spot),
+    ("PUT", "/spots/{sid}", UiApi._rename_spot),
+    ("DELETE", "/spots/{sid}", UiApi._delete_spot),
+    ("PUT", "/charges/{vid}/{start}/receipt", UiApi._put_receipt),
+    ("POST", "/vehicles/{vid}/fixed_costs", UiApi._add_fixed_cost),
+    ("PUT", "/fixed_costs/{cid}", UiApi._end_fixed_cost),
+    ("DELETE", "/fixed_costs/{cid}", UiApi._delete_fixed_cost),
+    ("PUT", "/vehicles/{vid}/card", UiApi._put_card),
+)]
