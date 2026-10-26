@@ -61,32 +61,6 @@ def test_resolve_rejects_unknown_prefix_and_hidden_vehicle(conn):
         assert access.resolve(conn, ADMIN, bad) is None
 
 
-def test_headers_never_grant_admin():
-    # the groups header is not trusted (the Supervisor neither sets nor strips it): admin comes from HA's user list
-    h = {"X-Remote-User-Id": "u-viewer", "X-Remote-User-Groups": "system-users,system-admin"}
-    assert access.viewer_from_headers(h).is_admin is False
-    assert access.viewer_from_headers({"X-Remote-User-Id": "u-viewer"}).is_admin is False
-
-
-def test_headers_are_case_insensitive():
-    v = access.viewer_from_headers({"x-remote-user-id": "u-admin", "x-remote-user-display-name": "Ann"})
-    assert v == Viewer("u-admin", "Ann", False)
-
-
-def test_headers_without_user_id_is_none():
-    assert access.viewer_from_headers({}) is None
-    assert access.viewer_from_headers({"X-Remote-User-Name": "x"}) is None
-    assert access.viewer_from_headers({"X-Remote-User-Id": "  "}) is None
-
-
-def test_display_name_falls_back_to_username():
-    h = {"X-Remote-User-Id": "u-viewer", "X-Remote-User-Name": "uname", "X-Remote-User-Display-Name": "Display"}
-    assert access.viewer_from_headers(h).name == "Display"
-    del h["X-Remote-User-Display-Name"]
-    assert access.viewer_from_headers(h).name == "uname"
-    assert access.viewer_from_headers({"X-Remote-User-Id": "u-viewer"}).name is None
-
-
 def test_delete_group_clears_vehicle_group(conn):
     gid = access.create_group(conn, "Fleet")
     access.set_vehicle(conn, "car1", gid, [])
@@ -143,8 +117,3 @@ def test_settings_shape(conn):
     assert s["groups"] == [{"id": gid, "name": "Fleet"}]
 
 
-def test_blank_display_name_falls_back_to_username():
-    h = {"X-Remote-User-Id": "u-viewer", "X-Remote-User-Name": " uname ", "X-Remote-User-Display-Name": "   "}
-    assert access.viewer_from_headers(h).name == "uname"
-    h["X-Remote-User-Name"] = " "
-    assert access.viewer_from_headers(h).name is None

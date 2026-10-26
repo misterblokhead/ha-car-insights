@@ -13,6 +13,7 @@ from homeassistant.helpers.network import NoURLAvailableError
 
 from .const import DOMAIN, MAX_BODY
 from .receiver import body_vehicle_matches, config_file_text, is_https_url, read_limited, verify_signature, write_conf
+from .panel import async_register_http, async_register_panel, remove_panel
 from .service import Service
 
 _LOGGER = logging.getLogger(__name__)
@@ -39,6 +40,12 @@ async def _webhook_url(hass: HomeAssistant, webhook_id: str) -> str:
         except (cloud.CloudNotAvailable, cloud.CloudNotConnected) as err:
             raise ConfigEntryNotReady("Nabu Casa cloud not connected") from err
     return webhook.async_generate_url(hass, webhook_id, allow_internal=False, prefer_external=True)
+
+
+async def _release(hass: HomeAssistant) -> None:
+    await Service.release(hass)
+    if DOMAIN not in hass.data:  # the last entry is gone
+        remove_panel(hass)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -103,6 +110,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await Service.acquire(hass)
     try:  # a failed setup is never unloaded, so it would not release
+        await async_register_http(hass)
+        await async_register_panel(hass)
         webhook.async_register(
             hass, DOMAIN, f"Car Insights {vehicle_id}", webhook_id, handler,
             local_only=False, allowed_methods=("POST",),
@@ -117,14 +126,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass, what, title="Car Insights receiver", notification_id=f"{DOMAIN}_{vehicle_id}",
             )
     except BaseException:
-        await Service.release(hass)
+        await _release(hass)
         raise
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     webhook.async_unregister(hass, entry.data["webhook_id"])
-    await Service.release(hass)
+    await _release(hass)
     return True
 
 

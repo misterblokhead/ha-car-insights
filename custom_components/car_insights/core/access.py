@@ -1,7 +1,6 @@
-"""Who may see which vehicle (HA ingress user), cost groups, and the admin settings that edit both."""
+"""Who may see which vehicle (Home Assistant user), cost groups, and the admin settings that edit both."""
 import uuid
 from dataclasses import dataclass
-from typing import Mapping
 
 from . import db
 
@@ -11,15 +10,6 @@ class Viewer:
     user_id: str
     name: str | None
     is_admin: bool
-
-
-def viewer_from_headers(headers: Mapping[str, str]) -> Viewer | None:
-    h = {k.lower(): v for k, v in headers.items()}  # the mapping may not be case-insensitive
-    uid = (h.get("x-remote-user-id") or "").strip()
-    if not uid:
-        return None
-    name = (h.get("x-remote-user-display-name") or "").strip() or (h.get("x-remote-user-name") or "").strip() or None
-    return Viewer(uid, name, False)  # admin is never read from headers: ui_api asks Home Assistant's user list (ha_users.AdminCache)
 
 
 def see(conn, viewer: Viewer, now_ms: int) -> None:
