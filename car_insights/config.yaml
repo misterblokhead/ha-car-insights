@@ -1,5 +1,5 @@
 name: Car Insights
-version: "0.10.5"
+version: "0.11.0"
 slug: car_insights
 url: https://github.com/misterblokhead/ha-car-insights
 description: Trips, charging and costs from your car

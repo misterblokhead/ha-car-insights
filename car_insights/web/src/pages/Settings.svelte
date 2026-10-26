@@ -70,6 +70,15 @@
   // the card fields are sent together; a blank one counts as 0
   const setCard = (v, card) => () => send("PUT", `api/ui/vehicles/${v.id}/card`, card);
 
+  let exported = $state("");
+  const exportAll = () => keepFocus(async () => {
+    if (!confirm("Export for the integration? The add-on stops publishing and its entities are removed from Home Assistant.")) return;
+    exported = "";
+    if (await change(async () => { exported = (await send("POST", "api/ui/export")).path; })) {
+      exported = `Exported to ${exported}. The add-on has stopped publishing; Car Insights entities are removed from Home Assistant.`;
+    } else exported = "";
+  });
+
   load();
 </script>
 
@@ -132,6 +141,15 @@
     </section>
   {/each}
   <FixedCosts {data} {change} />
+
+  <h2>Integration</h2>
+  <div class="list card">
+    <div class="row split">
+      <span>Move to the Car Insights integration</span>
+      <button class="press" type="button" disabled={busy} onclick={exportAll}>Export for the integration</button>
+    </div>
+    {#if exported}<p class="row" role="status">{exported}</p>{/if}
+  </div>
 {:else if !error}
   <p class="msg">Loading…</p>
 {/if}
