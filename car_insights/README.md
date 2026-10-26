@@ -45,6 +45,10 @@ Trip gross energy and recuperation ignore a battery reading that changes again w
 
 Addresses come from OpenStreetMap's Nominatim, asked for trip starts, finished trips' ends and charges outside every zone (passive zones included) and every charge location: at most 4 lookups per minute, each spot once (the answer is stored), coordinates rounded to about 11 m. A point inside a zone or charge location is never sent. The end of a trip still in progress is the car's position, so it is never sent; nothing is sent before Home Assistant's zone list has loaded. Existing trips fill in gradually after the update. Map data and addresses © OpenStreetMap contributors.
 
+## Export for the integration (0.11.0)
+
+This is the add-on's last release: Car Insights continues as a Home Assistant integration (HACS). **Settings > Export for the integration** (admins) writes a consistent copy of the database to `/share/car_insights/export.db` and the add-on options to `/share/car_insights/export.json`, removes this add-on's MQTT entities from Home Assistant so the integration can take the same entity IDs, and stops publishing until the add-on restarts. The add-on is superseded by the integration; exporting again rewrites the copy.
+
 ## Sensors and dashboard
 
 Per vehicle: live sensors, last trip and last charge, month and year totals. Per cost group: month and year totals on a device of its own.

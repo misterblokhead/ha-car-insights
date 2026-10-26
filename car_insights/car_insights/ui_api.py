@@ -96,7 +96,7 @@ def _no_tiles(z: int, x: int, y: int) -> bytes:
 def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
            is_admin: Callable[[str], Awaitable[bool]], on_settings: Callable[[], None] = lambda: None,
            on_costs: Callable[[list[str] | None], None] = lambda vids: None, relabel: Callable[[], None] = lambda: None,
-           tile: Callable[[int, int, int], bytes] = _no_tiles,
+           tile: Callable[[int, int, int], bytes] = _no_tiles, on_export: Callable[[], str] = lambda: "",
            ingress_hosts: tuple[str, ...] = ("172.30.32.2",), now_ms: Callable[[], int] = lambda: int(time.time() * 1000)) -> APIRouter:
     # handlers are async def with no awaits around the DB work (like /ingest): the event loop serializes access to the connection
     async def ingress_guard(request: Request) -> None:
@@ -253,6 +253,12 @@ def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
     async def get_settings(request: Request):
         await who(request, admin=True)
         return access.settings(conn) | {"prices": prices.settings(conn)}
+
+    @r.post("/export")
+    async def export_for_integration(request: Request):
+        """admin only: hand over to the Car Insights integration (see export.py); the add-on stops publishing"""
+        await who(request, admin=True)
+        return {"path": on_export()}
 
     @r.post("/groups")
     async def create_group(request: Request, body: _Name):

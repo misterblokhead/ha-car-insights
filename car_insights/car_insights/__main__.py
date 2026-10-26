@@ -12,7 +12,7 @@ from . import capacity as capacity_learning, db
 from .db import connect
 from .mqtt_out import MqttOut
 from .poller import Poller, SourceConf
-from . import costs, geocode, ha_users, pipeline, prices, ui_api
+from . import costs, export, geocode, ha_users, pipeline, prices, ui_api
 from .derive import Deriver
 from .ha_users import AdminCache
 from .publisher import Publisher
@@ -31,11 +31,17 @@ def main() -> None:
     default_wh = float(opts.get("default_capacity_kwh", 60)) * 1000
     sup_token = os.environ["SUPERVISOR_TOKEN"]
     m = supervisor_get("/services/mqtt", sup_token)["data"]
-    mqtt = MqttOut(m["host"], m["port"], m.get("username", ""), m.get("password", ""))
+    mqtt = export.Gate(MqttOut(m["host"], m["port"], m.get("username", ""), m.get("password", "")))
     conn = connect("/data/car_insights.db")
     token = load_or_create(Path("/share/car_insights/internal_token"))
     def capacity(vid: str) -> float:
         return db.capacity_wh(conn, vid, default_wh)
+
+    def hand_over() -> str:
+        path = export.write(conn, opts, Path("/share/car_insights"))
+        mqtt.stop()  # before the clear: no publisher can announce again after it
+        mqtt.inner.publish(export.discovery_clear(conn))
+        return path.as_posix()
 
     Path("/data/zones.json").unlink(missing_ok=True)  # an earlier version's cache of the zone list
     tz = fetch_time_zone(sup_token)
@@ -58,7 +64,7 @@ def main() -> None:
                                        partial(geocode.run, conn, partial(geocode.fetch, language=language), lambda: int(time.time() * 1000), lambda: zones.loaded,
                                                lambda lat, lon: zones.covers(lat, lon) or prices.spot_name_at(conn, lat, lon) is not None)],
                            ui=ui_api.router(conn, zones, tz, capacity, AdminCache(lambda: ha_users.fetch_users(sup_token)).is_admin, on_settings=app.totals.publish_groups,
-                           relabel=partial(pipeline.relabel, app), tile=lambda z, x, y: fetch_tile(sup_token, z, x, y), on_costs=partial(pipeline.republish, app)),
+                           relabel=partial(pipeline.relabel, app), tile=lambda z, x, y: fetch_tile(sup_token, z, x, y), on_costs=partial(pipeline.republish, app), on_export=hand_over),
                            web_dir=Path("/app/web")),
                 host="0.0.0.0", port=8099)
 
