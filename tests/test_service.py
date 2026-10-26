@@ -6,6 +6,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CoreState
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -31,11 +32,6 @@ class ListSink:
 
     def publish(self, messages, retain=True):
         self.msgs += messages
-
-
-@pytest.fixture
-def hass_config_dir(hass_tmp_config_dir):
-    return hass_tmp_config_dir
 
 
 @pytest.fixture(autouse=True)
@@ -194,3 +190,20 @@ async def test_poller_confs_from_entry_options(hass):
     assert svc.confs == [SourceConf("car1", "renault", "invented_zoe")]
     assert svc.poller._confs == svc.confs
     await Service.release(hass)
+
+
+async def test_poller_skips_entry_with_bad_cloud_options(hass, caplog):
+    MockConfigEntry(domain=DOMAIN, title="Broken car", data={"vehicle_id": "car1"}, options={"cloud": {"bogus": 1}}).add_to_hass(hass)
+    MockConfigEntry(domain=DOMAIN, title="Good car", data={"vehicle_id": "car2"}, options={"cloud": {"mapping": "renault", "entity_stem": "invented_zoe"}}).add_to_hass(hass)
+    svc = await Service.acquire(hass)
+    assert svc.confs == [SourceConf("car2", "renault", "invented_zoe")]
+    assert "Broken car" in caplog.text
+    await Service.release(hass)
+
+
+async def test_ha_stop_stops_the_service(hass, svc):
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)  # entries are not unloaded at shutdown
+    await hass.async_block_till_done()
+    assert _threads() == []
+    await Service.release(hass)  # a later unload is still safe
+    assert DOMAIN not in hass.data

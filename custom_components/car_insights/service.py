@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
 
 from . import ha_adapters
 from .const import DOMAIN
@@ -49,6 +50,7 @@ class Service:
         self.worker = Worker("car-insights")
         self.confs: list[SourceConf] = []  # read when the service starts: an entry added later is polled after the next start
         self._ready: asyncio.Future | None = None
+        self._unsub_stop: CALLBACK_TYPE | None = None
         self.conn = self.zones = self.poller = self.publisher = self.app = self.ui_api = None  # set on the worker by _build
 
     @classmethod
@@ -57,6 +59,8 @@ class Service:
         if service is None:
             service = hass.data[DOMAIN] = cls(hass)
             service._ready = hass.async_create_task(service._start())
+            # entries are not unloaded at shutdown, so the service must hear HA stop itself
+            service._unsub_stop = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, service._on_ha_stop)
         service.refs += 1
         try:
             await asyncio.shield(service._ready)
@@ -73,14 +77,25 @@ class Service:
         service.refs -= 1
         if service.refs <= 0:
             del hass.data[DOMAIN]
+            if service._unsub_stop is not None:
+                service._unsub_stop()
             await service._stop()
+
+    async def _on_ha_stop(self, event: Event) -> None:
+        self._unsub_stop = None  # a once-listener is gone after firing
+        await self._stop()
 
     async def _start(self) -> None:
         hass = self.hass
         directory = Path(hass.config.path("car_insights"))
         await hass.async_add_executor_job(partial(directory.mkdir, exist_ok=True))
-        self.confs = [SourceConf(vehicle_id=e.data["vehicle_id"], **e.options["cloud"])
-                      for e in hass.config_entries.async_entries(DOMAIN) if "cloud" in e.options]
+        self.confs = []
+        for e in hass.config_entries.async_entries(DOMAIN):
+            if "cloud" in e.options:
+                try:
+                    self.confs.append(SourceConf(vehicle_id=e.data["vehicle_id"], **e.options["cloud"]))
+                except (TypeError, KeyError):
+                    log.warning("Skipping the cloud source of %s: its options do not fit", e.title)
         self.worker.start()
         try:
             await asyncio.wrap_future(self.worker.call(self._build, str(directory / "car_insights.db")))
