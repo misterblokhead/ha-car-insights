@@ -17,6 +17,8 @@ class Worker:
         self._tasks: set[asyncio.Task] = set()
         self._lock = threading.Lock()  # a call cannot slip in between "stopping" being set and the loop stopping
         self._stopping = False
+        self._open = asyncio.Event()  # cleared by hold(): a call waits for it before it runs
+        self._open.set()
 
     def start(self) -> None:
         self._thread.start()
@@ -36,6 +38,7 @@ class Worker:
     def call(self, fn: Callable[..., Any], *args) -> Future:
         """Run `fn(*args)` on the worker loop (a coroutine result is awaited there). HA's side awaits it with `asyncio.wrap_future`."""
         async def run():
+            await self._open.wait()
             result = fn(*args)
             return await result if inspect.isawaitable(result) else result
 
@@ -48,6 +51,14 @@ class Worker:
         except BaseException:
             coro.close()
             raise
+
+    def hold(self) -> None:
+        """From inside a call on the worker: calls made from now on wait until `release`. Jobs from `spawn` keep running."""
+        self._open.clear()
+
+    def release(self) -> None:
+        """From any thread."""
+        self._loop.call_soon_threadsafe(self._open.set)
 
     def spawn(self, coro_fn: Callable[[], Coroutine]) -> None:
         """A long-running job on the worker loop, cancelled at stop."""

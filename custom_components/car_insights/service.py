@@ -44,6 +44,7 @@ class Service:
         self.imported = importer.ImportResult()
         self.confs: list[SourceConf] = []  # read when the service starts: an entry added later is polled after the next start
         self._ready: asyncio.Future | None = None
+        self.paused = False  # between a backup's start and its end
         self._unsub_stop: CALLBACK_TYPE | None = None
         self.conn = self.zones = self.poller = self.publisher = self.app = self.ui_api = None  # set on the worker by _build
 
@@ -165,6 +166,29 @@ class Service:
                     partial(geocode.run, conn, partial(geocode.fetch, language=language, version=version), _now_ms, lambda: zones.loaded,
                             lambda lat, lon: zones.covers(lat, lon) or prices.spot_name_at(conn, lat, lon) is not None)):
             self.worker.spawn(job)
+
+    async def pause(self) -> None:
+        """Before a backup: fold the WAL into the database file and make later calls wait for `resume` (a batch that waits is sent again)."""
+        await asyncio.shield(self._ready)
+        if self.paused:  # a second hold would wait behind the first
+            return
+        self.paused = True
+        try:
+            await asyncio.wrap_future(self.worker.call(self._checkpoint_and_hold))
+        except BaseException:
+            self.paused = False
+            raise
+
+    def resume(self) -> None:
+        self.paused = False
+        self.worker.release()
+
+    def _checkpoint_and_hold(self) -> None:
+        try:
+            self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except Exception:
+            log.exception("Checkpointing before the backup failed")  # the backup goes on: the WAL file is copied with the database
+        self.worker.hold()
 
     async def ingest(self, body: bytes, received: int) -> tuple[int, dict]:
         await asyncio.shield(self._ready)  # a re-added service is registered while its worker still builds

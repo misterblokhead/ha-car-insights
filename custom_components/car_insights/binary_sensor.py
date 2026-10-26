@@ -1,10 +1,6 @@
-from functools import partial
 
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import bridge
 
@@ -20,7 +16,4 @@ class BridgeBinarySensor(bridge.BridgeEntity, BinarySensorEntity):
         self._attr_is_on = True if v == self._on else False if v == self._off else None
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
-    b = bridge.async_get(hass)
-    b.async_register(entry, Platform.BINARY_SENSOR, async_add_entities, BridgeBinarySensor)
-    entry.async_on_unload(partial(b.async_unregister, entry, Platform.BINARY_SENSOR))
+async_setup_entry = bridge.platform_setup(Platform.BINARY_SENSOR, BridgeBinarySensor)

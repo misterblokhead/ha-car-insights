@@ -1,12 +1,8 @@
 from datetime import datetime
-from functools import partial
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from . import bridge
@@ -37,7 +33,4 @@ class BridgeSensor(bridge.BridgeEntity, SensorEntity):
         self._attr_native_value = v
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
-    b = bridge.async_get(hass)
-    b.async_register(entry, Platform.SENSOR, async_add_entities, BridgeSensor)
-    entry.async_on_unload(partial(b.async_unregister, entry, Platform.SENSOR))
+async_setup_entry = bridge.platform_setup(Platform.SENSOR, BridgeSensor)

@@ -3,7 +3,8 @@ import json
 import logging
 import re
 from collections import defaultdict
-from typing import Any, Callable
+from functools import partial
+from typing import Any, Awaitable, Callable
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -185,3 +186,13 @@ def async_get(hass: HomeAssistant) -> Bridge:
     if "car_insights_bridge" not in hass.data:
         hass.data["car_insights_bridge"] = Bridge(hass)
     return hass.data["car_insights_bridge"]
+
+
+def platform_setup(platform: Platform, factory: Callable[[dict], BridgeEntity]) -> Callable[..., Awaitable[None]]:
+    """The `async_setup_entry` of a platform file: its entities are the bridge's, made by `factory`."""
+    async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+        b = async_get(hass)
+        b.async_register(entry, platform, async_add_entities, factory)
+        entry.async_on_unload(partial(b.async_unregister, entry, platform))
+
+    return async_setup_entry
