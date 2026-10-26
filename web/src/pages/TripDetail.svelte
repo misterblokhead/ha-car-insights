@@ -18,7 +18,7 @@
   const BAND_OPACITY = [0.4, 0.45, 0.6, 0.8, 1]; // one hue, darker for faster
 </script>
 
-<DetailPage url={`api/ui/trips/${encodeURIComponent(vid)}/${start}`} noun="trip" accent="--trip-text">
+<DetailPage url={`trips/${encodeURIComponent(vid)}/${start}`} noun="trip" accent="--trip-text">
   {#snippet title({ trip: t })}{tripTitle(t)}{/snippet}
   {#snippet subtitle({ trip: t })}<p class="d-sub">{rangeLine(t.start, t.end)}</p>{/snippet}
   {#snippet body(data)}

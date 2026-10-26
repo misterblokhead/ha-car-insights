@@ -1,4 +1,4 @@
-// Dates and times as Home Assistant's zone shows them, whatever zone the browser is in. Set once from `/api/ui/me`.
+// Dates and times as Home Assistant's zone shows them, whatever zone the browser is in. Set once from `me`.
 import { NA } from "./format.js";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

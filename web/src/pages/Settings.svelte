@@ -19,7 +19,7 @@
   async function load() {
     const ticket = request.next();
     try {
-      const d = await get("api/ui/settings");
+      const d = await get("settings");
       if (!ticket.current) return;
       data = d;
       names = Object.fromEntries(d.groups.map((g) => [g.id, g.name]));
@@ -61,14 +61,14 @@
   }
 
   const addGroup = () => keepFocus(async () => {
-    await change(() => send("POST", "api/ui/groups", { name: newName }));
+    await change(() => send("POST", "groups", { name: newName }));
     if (!error) newName = "";
   });
-  const rename = (g) => keepFocus(() => change(() => send("PUT", `api/ui/groups/${g.id}`, { name: names[g.id] })));
-  const remove = (g) => confirm(`Delete group "${g.name}"?`) && change(() => send("DELETE", `api/ui/groups/${g.id}`));
-  const setVehicle = (v, group_id, viewers) => () => send("PUT", `api/ui/vehicles/${v.id}`, { group_id, viewers });
+  const rename = (g) => keepFocus(() => change(() => send("PUT", `groups/${g.id}`, { name: names[g.id] })));
+  const remove = (g) => confirm(`Delete group "${g.name}"?`) && change(() => send("DELETE", `groups/${g.id}`));
+  const setVehicle = (v, group_id, viewers) => () => send("PUT", `vehicles/${v.id}`, { group_id, viewers });
   // the card fields are sent together; a blank one counts as 0
-  const setCard = (v, card) => () => send("PUT", `api/ui/vehicles/${v.id}/card`, card);
+  const setCard = (v, card) => () => send("PUT", `vehicles/${v.id}/card`, card);
 
   load();
 </script>

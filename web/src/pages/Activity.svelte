@@ -65,7 +65,7 @@
   async function live() {
     const ticket = liveRequest.next();
     try {
-      const d = await get(`api/ui/overview?view=${encodeURIComponent(view)}`);
+      const d = await get(`overview?view=${encodeURIComponent(view)}`);
       if (ticket.current) vehicles = d.vehicles;
     } catch {} // the strip keeps what it shows
   }

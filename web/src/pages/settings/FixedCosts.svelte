@@ -20,7 +20,7 @@
     e.preventDefault();
     const body = { name: f.name, amount: Number(f.amount), period: f.period, start: f.start, end: f.end || null };
     saving = true;
-    if (await change(() => send("POST", `api/ui/vehicles/${adding}/fixed_costs`, body))) adding = null;
+    if (await change(() => send("POST", `vehicles/${adding}/fixed_costs`, body))) adding = null;
     saving = false;
   }
   // saved on the Save button, not on every change event: a date input fires one per typed segment. A rejected date is undone by hand.
@@ -28,9 +28,9 @@
     e.preventDefault();
     const el = e.currentTarget.elements.end;
     if (el.value === (c.end ?? "")) return;
-    if (!(await change(() => send("PUT", `api/ui/fixed_costs/${c.id}`, { end: el.value || null })))) el.value = c.end ?? "";
+    if (!(await change(() => send("PUT", `fixed_costs/${c.id}`, { end: el.value || null })))) el.value = c.end ?? "";
   }
-  const remove = (c) => confirm(`Delete "${c.name}"?`) && change(() => send("DELETE", `api/ui/fixed_costs/${c.id}`));
+  const remove = (c) => confirm(`Delete "${c.name}"?`) && change(() => send("DELETE", `fixed_costs/${c.id}`));
   const focus = (el) => el.focus();
 </script>
 

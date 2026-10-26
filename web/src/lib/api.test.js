@@ -1,9 +1,26 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { latest, send } from "./api.js";
+import { latest, send, setHass } from "./api.js";
 
 const reply = (status, body) => () =>
   Promise.resolve({ ok: status < 400, status, json: () => (body === undefined ? Promise.reject(new Error("no body")) : Promise.resolve(body)) });
+
+test("without a hass, plain fetch gets the prefixed URL", async () => {
+  setHass(undefined);
+  let url;
+  globalThis.fetch = (u) => ((url = u), reply(200, { a: 1 })());
+  assert.deepEqual(await send("GET", "views"), { a: 1 });
+  assert.equal(url, "/api/car_insights/ui/views");
+});
+
+test("with a hass, fetchWithAuth gets the prefixed URL and plain fetch is not called", async () => {
+  let url;
+  globalThis.fetch = () => assert.fail("plain fetch");
+  setHass({ fetchWithAuth: (u) => ((url = u), reply(400, { detail: "no" })()) });
+  await assert.rejects(send("POST", "spots", {}), (e) => e.status === 400 && e.detail === "no");
+  assert.equal(url, "/api/car_insights/ui/spots");
+  setHass(undefined);
+});
 
 test("error carries status and the server's detail string", async () => {
   globalThis.fetch = reply(400, { detail: "name too long" });

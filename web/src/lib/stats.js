@@ -5,7 +5,7 @@ import { periodDay } from "./time.js";
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 // The request of a period page; without `at` the server answers for today in its own time zone.
-const uiUrl = (path) => (view, period, at) => `api/ui/${path}?view=${encodeURIComponent(view)}&period=${period}${at ? `&at=${at}` : ""}`;
+const uiUrl = (path) => (view, period, at) => `${path}?view=${encodeURIComponent(view)}&period=${period}${at ? `&at=${at}` : ""}`;
 export const statsUrl = uiUrl("stats");
 export const mapUrl = uiUrl("map");
 

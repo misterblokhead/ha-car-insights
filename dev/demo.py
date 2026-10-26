@@ -1,8 +1,7 @@
-# Moved from the add-on; broken until Task 8 rewires it to the integration.
-"""Demo server for visual checks: the real ui_api router (and ingress guard) over an in-memory database of made-up data.
+"""Demo server for visual checks: the real UiApi and the built panel over an in-memory database of made-up data.
 
-    cd car_insights && .venv/Scripts/python dev/demo.py web/dist     # http://127.0.0.1:8765/
-    DEMO_USER=u-viewer ...                                            # the same page as a non-admin who shares both cars
+    wsl: cd <repo> && ~/venvs/ha-ci/bin/python dev/demo.py [frontend dir]     # http://127.0.0.1:8765/  (needs aiohttp and voluptuous)
+    DEMO_USER=u-viewer ...                                                      # the same page as a non-admin who shares both cars
 
 Two cars and a cost group: 10 days of Home / Work / Shop trips with GPS routes (the same drives repeat, so similar trips exist),
 one trip to a place outside every zone, an open trip, charges timed by the car and by the cloud, and one cloud charge whose
@@ -22,14 +21,14 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import uvicorn  # noqa: E402
+from aiohttp import web  # noqa: E402
 
-from car_insights import access, db, prices, store, ui_api  # noqa: E402
-from car_insights.api import create_app  # noqa: E402
-from car_insights.derive import Deriver  # noqa: E402
-from car_insights.kinds import CHARGE  # noqa: E402
-from car_insights.periods import local_date  # noqa: E402
-from car_insights.protocol import Sample  # noqa: E402
+from custom_components.car_insights.core import access, db, prices, store  # noqa: E402
+from custom_components.car_insights.core.derive import Deriver  # noqa: E402
+from custom_components.car_insights.core.kinds import CHARGE  # noqa: E402
+from custom_components.car_insights.core.periods import local_date  # noqa: E402
+from custom_components.car_insights.core.protocol import Sample  # noqa: E402
+from custom_components.car_insights.core.ui_api import UiApi  # noqa: E402
 
 TZ = ZoneInfo("Europe/Amsterdam")
 PLACES = {"Home": (52.0, 5.0), "Work": (52.09, 5.11), "Shop": (52.03, 5.04), "Elsewhere": (52.06, 4.95)}  # Elsewhere is in no zone
@@ -213,33 +212,43 @@ def build(conn, now: int) -> Deriver:
     return deriver
 
 
-class AsUser:
-    """ASGI wrapper standing in for the Supervisor's ingress proxy: every request comes from this user."""
+INDEX = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Car Insights</title>
+<style>html, body { margin: 0; height: 100%; }</style></head>
+<body><script type="module">
+  import "/car_insights_static/panel.js";
+  const el = document.body.appendChild(document.createElement("car-insights-panel"));
+  el.narrow = false;
+  el.hass = { fetchWithAuth: (u, i) => fetch(u, i) };  // Home Assistant would sign the request
+</script></body></html>
+"""
 
-    def __init__(self, app, user: str):
-        self.app, self.header = app, (b"x-remote-user-id", user.encode())
 
-    async def __call__(self, scope, receive, send):
-        if scope["type"] in ("http", "websocket"):
-            scope = {**scope, "headers": [*scope["headers"], self.header]}
-        await self.app(scope, receive, send)
-
-
-def main(web_dir: str) -> None:
-    conn = db.connect(":memory:")
+def main(frontend: Path) -> None:
     now = int(time.time() * 1000)
-    deriver = build(conn, now)
-    user = os.environ.get("DEMO_USER", "u-admin")
-
-    async def is_admin(uid: str) -> bool:  # the one thing faked: Home Assistant's user list
-        return uid == "u-admin"
-
-    capacity = lambda vid: db.capacity_wh(conn, vid, 60_000.0)
     png = _grid_png()
-    router = ui_api.router(conn, zones, TZ, capacity, is_admin, relabel=lambda: relabel(conn), tile=lambda z, x, y: png, ingress_hosts=("127.0.0.1",))
-    app = create_app(conn, "demo-token", lambda *a: None, ui=router, web_dir=Path(web_dir))
-    uvicorn.run(AsUser(app, user), host="127.0.0.1", port=8765)
+    viewer = access.Viewer("u-viewer", "Demo Viewer", False) if os.environ.get("DEMO_USER") == "u-viewer" else access.Viewer("u-admin", "Demo Admin", True)
+
+    async def start(app):  # the connection is made on the loop's thread, where every handler runs
+        conn = db.connect(":memory:")
+        build(conn, now)
+        app["ui"] = UiApi(conn, zones, TZ, lambda vid: db.capacity_wh(conn, vid, 60_000.0), relabel=lambda: relabel(conn))
+
+    async def ui(request):
+        body = await request.json() if request.can_read_body else None
+        status, reply = await request.app["ui"].handle(request.method, "/" + request.match_info["path"], dict(request.query), body, viewer)
+        return web.Response(status=204) if status == 204 else web.json_response(reply, status=status)
+
+    app = web.Application()
+    app.on_startup.append(start)
+    app.add_routes([
+        web.get("/", lambda r: web.Response(text=INDEX, content_type="text/html")),
+        web.route("*", "/api/car_insights/ui/{path:.*}", ui),
+        web.get("/api/map_tiles/raster/{z}/{x}/{y}.png", lambda r: web.Response(body=png, content_type="image/png")),  # Home Assistant wants a login here
+        web.static("/car_insights_static", frontend),
+    ])
+    web.run_app(app, host="127.0.0.1", port=8765)
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "web/dist")
+    main(Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent.parent / "custom_components" / "car_insights" / "frontend")

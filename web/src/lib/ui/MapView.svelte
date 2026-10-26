@@ -2,6 +2,16 @@
   import L from "leaflet";
   import "leaflet/dist/leaflet.css";
   import { MAX_Z, TILE_TEMPLATE } from "../tiles.js";
+  import { authedUrl } from "../authed.js";
+
+  // tiles come through Home Assistant's login, so each <img> is filled from a signed fetch
+  const SignedTiles = L.TileLayer.extend({
+    createTile(coords, done) {
+      const img = document.createElement("img");
+      authedUrl(this.getTileUrl(coords)).then((src) => ((img.src = src), done(null, img)), (e) => done(e, img));
+      return img;
+    },
+  });
 
   // lines: [{ points: [[lat, lon]], kind: "trip", href? }]; dots: [{ lat, lon, kind: "trip" | "charge", role?: "start" | "end", title?, href? }]
   let { lines = [], dots = [], height, label = "Map" } = $props();
@@ -15,9 +25,9 @@
     const coarse = matchMedia("(pointer: coarse)").matches;
     const map = L.map(el, { scrollWheelZoom: false, dragging: !coarse });
     map.attributionControl.setPrefix(false);
-    L.tileLayer(TILE_TEMPLATE, {
+    new SignedTiles(TILE_TEMPLATE, {
       maxZoom: 19,
-      // a new tab: a tap must not navigate Home Assistant's ingress frame away
+      // a new tab: a tap must not navigate the panel's frame away
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
     }).addTo(map);
 

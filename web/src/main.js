@@ -3,4 +3,4 @@ import "./lib/tokens.css";
 import "./lib/base.css";
 import App from "./App.svelte";
 
-mount(App, { target: document.getElementById("app") });
+export const mountApp = (target) => mount(App, { target });

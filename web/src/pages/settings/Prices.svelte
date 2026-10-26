@@ -26,11 +26,11 @@
     e.preventDefault();
     const body = { valid_from: validFromFor(list, f.from), per_kwh: Number(f.per_kwh), start_fee: Number(f.start_fee), per_min: Number(f.per_min) };
     saving = true;
-    if (await change(() => send("PUT", `api/ui/prices/${open}`, body))) open = null;
+    if (await change(() => send("PUT", `prices/${open}`, body))) open = null;
     saving = false;
   }
-  const rename = (s) => change(() => send("PUT", `api/ui/spots/${s.id}`, { name: names[s.id] }));
-  const remove = (s) => confirm(`Delete "${s.name}"? Its charges go back to the default price.`) && change(() => send("DELETE", `api/ui/spots/${s.id}`));
+  const rename = (s) => change(() => send("PUT", `spots/${s.id}`, { name: names[s.id] }));
+  const remove = (s) => confirm(`Delete "${s.name}"? Its charges go back to the default price.`) && change(() => send("DELETE", `spots/${s.id}`));
   const focus = (el) => el.focus();
 </script>
 
