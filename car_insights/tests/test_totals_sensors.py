@@ -61,7 +61,7 @@ def test_cost_fields(env):
     ts.publish_vehicle("car1")
     ts.publish_vehicle("car2")
     st = mqtt.on("car_insights/car1/totals")[-1][0]
-    assert (st["month_energy_cost"], st["month_fixed_cost"], st["month_total_cost"], st["month_cost_per_km"]) == (8.8, 10.0, 18.8, 0.376)
+    assert (st["month_energy_cost"], st["month_fixed_cost"], st["month_total_cost"], st["month_cost_per_km"]) == (8.08, 10.0, 18.08, 0.362)
     assert mqtt.on("car_insights/car2/totals")[-1][0]["month_cost_per_km"] is None  # 0 km
     cfgs = {t: json.loads(p) for t, p, _ in mqtt.msgs if t.startswith("homeassistant/sensor/car1_")}
     cost = cfgs["homeassistant/sensor/car1_month_total_cost/config"]

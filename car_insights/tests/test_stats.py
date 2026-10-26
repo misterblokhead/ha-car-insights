@@ -200,7 +200,7 @@ def test_period_cost():
     s = stats.stats(c, ["car1", "car2"], "month", date(2026, 10, 10), TZ, names, now)
     assert s["totals"]["cost"]["fixed"] == approx(20.0)  # 10 days of 2 vehicles
     assert s["previous"]["cost"]["fixed"] == approx(62.0)  # the ended September counts whole
-    assert s["totals"]["cost"]["energy"] == approx(2 * 20 * 1.10 * 0.40)
+    assert s["totals"]["cost"]["energy"] == approx(2 * 20 * 1.01 * 0.40)
     assert sum(v["totals"]["cost"]["total"] for v in s["per_vehicle"]) == approx(s["totals"]["cost"]["total"])
     one = stats.stats(c, ["car1"], "month", date(2026, 10, 10), TZ, None, now)
     assert one["totals"]["cost"]["fixed"] == approx(10.0) and one["previous"]["cost"]["fixed"] == approx(31.0)

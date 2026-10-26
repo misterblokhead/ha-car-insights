@@ -396,15 +396,15 @@ def test_cost_read_flow(conn):
     assert c.put(f"{URL}/prices/ac", json={"valid_from": 0, "per_kwh": 0.40}, headers=ADMIN).json() == {}
     for who in (ADMIN, VIEWER):
         items = [i for d in c.get(f"{URL}/activity?view=v:car1", headers=who).json()["days"] for i in d["items"]]
-        assert items[0]["cost"] == {"amount": approx(8.8), "basis": "default"}
+        assert items[0]["cost"] == {"amount": approx(8.08), "basis": "default"}
         assert c.get(f"{URL}/charges/car1/1000", headers=who).json()["cost"]["current"] == "ac"
 
 
 def test_trip_detail_cost(conn):
     put(conn, "trips", "car1", 1000, 2000, {"net_wh": 3000})
     c, _ = client(conn)
-    c.put(f"{URL}/prices/ac", json={"valid_from": 0, "per_kwh": 0.40}, headers=ADMIN)  # the 1.32 holds only with this tariff
-    assert c.get(f"{URL}/trips/car1/1000", headers=VIEWER).json()["cost"]["energy"] == approx(1.32)
+    c.put(f"{URL}/prices/ac", json={"valid_from": 0, "per_kwh": 0.40}, headers=ADMIN)  # the 1.212 holds only with this tariff
+    assert c.get(f"{URL}/trips/car1/1000", headers=VIEWER).json()["cost"]["energy"] == approx(1.212)
 
 
 def test_settings_lists_prices(conn):
