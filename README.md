@@ -14,11 +14,11 @@ The **Car Insights** sidebar page (`/car_insights`) has Activity (one timeline o
 ## Requirements
 
 - Home Assistant 2026.9 or newer.
-- An https external URL for Home Assistant (your own domain with TLS), or Nabu Casa (the integration then uses a cloudhook, `https://hooks.nabu.casa/...`). The car app needs it to reach Home Assistant.
+- An https external URL for Home Assistant (your own domain with TLS), or Nabu Casa (the integration then uses a cloudhook, `https://hooks.nabu.casa/...`). The car app needs it to reach Home Assistant. Set it in Settings > System > Network before you add a vehicle: until then the integration waits and the `.conf` file does not appear.
 
 ## Install from HACS
 
-1. In HACS, add `https://github.com/misterblokhead/ha-car-insights` as a custom repository (type **Integration**), install **Car Insights**, and restart Home Assistant.
+1. In HACS, open the menu (the three dots, top right) > **Custom repositories**, add `https://github.com/misterblokhead/ha-car-insights` with type **Integration**, then install **Car Insights** and restart Home Assistant.
    Manual alternative: copy `custom_components/car_insights` into your HA `custom_components` directory.
 2. Settings > Devices & services > Add integration > **Car Insights**. Enter a vehicle id and a vehicle name. Add the integration once per vehicle.
 3. The integration writes the car app's config file to `/config/car_insights/<vehicle_id>.conf` and shows a notification saying so. It holds the webhook URL and the secret. Copy it to the car's USB stick for the car app.
@@ -28,18 +28,26 @@ All data lives in `/config/car_insights/car_insights.db`, so it is included in H
 ## Moving from the add-on
 
 1. Update the add-on to 0.11.0.
-2. Open the add-on's page, Settings, and press **Export for the integration**. This stops the add-on's MQTT sensors.
-3. Install the integration from HACS (see above) and restart Home Assistant. On first start it imports `/share/car_insights/export.db`. Vehicles without a config entry are not imported, and your existing receiver entries stay, so keep them.
+2. Open the add-on's page, Settings, and press **Export for the integration**. This stops the add-on's MQTT sensors. Do this while the car is off (see below).
+3. Install the integration from HACS (see above) and restart Home Assistant. On first start it imports `/share/car_insights/export.db`. Your existing receiver entries stay, so keep them: a vehicle without an entry is not imported, and one with a cloud source (`sources` option) but no entry is dropped with its history.
 4. If the import fails, a repair appears. Restart Home Assistant to retry.
 5. Check the Car Insights page and the sensors.
 6. Remove the add-on, and Mosquitto if nothing else uses it.
 7. Delete the old `/share/car_insights/` folder. It holds an old copy of the car's secret and the internal token.
 
+Things to know:
+
+- **Order.** Exporting first, then updating, is the order to prefer. A late export still works: if the integration already received samples from the car, the import merges them into the history. Only the samples are carried (with their acknowledgements and each vehicle's name); settings made in the integration in the meantime (prices, groups, viewers, costs) are not. A failed import followed by uploads from the car and a fixed retry merges the same way.
+- **Samples sent in between.** What the car sent to the add-on after the export is not in the export. It is kept only if the add-on did not acknowledge it, because then the car sends it again. Do the move while the car is off.
+- **First start.** The history is derived again from the samples, so a warning that Home Assistant's setup is taking over 10 seconds is expected, once.
+- **Breaking: entities.** The sensors come back on the same entity IDs only where you never renamed them. Renamed entity IDs, names, areas, icons and disabled flags of the old MQTT devices do not carry over, and neither do device-based automation triggers, conditions and actions (the ones picked from a device in the UI). Check the automations that used them.
+
 ## Development
 
-Tests run with `pytest-homeassistant-custom-component`, on Linux or WSL (Home Assistant does not run on Windows):
+Tests run with `pytest-homeassistant-custom-component` (it pulls in Home Assistant), on Linux or WSL (Home Assistant does not run on Windows):
 
 ```sh
+pip install -r tests/requirements.txt
 python -m pytest tests
 ```
 
