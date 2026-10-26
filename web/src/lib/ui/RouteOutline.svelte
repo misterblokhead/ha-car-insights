@@ -1,5 +1,6 @@
 <script>
   import { backdrop, tileUrl } from "../tiles.js";
+  import { authedUrl } from "../authed.js";
 
   // `label` carries the key figures for screen readers
   let { points, width, height, label = "Route" } = $props();
@@ -12,7 +13,9 @@
   <span class="box" style:width="{width}px" style:height="{height}px">
     <span class="tiles" aria-hidden="true">
       {#each map.tiles as t (`${t.x}/${t.y}`)}
-        <img src={tileUrl(t)} loading="lazy" alt="" width="256" height="256" style:left="{t.left}px" style:top="{t.top}px" />
+        {#await authedUrl(tileUrl(t)) then src}
+          <img {src} alt="" width="256" height="256" style:left="{t.left}px" style:top="{t.top}px" />
+        {/await}
       {/each}
     </span>
     <svg {width} {height} viewBox="0 0 {width} {height}" role="img" aria-label={label}>

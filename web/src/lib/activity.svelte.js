@@ -8,7 +8,7 @@ export const feed = $state({ view: "", filter: "all", today: "", days: [], next:
 const request = latest();
 let ticket = request.next(); // the page being loaded; paging and refresh belong to the same context, so they keep it
 
-const url = (view, before) => `api/ui/activity?view=${encodeURIComponent(view)}${before == null ? "" : `&before=${before}`}`;
+const url = (view, before) => `activity?view=${encodeURIComponent(view)}${before == null ? "" : `&before=${before}`}`;
 
 export async function load(view) {
   const mine = (ticket = request.next());

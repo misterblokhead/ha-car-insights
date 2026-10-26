@@ -25,7 +25,7 @@
   async function reloadViews() {
     const ticket = viewsRequest.next();
     try {
-      const v = await get("api/ui/views");
+      const v = await get("views");
       if (!ticket.current) return;
       views = v;
       if (!options.some((o) => o.value === view)) view = options[0]?.value || "";
@@ -59,7 +59,7 @@
 
   (async () => {
     try {
-      const [m, v] = await Promise.all([get("api/ui/me"), get("api/ui/views")]);
+      const [m, v] = await Promise.all([get("me"), get("views")]);
       setZone(m?.tz); // before `me` is set, so no page renders a date in the browser's zone; no name keeps it
       [me, views] = [m, v];
       let saved = "";

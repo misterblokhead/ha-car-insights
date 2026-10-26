@@ -7,13 +7,13 @@ import { setZone } from "./time.js";
 setZone("Europe/Amsterdam");
 
 test("mapUrl asks /map for the same view, period and day", () => {
-  assert.equal(mapUrl("v:car1", "week", null), "api/ui/map?view=v%3Acar1&period=week");
-  assert.equal(mapUrl("g:a b", "year", "2026-09-01"), "api/ui/map?view=g%3Aa%20b&period=year&at=2026-09-01");
+  assert.equal(mapUrl("v:car1", "week", null), "map?view=v%3Acar1&period=week");
+  assert.equal(mapUrl("g:a b", "year", "2026-09-01"), "map?view=g%3Aa%20b&period=year&at=2026-09-01");
 });
 
 test("statsUrl sends no at until a date is chosen", () => {
-  assert.equal(statsUrl("g:a b", "week", null), "api/ui/stats?view=g%3Aa%20b&period=week");
-  assert.equal(statsUrl("v:car1", "month", "2026-09-01"), "api/ui/stats?view=v%3Acar1&period=month&at=2026-09-01");
+  assert.equal(statsUrl("g:a b", "week", null), "stats?view=g%3Aa%20b&period=week");
+  assert.equal(statsUrl("v:car1", "month", "2026-09-01"), "stats?view=v%3Acar1&period=month&at=2026-09-01");
 });
 
 test("change: a fraction against before; no baseline is null", () => {

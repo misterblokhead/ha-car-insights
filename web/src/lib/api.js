@@ -1,7 +1,13 @@
-// Relative URLs (no leading slash) so requests work under the ingress prefix.
-// Error message stays the status; `detail` carries the server's text (FastAPI {detail}) when it is a string.
+// Paths are relative to the integration's UI API. Inside Home Assistant the panel's `hass` signs each request (fetchWithAuth);
+// without one (the demo) it is a plain fetch of the same URL.
+// Error message stays the status; `detail` carries the server's text ({detail}) when it is a string.
+const PREFIX = "/api/car_insights/ui/";
+let hass;
+export const setHass = (h) => (hass = h);
+export const authedFetch = (url, init) => (hass ? hass.fetchWithAuth(url, init) : fetch(url, init));
+
 export async function send(method, path, body) {
-  const r = await fetch(path, {
+  const r = await authedFetch(PREFIX + path, {
     method,
     headers: body === undefined ? {} : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),

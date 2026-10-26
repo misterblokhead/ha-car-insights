@@ -69,7 +69,7 @@ test("no tiles above or below the world", () => {
   assert.ok(b.tiles.every((t) => t.y >= 0 && t.y < 2 ** t.z));
 });
 
-test("tileUrl is relative, so the page asks Home Assistant", () => {
-  assert.equal(tileUrl({ z: 12, x: 2100, y: 1350 }), "api/ui/tiles/12/2100/1350.png");
-  assert.equal(TILE_TEMPLATE, "api/ui/tiles/{z}/{x}/{y}.png"); // the one the map layer uses
+test("tileUrl is on the HA origin, so the page asks Home Assistant", () => {
+  assert.equal(tileUrl({ z: 12, x: 2100, y: 1350 }), "/api/map_tiles/raster/12/2100/1350.png");
+  assert.equal(TILE_TEMPLATE, "/api/map_tiles/raster/{z}/{x}/{y}.png"); // the one the map layer uses
 });

@@ -68,16 +68,16 @@
     saving = false;
     return ok;
   }
-  const setReceipt = (amount, reload) => edit(() => send("PUT", `api/ui/charges/${encodeURIComponent(vid)}/${c.start}/receipt`, { amount }), reload);
+  const setReceipt = (amount, reload) => edit(() => send("PUT", `charges/${encodeURIComponent(vid)}/${c.start}/receipt`, { amount }), reload);
   async function saveSpot(e, reload) {
     e.preventDefault();
     const { name, per_kwh, start_fee, per_min } = spot;
     const body = { vehicle_id: vid, start: c.start, name, per_kwh: Number(per_kwh), start_fee: Number(start_fee), per_min: Number(per_min) };
-    if (await edit(() => send("POST", "api/ui/spots", body), reload)) spot = null;
+    if (await edit(() => send("POST", "spots", body), reload)) spot = null;
   }
 </script>
 
-<DetailPage url={`api/ui/charges/${encodeURIComponent(vid)}/${start}`} noun="charge" accent="--charge-text" onloaded={loaded}>
+<DetailPage url={`charges/${encodeURIComponent(vid)}/${start}`} noun="charge" accent="--charge-text" onloaded={loaded}>
   {#snippet title()}{chargedAt(c)}{/snippet}
   {#snippet subtitle()}
     <p class="d-sub">{rangeLine(c.start, c.end)}</p>
