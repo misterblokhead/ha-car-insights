@@ -30,6 +30,10 @@ def write(conn: sqlite3.Connection, options: dict, out_dir: Path) -> Path:
     copy = sqlite3.connect(tmp)
     try:
         conn.backup(copy)
+    except BaseException:
+        copy.close()  # Windows cannot unlink an open file
+        tmp.unlink(missing_ok=True)
+        raise
     finally:
         copy.close()
     os.replace(tmp, dest)
@@ -43,7 +47,7 @@ def discovery_clear(conn: sqlite3.Connection) -> list[tuple[str, str]]:
     trips = trip_sensors.TripSensors(conn, None, lambda vid: 0.0)  # the sink is never used by _discovery
     totals = totals_sensors.TotalsSensors(conn, None, timezone.utc)
     msgs: list[tuple[str, str]] = []
-    for (vid,) in conn.execute("SELECT vehicle_id FROM vehicles").fetchall():
+    for (vid,) in conn.execute("SELECT vehicle_id FROM vehicles UNION SELECT vehicle_id FROM sources").fetchall():  # a cloud-only vehicle has no vehicles row
         msgs += live.discovery_messages(vid, vid, None, None, set(live.FIELDS))
         msgs += trips._discovery(vid)
         msgs += totals._discovery(vid, dev(vid))
