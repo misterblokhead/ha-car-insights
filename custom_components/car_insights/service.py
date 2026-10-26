@@ -9,8 +9,9 @@ from zoneinfo import ZoneInfo
 
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 
-from . import ha_adapters
+from . import ha_adapters, importer
 from .const import DOMAIN
 from .core import capacity as capacity_learning, costs, db, geocode, pipeline, prices
 from .core.access import Viewer
@@ -26,6 +27,7 @@ from .core.zones import ZoneCache
 from .worker import Worker
 
 log = logging.getLogger(__name__)
+SHARE_DIR = Path("/share")  # where the add-on's export is; tests point it elsewhere
 
 
 class _DropSink:
@@ -48,6 +50,7 @@ class Service:
     def __init__(self, hass: HomeAssistant):
         self.hass, self.refs = hass, 0
         self.worker = Worker("car-insights")
+        self.imported = importer.ImportResult()
         self.confs: list[SourceConf] = []  # read when the service starts: an entry added later is polled after the next start
         self._ready: asyncio.Future | None = None
         self._unsub_stop: CALLBACK_TYPE | None = None
@@ -89,6 +92,7 @@ class Service:
         hass = self.hass
         directory = Path(hass.config.path("car_insights"))
         await hass.async_add_executor_job(partial(directory.mkdir, exist_ok=True))
+        await self._import_export()
         self.confs = []
         for e in hass.config_entries.async_entries(DOMAIN):
             if "cloud" in e.options:
@@ -103,6 +107,23 @@ class Service:
             await self._stop()
             raise
 
+    async def _import_export(self) -> None:
+        """The add-on's export, on the first start after it: the database comes in beside the new one's place, the options go to the entries."""
+        hass = self.hass
+        entries = {e.data["vehicle_id"]: e.entry_id for e in hass.config_entries.async_entries(DOMAIN)}
+        try:
+            self.imported = await hass.async_add_executor_job(importer.run, Path(hass.config.config_dir), SHARE_DIR, entries)
+        except Exception as err:
+            log.exception("Importing the add-on's export failed; starting empty")
+            ir.async_create_issue(hass, DOMAIN, "import_failed", is_fixable=False, severity=ir.IssueSeverity.ERROR,
+                                  translation_key="import_failed", translation_placeholders={"error": str(err)})
+            return
+        if self.imported.imported:
+            ir.async_delete_issue(hass, DOMAIN, "import_failed")  # a retry that worked
+        for entry_id, cloud in self.imported.cloud.items():
+            entry = hass.config_entries.async_get_entry(entry_id)
+            hass.config_entries.async_update_entry(entry, options={**entry.options, "cloud": cloud})
+
     async def _stop(self) -> None:
         # off HA's loop: a job on the worker may be waiting for HA's answer (ha_adapters), and the loop must be free to give it
         await self.hass.async_add_executor_job(self._close)
@@ -116,6 +137,8 @@ class Service:
         """On the worker: what the add-on's __main__ built, then the start-up work and the background jobs."""
         hass = self.hass
         conn = self.conn = db.connect(db_path)
+        if self.imported.default_capacity_kwh is not None:
+            db.set_default_capacity_kwh(conn, self.imported.default_capacity_kwh)
         tz = ZoneInfo(hass.config.time_zone)
         language = ha_adapters.language(hass)
         sink = make_sink(hass)
