@@ -139,20 +139,22 @@ async def test_totals_on_group_device(hass):
 
 
 async def test_empty_config_removes_entity(hass):
-    await add_entry(hass)
+    entry = await add_entry(hass)
     conn = conn_with(("car1", "Test Car"))
     gid = access.create_group(conn, "Fleet")
     access.set_vehicle(conn, "car1", gid, [])
     ts = TotalsSensors(conn, bridge.async_get(hass), TZ, now_ms=lambda: NOW)
     ts.publish_groups()
     await hass.async_block_till_done()
-    reg = er.async_get(hass)
+    reg, devs = er.async_get(hass), dr.async_get(hass)
     assert hass.states.get("sensor.fleet_year_energy") is not None
+    assert devs.async_get_device_by_identifier((DOMAIN, f"car_insights_group_{gid}"), entry.entry_id)
     access.delete_group(conn, gid)
     ts.publish_groups()
     await hass.async_block_till_done()
     assert hass.states.get("sensor.fleet_year_energy") is None and reg.async_get("sensor.fleet_year_energy") is None
     assert not [e for e in reg.entities.values() if e.unique_id.startswith(f"car_insights_group_{gid}")]
+    assert devs.async_get_device_by_identifier((DOMAIN, f"car_insights_group_{gid}"), entry.entry_id) is None  # no empty device left behind
     ts.publish_groups()  # nothing left to remove, nothing to break
     await hass.async_block_till_done()
     await publish(hass, [("homeassistant/sensor/car1_last_trip_curve/config", "")])  # an entity that never existed
@@ -256,3 +258,42 @@ async def test_unload_then_reload_recreates_entities_with_retained_state(hass):
     await hass.async_block_till_done()
     assert hass.states.get("sensor.test_car_state_of_charge").state == "77.0"
     assert hass.states.get("device_tracker.test_car_location") is not None
+
+
+async def test_removing_one_entity_keeps_a_device_that_still_has_others(hass):
+    entry = await add_entry(hass)
+    msgs = live_config()
+    await publish(hass, msgs)
+    await publish(hass, [(next(t for t, _ in msgs if "car1_soc/" in t), "")])
+    assert hass.states.get("sensor.test_car_state_of_charge") is None and hass.states.get("sensor.test_car_speed") is not None
+    assert dr.async_get(hass).async_get_device_by_identifier((DOMAIN, "car_insights_car1"), entry.entry_id)
+
+
+async def test_groups_move_to_the_next_entry_when_theirs_unloads(hass, caplog):
+    first, second = await add_entry(hass, "car1", "Test Car"), await add_entry(hass, "car2", "Other Car")
+    conn = conn_with(("car1", "Test Car"), ("car2", "Other Car"))
+    access.create_group(conn, "Fleet")
+    TotalsSensors(conn, bridge.async_get(hass), TZ, now_ms=lambda: NOW).publish_groups()
+    await publish(hass, live_config("car1", "Test Car"))
+    reg = er.async_get(hass)
+    assert reg.async_get("sensor.fleet_month_distance").config_entry_id == first.entry_id
+    with caplog.at_level(logging.ERROR):
+        assert await hass.config_entries.async_unload(first.entry_id)
+        await hass.async_block_till_done()
+    assert reg.async_get("sensor.fleet_month_distance").config_entry_id == second.entry_id
+    assert hass.states.get("sensor.fleet_month_distance").state == "0.0"
+    assert hass.states.get("sensor.test_car_speed").state == "unavailable"  # a vehicle entity has no other home
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
+async def test_a_bad_config_does_not_stop_the_others(hass, caplog):
+    await add_entry(hass)
+    bad = [("homeassistant/sensor/car1_nodevice/config", json.dumps({"unique_id": "u1", "name": "Bad", "device": {}})),
+           ("homeassistant/sensor/car1_noname/config", json.dumps({"unique_id": "u2", "device": {"identifiers": ["car_insights_car1"], "name": "Test Car"}})),
+           ("homeassistant/sensor/car1_list/config", "[1]")]
+    with caplog.at_level(logging.WARNING):
+        await publish(hass, [*bad, *live_config()])
+        await publish(hass, [live.state_message("car1", {"soc": 5.0})])  # a later sync must not trip over the bad ones again
+        await publish(hass, [("homeassistant/sensor/car1_other/config", "{}")])
+    assert hass.states.get("sensor.test_car_state_of_charge").state == "5.0" and hass.states.get("sensor.test_car_speed") is not None
+    assert len([r for r in caplog.records if r.name == bridge.log.name and r.exc_info]) == 3  # each bad config once: later syncs forget it

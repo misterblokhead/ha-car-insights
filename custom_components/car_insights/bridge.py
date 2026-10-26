@@ -8,7 +8,7 @@ from typing import Any, Callable
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -63,13 +63,21 @@ class BridgeEntity(Entity):
 
     @callback
     def _drop(self) -> None:
-        reg = er.async_get(self.hass)
-        if self.entity_id in reg.entities:
-            reg.async_remove(self.entity_id)
+        if self.entity_id in er.async_get(self.hass).entities:
+            _unregister(self.hass, self.entity_id)
         self.hass.async_create_task(self.async_remove(force_remove=True))
 
     async def async_will_remove_from_hass(self) -> None:
         self.added = False
+
+
+def _unregister(hass: HomeAssistant, entity_id: str) -> None:
+    """Removes an entity from the registry, and its device once that has no entities left."""
+    reg = er.async_get(hass)
+    device_id = reg.entities[entity_id].device_id
+    reg.async_remove(entity_id)
+    if device_id and not er.async_entries_for_device(reg, device_id, include_disabled_entities=True):
+        dr.async_get(hass).async_remove_device(device_id)
 
 
 class Bridge:
@@ -95,7 +103,7 @@ class Bridge:
         """The platform's unload removes the entities; forget them so a reload makes them again."""
         self._adders.pop((entry.entry_id, platform), None)
         self._entities = {t: v for t, v in self._entities.items() if (v[0], t.split("/")[1]) != (entry.entry_id, platform)}
-        # shortcut: a group that lived on this entry is re-homed at the next sync, not at once; fine, discovery is repeated daily
+        self._sync()  # the groups that lived on this entry move to the next one
 
     def _handle(self, messages: list[tuple[str, str]], retain: bool) -> None:
         configs = False
@@ -115,14 +123,15 @@ class Bridge:
         _, comp, objid, _ = topic.split("/")
         if payload:
             if comp in PLATFORMS:
-                self._configs[topic] = json.loads(payload)  # shortcut: a changed config of an existing entity applies at its next creation (reload)
+                if not isinstance(cfg := json.loads(payload), dict):
+                    raise ValueError("config is no object")
+                self._configs[topic] = cfg  # shortcut: a changed config of an existing entity applies at its next creation (reload)
             return
         self._configs.pop(topic, None)
         if ent := self._entities.pop(topic, None):
             ent[1].gone = True
-        reg = er.async_get(self._hass)
-        if eid := reg.async_get_entity_id(comp, DOMAIN, f"car_insights_{objid}"):  # the platform drops a live entity on the registry event
-            reg.async_remove(eid)
+        if eid := er.async_get(self._hass).async_get_entity_id(comp, DOMAIN, f"car_insights_{objid}"):  # the platform drops a live entity on the registry event
+            _unregister(self._hass, eid)
 
     def _state(self, topic: str, payload: str, retain: bool) -> None:
         if not payload:  # the publishers clear a retained state with an empty one
@@ -142,16 +151,21 @@ class Bridge:
     def _sync(self) -> None:
         """Creates every stored config's entity that has a home and no entity yet."""
         new: dict[tuple[str, str], list[BridgeEntity]] = defaultdict(list)
-        for topic, cfg in self._configs.items():
+        for topic, cfg in list(self._configs.items()):
             comp = topic.split("/")[1]
-            home = None if topic in self._entities else self._home(comp, cfg["device"]["identifiers"][0].removeprefix("car_insights_"))
-            if home is None:
+            try:
+                home = None if topic in self._entities else self._home(comp, cfg["device"]["identifiers"][0].removeprefix("car_insights_"))
+                if home is None:
+                    continue
+                entry, add, factory = home
+                ent = factory(cfg)
+                self._warn_clash(comp, ent)
+                for t in ent.topics & self._states.keys():
+                    ent.apply(t, self._states[t])
+            except Exception:  # one bad config must not stop the others; forgotten, so the next announce can fix it
+                log.exception("Cannot make an entity from the config on %s", topic)
+                del self._configs[topic]
                 continue
-            entry, add, factory = home
-            ent = factory(cfg)
-            self._warn_clash(comp, ent)
-            for t in ent.topics & self._states.keys():
-                ent.apply(t, self._states[t])
             self._entities[topic] = (entry.entry_id, ent)
             new[entry.entry_id, comp].append(ent)
         for key, ents in new.items():
