@@ -65,7 +65,9 @@ def spot_name_at(conn, lat: float, lon: float) -> str | None:
     return spot_namer(conn)(lat, lon)
 
 
-def create_spot(conn, vid: str, start: int, name: str, per_kwh: float, start_fee: float = 0, per_min: float = 0) -> str:
+def create_spot(conn, vid: str, start: int, name: str, per_kwh: float, start_fee: float = 0, per_min: float = 0,
+                valid_from: int | None = None) -> str:
+    """a spot at the charge's point, its price valid from `valid_from` (default the charge's start)"""
     name = _name(name)
     c = store.row(conn, CHARGE, vid, start)
     if c is None:
@@ -75,7 +77,7 @@ def create_spot(conn, vid: str, start: int, name: str, per_kwh: float, start_fee
     sid = uuid.uuid4().hex[:8]
     with db.tx(conn):
         conn.execute("INSERT INTO charge_spots VALUES(?,?,?,?,?)", (sid, name, c["lat"], c["lon"], SPOT_RADIUS_M))
-        set_tariff(conn, sid, start, per_kwh, start_fee, per_min)  # a bad price rolls the spot back
+        set_tariff(conn, sid, start if valid_from is None else valid_from, per_kwh, start_fee, per_min)  # a bad price rolls the spot back
     return sid
 
 
