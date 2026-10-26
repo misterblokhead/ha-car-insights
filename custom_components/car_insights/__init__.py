@@ -12,6 +12,7 @@ from homeassistant.helpers.network import NoURLAvailableError
 
 from .const import CONF_DIR, DOMAIN, MAX_BODY, TOKEN_PATH
 from .receiver import TokenCache, body_vehicle_matches, config_file_text, forward, is_https_url, map_addon_status, read_limited, verify_signature, write_conf
+from .service import Service
 
 _LOGGER = logging.getLogger(__name__)
 _last_warn = 0.0
@@ -100,6 +101,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     text = config_file_text(url, secret, vehicle_id, entry.data["vehicle_name"])
     written = await hass.async_add_executor_job(write_conf, conf_path, text, url)
 
+    await Service.acquire(hass)  # after the last step that can fail: a failed setup is never unloaded, so it would not release
     webhook.async_register(
         hass, DOMAIN, f"Car Insights {vehicle_id}", webhook_id, handler,
         local_only=False, allowed_methods=("POST",),
@@ -119,6 +121,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     webhook.async_unregister(hass, entry.data["webhook_id"])
+    await Service.release(hass)
     return True
 
 

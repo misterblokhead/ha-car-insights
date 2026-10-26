@@ -1,4 +1,5 @@
 import json
+import math
 import sqlite3
 from contextlib import contextmanager
 from typing import Callable, Iterator, Sequence
@@ -62,6 +63,8 @@ CREATE INDEX charges_ve ON charges(vehicle_id, end);
 CREATE INDEX trips_places ON trips(vehicle_id, from_place, to_place)
 """, """
 CREATE TABLE addresses(lat4 INTEGER, lon4 INTEGER, text TEXT, looked_up_ms INTEGER NOT NULL, PRIMARY KEY(lat4, lon4))
+""", """
+CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL)
 """]
 
 
@@ -120,6 +123,18 @@ def capacity_wh(conn, vehicle_id: str, default_wh: float) -> float:
 def set_capacity_wh(conn, vehicle_id: str, wh: float) -> None:
     conn.execute("INSERT INTO vehicles(vehicle_id, usable_capacity_wh) VALUES(?,?) "
                  "ON CONFLICT(vehicle_id) DO UPDATE SET usable_capacity_wh=excluded.usable_capacity_wh", (vehicle_id, wh))
+
+
+def default_capacity_kwh(conn) -> float:
+    """Usable capacity assumed for a vehicle that has none of its own (it used to be an add-on option)."""
+    r = conn.execute("SELECT value FROM settings WHERE key='default_capacity_kwh'").fetchone()
+    return float(r[0]) if r else 60.0
+
+
+def set_default_capacity_kwh(conn, kwh: float) -> None:
+    if not (math.isfinite(kwh) and kwh > 0):
+        raise ValueError(f"default capacity must be a positive number of kWh, got {kwh!r}")
+    conn.execute("INSERT INTO settings VALUES('default_capacity_kwh',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(float(kwh)),))
 
 
 def device_info(conn, vehicle_id: str) -> tuple[str, str | None, str | None]:

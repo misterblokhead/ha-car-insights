@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from custom_components.car_insights.core.db import acked_seq, connect, ingest, latest_per_key, vehicle
+from custom_components.car_insights.core.db import acked_seq, connect, default_capacity_kwh, ingest, latest_per_key, set_default_capacity_kwh, vehicle
 from custom_components.car_insights.core.protocol import Sample
 from conftest import v6_database
 
@@ -112,11 +112,11 @@ def _version(c):
 def test_fresh_db_sets_version_and_reopen_keeps_it(tmp_path):
     path = str(tmp_path / "m.db")
     c = connect(path)
-    assert _version(c) == 8
+    assert _version(c) == 9
     assert c.execute("SELECT name FROM sqlite_master WHERE name='trip_routes'").fetchone() == ("trip_routes",)
     c.close()
     c = connect(path)
-    assert _version(c) == 8
+    assert _version(c) == 9
 
 
 def test_newer_schema_refused(tmp_path):
@@ -135,7 +135,7 @@ def test_unversioned_db_with_duplicate_gaps_is_upgraded(tmp_path):
     old.commit()
     old.close()
     c = connect(path)
-    assert c.execute("SELECT COUNT(*) FROM gaps").fetchone()[0] == 1 and _version(c) == 8
+    assert c.execute("SELECT COUNT(*) FROM gaps").fetchone()[0] == 1 and _version(c) == 9
 
 
 def test_failed_migration_rolls_back_and_keeps_version(tmp_path, monkeypatch):
@@ -273,7 +273,7 @@ def test_migration_7_recreates_derived_tables(tmp_path):
     old.close()
     c = connect(path)
     cols = lambda t: {r[1] for r in c.execute(f"PRAGMA table_info({t})")}
-    assert _version(c) == 8
+    assert _version(c) == 9
     assert {"distance_m", "net_wh", "gross_wh", "recup_wh", "duration_s", "from_lat", "from_lon", "to_lat", "to_lon", "from_place",
             "to_place", "algo", "json"} <= cols("trips")
     assert {"added_wh", "energy_source", "start_wh", "lat", "lon", "zone", "place", "algo", "json"} <= cols("charges")
@@ -286,3 +286,17 @@ def test_migration_7_recreates_derived_tables(tmp_path):
 def test_migration_8_adds_addresses(tmp_path):
     c = connect(str(tmp_path / "m.db"))
     assert [(r[1], r[5]) for r in c.execute("PRAGMA table_info(addresses)")] == [("lat4", 1), ("lon4", 2), ("text", 0), ("looked_up_ms", 0)]
+
+
+def test_default_capacity_kwh(tmp_path):
+    path = str(tmp_path / "m.db")
+    c = connect(path)
+    assert default_capacity_kwh(c) == 60.0
+    set_default_capacity_kwh(c, 52)
+    set_default_capacity_kwh(c, 41.5)
+    assert default_capacity_kwh(c) == 41.5
+    assert default_capacity_kwh(connect(path)) == 41.5  # stored, not cached
+    for bad in (0, -5, float("nan"), float("inf")):
+        with pytest.raises(ValueError):
+            set_default_capacity_kwh(c, bad)
+    assert default_capacity_kwh(c) == 41.5
