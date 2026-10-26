@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from . import access, activity, costs, db, prices, stats, store
 from .access import Viewer
 from .figures import pct, with_figures
-from .periods import local_date
+from .periods import local_date, midnight_ms
 from .zones import Zones
 from .kinds import CHARGE, TRIP, Kind
 from .protocol import fix, num
@@ -288,7 +288,9 @@ def router(conn, zones: Zones, tz, capacity: Callable[[str], float],
     @r.post("/spots")
     async def create_spot(request: Request, body: _Spot):
         await who(request, admin=True)
-        return {"id": cost_edit(prices.create_spot, conn, body.vehicle_id, body.start, body.name, body.per_kwh, body.start_fee, body.per_min, spot=True)}
+        # from the charge day's midnight, like every price on Settings: a re-derived charge may start a little earlier
+        return {"id": cost_edit(prices.create_spot, conn, body.vehicle_id, body.start, body.name, body.per_kwh, body.start_fee, body.per_min,
+                                midnight_ms(local_date(body.start, tz), tz), spot=True)}
 
     @r.put("/spots/{sid}")
     async def rename_spot(request: Request, sid: str, body: _Name):

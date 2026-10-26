@@ -438,6 +438,17 @@ def test_spot_from_charge_without_point(conn):
     assert prices.settings(conn)["spots"] == [] and not calls
 
 
+
+def test_spot_price_holds_from_the_charge_days_midnight(conn):
+    """a charge's start can move a little earlier when it is re-derived (cloud plug time): the new spot's price must still hold"""
+    start = int(datetime(2026, 10, 26, 8, 16, 53, tzinfo=TZ).timestamp() * 1000)
+    put(conn, "charges", "car1", start, start + 3_600_000, CHARGE)
+    c, _ = client(conn)
+    sid = c.post(f"{URL}/spots", json={"vehicle_id": "car1", "start": start, "name": "Work", "per_kwh": 0.21}, headers=ADMIN).json()["id"]
+    midnight = int(datetime(2026, 10, 26, tzinfo=TZ).timestamp() * 1000)
+    assert [t["valid_from"] for t in prices.settings(conn)["spots"][0]["tariffs"]] == [midnight]
+    assert prices.book(conn, "car1").tariff_at(sid, start - 28_000)["per_kwh"] == 0.21
+
 def test_spot_routes_relabel_after_the_write_and_before_on_costs(conn):
     put(conn, "charges", "car1", 1000, 2000, CHARGE)
     order = []
