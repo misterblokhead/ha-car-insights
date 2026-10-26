@@ -15,6 +15,7 @@ from .bridge import PLATFORMS
 from .const import DOMAIN, MAX_BODY
 from .receiver import body_vehicle_matches, config_file_text, is_https_url, read_limited, verify_signature, write_conf
 from .panel import async_register_http, async_register_panel, remove_panel
+from . import service as service_module
 from .service import Service
 
 _LOGGER = logging.getLogger(__name__)
@@ -91,7 +92,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass,
             "Car Insights needs an external URL for Home Assistant (Nabu Casa or your own domain) "
             "so the car can reach the webhook. Configure one; setup will retry.",
-            title="Car Insights receiver",
+            title="Car Insights",
             notification_id=f"{DOMAIN}_{vehicle_id}_nourl",
         )
         raise ConfigEntryNotReady("No external URL available") from err
@@ -100,7 +101,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass,
             f"Car Insights needs an https external URL for Home Assistant (Nabu Casa, or your own domain with TLS); "
             "the car rejects http. Fix it in Settings > System > Network; setup will retry.",
-            title="Car Insights receiver",
+            title="Car Insights",
             notification_id=f"{DOMAIN}_{vehicle_id}_nohttps",
         )
         raise ConfigEntryNotReady("External URL is not https")
@@ -110,25 +111,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     written = await hass.async_add_executor_job(write_conf, conf_path, text, url)
 
     await Service.acquire(hass)
+    forwarded = False
     try:  # a failed setup is never unloaded, so it would not release
         await async_register_http(hass)
         await async_register_panel(hass)
         # after the service started: the bridge already holds its discovery, so the entities are made here
+        forwarded = True
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
         webhook.async_register(
             hass, DOMAIN, f"Car Insights {vehicle_id}", webhook_id, handler,
             local_only=False, allowed_methods=("POST",),
         )
         if written:
+            # the add-on's file is still there on an upgrade: the entry kept its URL and secret, so the car needs nothing
+            moved = written == "created" and await hass.async_add_executor_job(Path(service_module.SHARE_DIR, "car_insights", f"{vehicle_id}.conf").exists)
             what = (
-                f"Config file for {entry.data['vehicle_name']} written to {conf_path}. Copy it to the car USB stick."
+                f"The config file for {entry.data['vehicle_name']} moved to {conf_path} (same URL and secret as the add-on's): "
+                "no new copy to the car is needed."
+                if moved
+                else f"Config file for {entry.data['vehicle_name']} written to {conf_path}. Copy it to the car USB stick."
                 if written == "created"
                 else f"The car's webhook URL changed. Copy the new {conf_path} to the USB stick and import it in the car app."
             )
             persistent_notification.async_create(
-                hass, what, title="Car Insights receiver", notification_id=f"{DOMAIN}_{vehicle_id}",
+                hass, what, title="Car Insights", notification_id=f"{DOMAIN}_{vehicle_id}",
             )
     except BaseException:
+        if forwarded:
+            await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
         await _release(hass)
         raise
     return True

@@ -71,14 +71,37 @@ def _has_samples(path: Path) -> bool:
         conn.close()
 
 
+def _merge_live(conn: sqlite3.Connection, live: Path, keep: list[str]) -> None:
+    """Add what the integration received before the import to the new database: the samples (idempotent on their key), the acks and gaps that
+    go with them (or the next batch would look like a gap) and each vehicle's newest meta. Nothing else of the live database is carried
+    (settings made in between are lost). The derived rows are all stale already: the start-up rebuild derives the merged history."""
+    conn.execute("ATTACH DATABASE ? AS live", (str(live),))
+    try:
+        marks, cols = ",".join("?" * len(keep)), "vehicle_id, source_id, seq, t, key, value_json"
+        with db.tx(conn):
+            conn.execute(f"INSERT OR IGNORE INTO samples({cols}) SELECT {cols} FROM live.samples WHERE vehicle_id IN ({marks})", keep)
+            conn.execute(f"INSERT OR IGNORE INTO gaps SELECT vehicle_id, source_id, from_seq, to_seq FROM live.gaps WHERE vehicle_id IN ({marks})", keep)
+            conn.execute(f"INSERT INTO sources(vehicle_id, source_id, type, acked_seq, last_received_ms) "
+                         f"SELECT vehicle_id, source_id, type, acked_seq, last_received_ms FROM live.sources WHERE vehicle_id IN ({marks}) "
+                         "ON CONFLICT(vehicle_id, source_id) DO UPDATE SET acked_seq=max(acked_seq, excluded.acked_seq), "
+                         "last_received_ms=max(coalesce(last_received_ms, 0), coalesce(excluded.last_received_ms, 0))", keep)
+            conn.execute(f"INSERT INTO vehicles(vehicle_id, meta_json) SELECT vehicle_id, meta_json FROM live.vehicles "
+                         f"WHERE vehicle_id IN ({marks}) AND meta_json IS NOT NULL "
+                         "ON CONFLICT(vehicle_id) DO UPDATE SET meta_json=excluded.meta_json", keep)
+    finally:
+        conn.execute("DETACH DATABASE live")
+
+
 def run(config_dir: Path, share_dir: Path, entries: dict[str, str]) -> ImportResult:
-    """Import share_dir/car_insights/export.db unless config_dir/car_insights/car_insights.db holds samples (a missing or sample-less one, such as
-    a failed import left behind, is replaced). `entries`: vehicle id -> entry id.
-    Builds the database beside its final place and moves it in only when whole; raises on any failure with nothing left behind and the export untouched."""
+    """Import share_dir/car_insights/export.db. A database in config_dir/car_insights that holds samples (the car uploaded to the integration
+    before the export arrived, or an earlier import failed) is merged in; a missing or sample-less one is replaced. `entries`: vehicle id -> entry id.
+    Builds the database beside its final place and moves it in only when whole; raises on any failure with nothing left behind, the export
+    and the live database untouched."""
     final = config_dir / "car_insights" / "car_insights.db"
     export = share_dir / "car_insights" / "export.db"
-    if not export.exists() or (final.exists() and _has_samples(final)):
+    if not export.exists():
         return ImportResult()
+    merge = final.exists() and _has_samples(final)  # an unreadable one raises here: it is never replaced
     final.parent.mkdir(parents=True, exist_ok=True)
     kwh, cloud = _options(export.with_name("export.json"), entries)
     tmp = final.with_name(final.name + ".importing")
@@ -90,6 +113,8 @@ def run(config_dir: Path, share_dir: Path, entries: dict[str, str]) -> ImportRes
         conn = db.connect(str(tmp))  # runs the migrations
         try:
             dropped = _prune(conn, list(entries))
+            if merge:
+                _merge_live(conn, final, list(entries))
         finally:
             conn.close()
         for suffix in ("-wal", "-shm", "-journal"):  # the replaced database's, never to be applied to the new one

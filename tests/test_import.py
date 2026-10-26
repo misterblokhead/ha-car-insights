@@ -19,6 +19,8 @@ from custom_components.car_insights.core.protocol import Sample
 from custom_components.car_insights.service import Service
 
 SRC = "phone-0000abcd"
+BATCH = json.dumps({"v": 1, "vehicle_id": "car1", "source_id": "car_app-0000abcd",
+                    "samples": [{"seq": 1, "t": 1_000, "k": "speed", "v": 1.0}]}).encode()
 OPTIONS = {"default_capacity_kwh": 52.5, "sources": [
     {"vehicle_id": "car1", "mapping": "renault", "entity_stem": "invented_zoe"},
     {"vehicle_id": "ghost", "mapping": "kia", "entity_stem": "invented_ev6"}]}
@@ -126,18 +128,59 @@ def test_import_skips_without_export(tmp_path, share):
     assert not (tmp_path / "car_insights" / "car_insights.db").exists()
 
 
-def test_existing_db_is_never_overwritten(tmp_path, share):
-    export = make_export(share)
-    final = tmp_path / "car_insights" / "car_insights.db"
-    final.parent.mkdir()
+def _live_db(config: Path, vehicles: tuple[str, ...] = ("car1",), source: str = "car_app-0000abcd") -> Path:
+    """the integration's database, as it is after the car uploaded to it: a sample is data"""
+    final = config / "car_insights" / "car_insights.db"
+    final.parent.mkdir(parents=True, exist_ok=True)
     conn = db.connect(str(final))
-    db.ingest(conn, "car1", SRC, _trip_samples(1_000), 2_000)  # one sample is data
+    for vid in vehicles:
+        db.ingest(conn, vid, source, [Sample(1, 5_000, "meta", {"vehicle_name": f"Live {vid}"}), Sample(2, 5_000, "speed", 3.0), Sample(3, 6_000, "speed", 4.0)], 7_000)
     conn.close()
+    return final
+
+
+def test_late_export_merges_with_live_samples(tmp_path, share):
+    export = make_export(share)
+    final = _live_db(tmp_path, ("car1", "car3"))
+    result = importer.run(tmp_path, share, {"car1": "e1", "ghost": "e2", "car3": "e3"})
+    assert result.imported and result.cloud["e1"]["mapping"] == "renault"
+    conn = db.connect(str(final))
+    rows = lambda vid, src: conn.execute("SELECT count(*) FROM samples WHERE vehicle_id=? AND source_id LIKE ?", (vid, src + "%")).fetchone()[0]
+    assert rows("car1", SRC) > 0 and rows("ghost", SRC) > 0  # the history
+    assert rows("car1", "car_app") == rows("car3", "car_app") == 3  # what the car sent meanwhile
+    assert db.vehicle(conn, "car3")["meta"] == {"vehicle_name": "Live car3"} and db.vehicle(conn, "car1")["meta"]["vehicle_name"] == "Live car1"
+    assert db.acked_seq(conn, "car1", "car_app-0000abcd") == 3  # the car's ack survives, or the next batch would look like a gap
+    assert conn.execute("SELECT count(*) FROM settings").fetchone()[0] == 0  # nothing else of the live database is carried
+    assert store.stale_vehicles(conn, ALGO) == {"car1", "ghost"}  # derived rows: marked for the rebuild (car3 has none yet)
+    conn.close()
+    assert not export.exists() and (export.parent / "export.imported.db").exists()
+    assert sorted(p.name for p in final.parent.iterdir()) == ["car_insights.db"]
+
+
+def test_late_export_merge_is_idempotent_on_the_sample_key(tmp_path, share):
+    make_export(share, options=None)
+    final = _live_db(tmp_path, source=SRC)  # the same source and seqs as the export's: its rows win, none are doubled
+    importer.run(tmp_path, share, {"car1": "e1", "ghost": "e2"})
+    conn = db.connect(str(final))
+    keys = conn.execute("SELECT count(*), count(DISTINCT source_id || seq) FROM samples WHERE vehicle_id='car1'").fetchone()
+    assert keys[0] == keys[1]
+
+
+def test_late_export_leaves_vehicles_without_entry_out(tmp_path, share):
+    make_export(share)
+    final = _live_db(tmp_path, ("car1", "stranger"))
+    importer.run(tmp_path, share, {"car1": "e1"})
+    assert _vehicle_ids(final)["samples"] == {"car1"}
+
+
+def test_a_late_export_that_breaks_leaves_the_live_database_alone(tmp_path, share):
+    export = make_export(share)
+    export.write_bytes(b"not a database" * 100)
+    final = _live_db(tmp_path)
     before = final.read_bytes()
-    result = importer.run(tmp_path, share, {"car1": "entry1"})
-    assert not result.imported
-    assert final.read_bytes() == before
-    assert export.exists() and not (export.parent / "export.imported.db").exists()
+    with pytest.raises(Exception):
+        importer.run(tmp_path, share, {"car1": "e1"})
+    assert final.read_bytes() == before and sorted(p.name for p in final.parent.iterdir()) == ["car_insights.db"]
 
 
 @pytest.mark.parametrize("break_it", ["garbage", "newer schema", "bad capacity", "bad json"])
@@ -214,6 +257,27 @@ async def test_failed_then_fixed_export_imports_on_restart(hass, share):
         assert ir.async_get(hass).async_get_issue(DOMAIN, "import_failed") is None
         count = await hass.async_add_executor_job(lambda: svc.worker.call(lambda c: c.execute("SELECT count(*) FROM samples").fetchone()[0], svc.conn).result(10))
         assert count > 0 and (export.parent / "export.imported.db").exists()
+    finally:
+        await Service.release(hass)
+
+
+async def test_failed_import_then_uploads_then_retry_merges(hass, share):
+    MockConfigEntry(domain=DOMAIN, data={"vehicle_id": "car1"}).add_to_hass(hass)
+    export = share / "car_insights" / "export.db"
+    export.write_bytes(b"not a database")
+    svc = await Service.acquire(hass)
+    assert ir.async_get(hass).async_get_issue(DOMAIN, "import_failed") is not None
+    assert (await svc.ingest(BATCH, 2_000))[0] == 200  # the car already uploads to the new URL
+    await Service.release(hass)
+    export.unlink()
+    make_export(share)  # the owner fixed the export
+    svc = await Service.acquire(hass)
+    try:
+        assert ir.async_get(hass).async_get_issue(DOMAIN, "import_failed") is None
+        count = lambda src: hass.async_add_executor_job(lambda: svc.worker.call(
+            lambda c: c.execute("SELECT count(*) FROM samples WHERE source_id LIKE ?", (src + "%",)).fetchone()[0], svc.conn).result(10))
+        assert await count("car_app") == 1 and await count(SRC) > 0  # the upload and the history
+        assert (await svc.ingest(BATCH, 3_000))[1]["acked_seq"] == 1  # the car's ack is still known
     finally:
         await Service.release(hass)
 
