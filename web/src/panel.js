@@ -6,7 +6,9 @@ import { mountApp } from "./main.js";
 // HA also sets narrow, route and panel; the page needs none of them, so they stay plain properties.
 const css = () =>
   new Promise((done) => {
-    const link = Object.assign(document.createElement("link"), { rel: "stylesheet", href: new URL(/* @vite-ignore */ "panel.css", import.meta.url).href });
+    const href = new URL(/* @vite-ignore */ "panel.css", import.meta.url);
+    href.search = new URL(import.meta.url).search; // the module's ?v=<version>: a new panel.js never pairs with a stale css
+    const link = Object.assign(document.createElement("link"), { rel: "stylesheet", href: href.href });
     link.onload = link.onerror = done; // unstyled beats blank if the css is missing
     document.head.append(link);
   });

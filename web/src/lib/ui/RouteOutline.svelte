@@ -7,16 +7,27 @@
   const map = $derived(points?.length >= 2 ? backdrop(points, width, height, 8) : null);
   const xy = $derived(map?.points ?? []);
   const first = $derived(xy[0]), last = $derived(xy[xy.length - 1]);
+
+  // the tiles are fetched (signed) only once the card is near the screen; without IntersectionObserver at once
+  let box = $state(), near = $state(typeof IntersectionObserver === "undefined");
+  $effect(() => {
+    if (near || !box) return;
+    const watch = new IntersectionObserver((seen) => seen.some((e) => e.isIntersecting) && (near = true), { rootMargin: "200px" });
+    watch.observe(box);
+    return () => watch.disconnect();
+  });
 </script>
 
 {#if map}
-  <span class="box" style:width="{width}px" style:height="{height}px">
+  <span class="box" bind:this={box} style:width="{width}px" style:height="{height}px">
     <span class="tiles" aria-hidden="true">
-      {#each map.tiles as t (`${t.x}/${t.y}`)}
-        {#await authedUrl(tileUrl(t)) then src}
-          <img {src} alt="" width="256" height="256" style:left="{t.left}px" style:top="{t.top}px" />
-        {/await}
-      {/each}
+      {#if near}
+        {#each map.tiles as t (`${t.x}/${t.y}`)}
+          {#await authedUrl(tileUrl(t)) then src}
+            <img {src} alt="" width="256" height="256" style:left="{t.left}px" style:top="{t.top}px" />
+          {/await}
+        {/each}
+      {/if}
     </span>
     <svg {width} {height} viewBox="0 0 {width} {height}" role="img" aria-label={label}>
       <polyline points={xy.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ")} />
