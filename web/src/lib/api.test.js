@@ -1,9 +1,11 @@
-import { test } from "node:test";
+import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { latest, send, setHass } from "./api.js";
 
 const reply = (status, body) => () =>
   Promise.resolve({ ok: status < 400, status, json: () => (body === undefined ? Promise.reject(new Error("no body")) : Promise.resolve(body)) });
+
+afterEach(() => setHass(undefined));
 
 test("without a hass, plain fetch gets the prefixed URL", async () => {
   setHass(undefined);
@@ -19,7 +21,6 @@ test("with a hass, fetchWithAuth gets the prefixed URL and plain fetch is not ca
   setHass({ fetchWithAuth: (u) => ((url = u), reply(400, { detail: "no" })()) });
   await assert.rejects(send("POST", "spots", {}), (e) => e.status === 400 && e.detail === "no");
   assert.equal(url, "/api/car_insights/ui/spots");
-  setHass(undefined);
 });
 
 test("error carries status and the server's detail string", async () => {

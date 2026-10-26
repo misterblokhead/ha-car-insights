@@ -1,7 +1,7 @@
 """Demo server for visual checks: the real UiApi and the built panel over an in-memory database of made-up data.
 
     wsl: cd <repo> && ~/venvs/ha-ci/bin/python dev/demo.py [frontend dir]     # http://127.0.0.1:8765/  (needs aiohttp and voluptuous)
-    DEMO_USER=u-viewer ...                                                      # the same page as a non-admin who shares both cars
+    DEMO_USER=u-viewer ...                                                      # the same page as a non-admin (u-viewer shares both cars)
 
 Two cars and a cost group: 10 days of Home / Work / Shop trips with GPS routes (the same drives repeat, so similar trips exist),
 one trip to a place outside every zone, an open trip, charges timed by the car and by the cloud, and one cloud charge whose
@@ -227,7 +227,8 @@ INDEX = """<!doctype html>
 def main(frontend: Path) -> None:
     now = int(time.time() * 1000)
     png = _grid_png()
-    viewer = access.Viewer("u-viewer", "Demo Viewer", False) if os.environ.get("DEMO_USER") == "u-viewer" else access.Viewer("u-admin", "Demo Admin", True)
+    user = os.environ.get("DEMO_USER", "u-admin")
+    viewer = access.Viewer("u-admin", "Demo Admin", True) if user == "u-admin" else access.Viewer(user, "Demo Viewer", False)
 
     async def start(app):  # the connection is made on the loop's thread, where every handler runs
         conn = db.connect(":memory:")

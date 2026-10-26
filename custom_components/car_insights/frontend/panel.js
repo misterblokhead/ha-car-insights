@@ -3572,7 +3572,7 @@ function ec(e) {
 		return URL.createObjectURL(await e.blob());
 	}), t.catch(() => $s.get(e) === t && $s.delete(e)), $s.set(e, t), $s.size > Qs)) {
 		let [e, t] = $s.entries().next().value;
-		$s.delete(e), t.then(URL.revokeObjectURL, () => {});
+		$s.delete(e), t.then((e) => setTimeout(() => URL.revokeObjectURL(e), 0), () => {});
 	}
 	return t;
 }
@@ -10667,7 +10667,7 @@ function Np(e, t) {
 	tt(t, !0);
 	let n = jp.default.TileLayer.extend({ createTile(e, t) {
 		let n = document.createElement("img");
-		return ec(this.getTileUrl(e)).then((e) => (n.src = e, t(null, n)), (e) => t(e, n)), n;
+		return n.alt = "", jp.default.DomEvent.on(n, "load", jp.default.Util.bind(this._tileOnLoad, this, t, n)), jp.default.DomEvent.on(n, "error", jp.default.Util.bind(this._tileOnError, this, t, n)), ec(this.getTileUrl(e)).then((e) => n.src = e, (e) => t(e, n)), n;
 	} }), r = ba(t, "lines", 19, () => []), i = ba(t, "dots", 19, () => []), a = ba(t, "label", 3, "Map"), o = /* @__PURE__ */ U(void 0);
 	kn(() => {
 		let e = getComputedStyle(Y(o)), t = (t) => e.getPropertyValue(`--${t}`).trim(), a = matchMedia("(pointer: coarse)").matches, s = jp.default.map(Y(o), {

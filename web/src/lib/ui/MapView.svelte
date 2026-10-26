@@ -8,7 +8,10 @@
   const SignedTiles = L.TileLayer.extend({
     createTile(coords, done) {
       const img = document.createElement("img");
-      authedUrl(this.getTileUrl(coords)).then((src) => ((img.src = src), done(null, img)), (e) => done(e, img));
+      img.alt = "";
+      L.DomEvent.on(img, "load", L.Util.bind(this._tileOnLoad, this, done, img));
+      L.DomEvent.on(img, "error", L.Util.bind(this._tileOnError, this, done, img));
+      authedUrl(this.getTileUrl(coords)).then((src) => (img.src = src), (e) => done(e, img));
       return img;
     },
   });

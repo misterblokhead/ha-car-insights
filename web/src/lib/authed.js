@@ -17,7 +17,7 @@ export function authedUrl(url) {
     if (cache.size > MAX) {
       const [oldest, old] = cache.entries().next().value;
       cache.delete(oldest);
-      old.then(URL.revokeObjectURL, () => {}); // still pending: revoked once it lands
+      old.then((u) => setTimeout(() => URL.revokeObjectURL(u), 0), () => {}); // still pending: revoked once it lands, after its consumer had a tick to use it
     }
   }
   return p;
