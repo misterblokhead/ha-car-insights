@@ -61,12 +61,23 @@ def _prune(conn: sqlite3.Connection, keep: list[str]) -> set[str]:
     return dropped
 
 
+def _has_samples(path: Path) -> bool:
+    conn = sqlite3.connect(path)  # a normal connection: closing it last clears the WAL a crash left
+    try:
+        return conn.execute("SELECT 1 FROM samples LIMIT 1").fetchone() is not None
+    except sqlite3.OperationalError:  # no samples table: nothing of the owner's in it
+        return False
+    finally:
+        conn.close()
+
+
 def run(config_dir: Path, share_dir: Path, entries: dict[str, str]) -> ImportResult:
-    """Import share_dir/car_insights/export.db when config_dir/car_insights/car_insights.db does not exist yet. `entries`: vehicle id -> entry id.
+    """Import share_dir/car_insights/export.db unless config_dir/car_insights/car_insights.db holds samples (a missing or sample-less one, such as
+    a failed import left behind, is replaced). `entries`: vehicle id -> entry id.
     Builds the database beside its final place and moves it in only when whole; raises on any failure with nothing left behind and the export untouched."""
     final = config_dir / "car_insights" / "car_insights.db"
     export = share_dir / "car_insights" / "export.db"
-    if final.exists() or not export.exists():
+    if not export.exists() or (final.exists() and _has_samples(final)):
         return ImportResult()
     final.parent.mkdir(parents=True, exist_ok=True)
     kwh, cloud = _options(export.with_name("export.json"), entries)
@@ -81,6 +92,8 @@ def run(config_dir: Path, share_dir: Path, entries: dict[str, str]) -> ImportRes
             dropped = _prune(conn, list(entries))
         finally:
             conn.close()
+        for suffix in ("-wal", "-shm", "-journal"):  # the replaced database's, never to be applied to the new one
+            final.with_name(final.name + suffix).unlink(missing_ok=True)
         os.replace(tmp, final)
     except BaseException:
         for p in (tmp, *sidecars):

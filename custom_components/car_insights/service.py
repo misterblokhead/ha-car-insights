@@ -122,6 +122,9 @@ class Service:
             ir.async_delete_issue(hass, DOMAIN, "import_failed")  # a retry that worked
         for entry_id, cloud in self.imported.cloud.items():
             entry = hass.config_entries.async_get_entry(entry_id)
+            if entry is None:
+                log.warning("Not applying the imported cloud source: its entry was removed meanwhile")
+                continue
             hass.config_entries.async_update_entry(entry, options={**entry.options, "cloud": cloud})
 
     async def _stop(self) -> None:

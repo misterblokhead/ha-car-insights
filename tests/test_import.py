@@ -135,10 +135,13 @@ def test_existing_db_is_never_overwritten(tmp_path, share):
     export = make_export(share)
     final = tmp_path / "car_insights" / "car_insights.db"
     final.parent.mkdir()
-    final.write_bytes(b"the owner's database")
+    conn = db.connect(str(final))
+    db.ingest(conn, "car1", SRC, _trip_samples(1_000), 2_000)  # one sample is data
+    conn.close()
+    before = final.read_bytes()
     result = importer.run(tmp_path, share, {"car1": "entry1"})
     assert not result.imported
-    assert final.read_bytes() == b"the owner's database"
+    assert final.read_bytes() == before
     assert export.exists() and not (export.parent / "export.imported.db").exists()
 
 
@@ -201,18 +204,44 @@ async def test_broken_export_raises_repair_and_starts_empty(hass, share):
         await Service.release(hass)
 
 
-async def test_retry_after_failure_clears_the_issue(hass, share):
+async def test_failed_then_fixed_export_imports_on_restart(hass, share):
+    MockConfigEntry(domain=DOMAIN, data={"vehicle_id": "car1"}).add_to_hass(hass)
     export = share / "car_insights" / "export.db"
     export.write_bytes(b"not a database")
     await Service.acquire(hass)
     assert ir.async_get(hass).async_get_issue(DOMAIN, "import_failed") is not None
     await Service.release(hass)
-    Path(hass.config.path("car_insights", "car_insights.db")).unlink()  # the owner fixed the export and removed the empty start
+    assert Path(hass.config.path("car_insights", "car_insights.db")).exists()  # the empty start
     export.unlink()
+    make_export(share)  # the owner fixed the export
+    svc = await Service.acquire(hass)
+    try:
+        assert ir.async_get(hass).async_get_issue(DOMAIN, "import_failed") is None
+        count = await hass.async_add_executor_job(lambda: svc.worker.call(lambda c: c.execute("SELECT count(*) FROM samples").fetchone()[0], svc.conn).result(10))
+        assert count > 0 and (export.parent / "export.imported.db").exists()
+    finally:
+        await Service.release(hass)
+
+
+def test_empty_database_is_replaced(tmp_path, share):
     make_export(share)
+    final = tmp_path / "car_insights" / "car_insights.db"
+    final.parent.mkdir()
+    db.connect(str(final)).close()  # migrated, no samples
+    final.with_name(final.name + "-wal").write_bytes(b"stale")  # a crash's leftover must not meet the new file
+    assert importer.run(tmp_path, share, {"car1": "e"}).imported
+    assert sorted(p.name for p in final.parent.iterdir()) == ["car_insights.db"]
+    assert _vehicle_ids(final)["samples"] == {"car1"}
+
+
+async def test_removed_entry_is_skipped(hass, share, monkeypatch, caplog):
+    make_export(share)
+    entry = MockConfigEntry(domain=DOMAIN, data={"vehicle_id": "car1"})
+    entry.add_to_hass(hass)
+    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda entry_id: None)
     await Service.acquire(hass)
-    assert ir.async_get(hass).async_get_issue(DOMAIN, "import_failed") is None
     await Service.release(hass)
+    assert "removed meanwhile" in caplog.text and "cloud" not in entry.options
 
 
 SECRET = "invented-secret-0123"
