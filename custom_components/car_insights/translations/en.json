@@ -2,19 +2,104 @@
   "config": {
     "step": {
       "user": {
-        "title": "Add a vehicle",
+        "title": "Add a car",
         "data": {
-          "vehicle_id": "Vehicle ID (letters, digits, - and _)",
-          "vehicle_name": "Vehicle name"
+          "vehicle_name": "Car name",
+          "source": "How does Car Insights get this car's data?"
+        },
+        "sections": {
+          "advanced": {
+            "name": "Advanced",
+            "data": {
+              "vehicle_id": "Car ID (letters, digits, - and _)"
+            },
+            "data_description": {
+              "vehicle_id": "Leave empty to use the car's name as its ID."
+            }
+          }
+        }
+      },
+      "cloud_device": {
+        "title": "Pick the car's device",
+        "description": "Pick the device of your car's Home Assistant integration."
+      },
+      "cloud_entities": {
+        "title": "Match the car's entities",
+        "description": "Recognised integration: {preset}. Car Insights filled in the entities it recognised: check them and pick the rest. Battery level and odometer are required, the other readings are optional. The capacity is the car's usable battery capacity.",
+        "data": {
+          "charge_level": "Battery level",
+          "odometer": "Odometer",
+          "range": "Range",
+          "location": "Location",
+          "charging": "Charging",
+          "plugged": "Plugged in",
+          "battery_energy": "Battery energy",
+          "speed": "Speed",
+          "ignition": "Ignition",
+          "report_time": "Report time",
+          "capacity_kwh": "Battery capacity (kWh)"
         }
       }
     },
     "error": {
       "invalid_vehicle_id": "Use 1-64 letters, digits, - or _.",
-      "invalid_vehicle_name": "The name must be a single line."
+      "invalid_vehicle_name": "The name must be a single line.",
+      "vehicle_id_taken": "Another car already uses this ID.",
+      "entity_not_in_registry": "This entity has no unique ID, so Car Insights cannot follow it. Pick an entity that can be managed in the UI."
     },
     "abort": {
       "already_configured": "This vehicle is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Car Insights",
+        "menu_options": {
+          "cloud_device": "Change the car's integration entities",
+          "remove_cloud": "Stop reading the car's integration"
+        }
+      },
+      "cloud_device": {
+        "title": "Change the car's integration entities",
+        "description": "Pick the device of your car's Home Assistant integration."
+      },
+      "cloud_add": {
+        "title": "Add your car's integration",
+        "description": "Pick the device of your car's Home Assistant integration."
+      },
+      "cloud_entities": {
+        "title": "Match the car's entities",
+        "description": "Recognised integration: {preset}. Car Insights filled in the entities it recognised: check them and pick the rest. Battery level and odometer are required, the other readings are optional. The capacity is the car's usable battery capacity.",
+        "data": {
+          "charge_level": "Battery level",
+          "odometer": "Odometer",
+          "range": "Range",
+          "location": "Location",
+          "charging": "Charging",
+          "plugged": "Plugged in",
+          "battery_energy": "Battery energy",
+          "speed": "Speed",
+          "ignition": "Ignition",
+          "report_time": "Report time",
+          "capacity_kwh": "Battery capacity (kWh)"
+        }
+      }
+    },
+    "error": {
+      "invalid_vehicle_id": "Use 1-64 letters, digits, - or _.",
+      "invalid_vehicle_name": "The name must be a single line.",
+      "vehicle_id_taken": "Another car already uses this ID.",
+      "entity_not_in_registry": "This entity has no unique ID, so Car Insights cannot follow it. Pick an entity that can be managed in the UI."
+    }
+  },
+  "selector": {
+    "source": {
+      "options": {
+        "car_app": "Car app (Android Automotive)",
+        "cloud": "My car's Home Assistant integration",
+        "both": "Both"
+      }
     }
   },
   "issues": {

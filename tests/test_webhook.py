@@ -223,15 +223,6 @@ async def test_remove_entry_deletes_the_conf(hass, env):
     assert not conf.exists() and _threads() == []
 
 
-async def test_flow_has_no_addon_url(hass, env):
-    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
-    assert set(result["data_schema"].schema) == {"vehicle_id", "vehicle_name"}
-    with patch("custom_components.car_insights.async_setup_entry", return_value=True):
-        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"vehicle_id": "car1", "vehicle_name": "Invented car"})
-    assert result["type"] == "create_entry"
-    assert set(result["data"]) == {"vehicle_id", "vehicle_name", "webhook_id", "secret"}
-
-
 async def test_the_first_bad_signature_is_warned_whatever_the_uptime(caplog, monkeypatch):
     monkeypatch.setattr(integration, "_last_warn", float("-inf"))  # what a fresh start holds
     monkeypatch.setattr(integration.time, "monotonic", lambda: 5.0)  # five seconds after boot

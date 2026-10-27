@@ -1,15 +1,34 @@
-"""Home Assistant's side of a cloud source: a device's registry entries, entity ids as registry ids, the 1.0.0 options and the poller's conf."""
+"""Home Assistant's side of a cloud source: a device's registry entries, entity ids as registry ids, the 1.0.0 options, the poller's conf and the flows' schemas."""
 import logging
+import math
 
+import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.selector import (
+    DeviceSelector, DeviceSelectorConfig, EntitySelector, EntitySelectorConfig, NumberSelector, NumberSelectorConfig, NumberSelectorMode)
 
-from .core.ha_entities import LEGACY
+from .core.ha_entities import LEGACY, REQUIRED
 from .core.poller import SourceConf, legacy_source_id
 from .core.presets import PRESETS, RegEntry
 
 log = logging.getLogger(__name__)
+
+DEFAULT_CAPACITY_KWH = 60.0
+# reading -> the entity filters of its picker (any one fits), in the order the form lists them
+ENTITY_FILTERS: dict[str, list[dict]] = {
+    "charge_level": [{"domain": "sensor", "device_class": "battery"}],
+    "odometer": [{"domain": "sensor", "device_class": "distance"}],
+    "range": [{"domain": "sensor", "device_class": "distance"}],
+    "location": [{"domain": "device_tracker"}],
+    "charging": [{"domain": "binary_sensor", "device_class": "battery_charging"}, {"domain": "sensor"}],
+    "plugged": [{"domain": "binary_sensor", "device_class": "plug"}, {"domain": "sensor"}],
+    "battery_energy": [{"domain": "sensor", "device_class": ["energy_storage", "energy"]}],
+    "speed": [{"domain": "sensor", "device_class": "speed"}],
+    "ignition": [{"domain": "binary_sensor", "device_class": ["power", "moving", "running"]}],
+    "report_time": [{"domain": "sensor", "device_class": "timestamp"}],
+}
 
 
 def device_entries(hass: HomeAssistant, device_id: str) -> tuple[str | None, list[RegEntry]]:
@@ -30,7 +49,8 @@ def to_registry_ids(hass: HomeAssistant, entity_ids: dict[str, str]) -> dict[str
 
 
 def to_entity_ids(hass: HomeAssistant, registry_ids: dict[str, str]) -> dict[str, str]:
-    """reading -> registry id into reading -> entity id; a removed entity is left out"""
+    """reading -> registry id into reading -> entity id; a reading it cannot resolve is left out: a removed entity, or an entity id a converted
+    1.0.0 entry could not resolve"""
     reg = er.async_get(hass)
     return {r: e.entity_id for r, rid in registry_ids.items() if (e := reg.async_get(rid)) is not None}
 
@@ -62,3 +82,29 @@ def source_conf(entry: ConfigEntry) -> SourceConf | None:
     except (KeyError, TypeError, ValueError):
         log.warning("Skipping the cloud source of %s: its options do not fit", entry.title)
         return None
+
+
+def device_schema() -> vol.Schema:
+    """The device picker: devices that have a tracker or a battery sensor."""
+    cars = [{"domain": "device_tracker"}, {"domain": "sensor", "device_class": "battery"}]
+    return vol.Schema({vol.Required("device_id"): DeviceSelector(DeviceSelectorConfig(entity=cars))})
+
+
+def entities_schema() -> vol.Schema:
+    """One entity picker per reading, then the battery capacity."""
+    pickers = {(vol.Required if r in REQUIRED else vol.Optional)(r): EntitySelector(EntitySelectorConfig(filter=f)) for r, f in ENTITY_FILTERS.items()}
+    capacity = NumberSelector(NumberSelectorConfig(min=5, max=200, step=0.1, unit_of_measurement="kWh", mode=NumberSelectorMode.BOX))
+    return vol.Schema({**pickers, vol.Required("capacity_kwh"): capacity})
+
+
+def capacity_default(hass: HomeAssistant, entry: RegEntry | None, current: float | None) -> float:
+    """kWh: the integration's capacity entity when it has a usable number (kWh, or Wh), else the entry's current capacity, else 60"""
+    if entry is not None and (state := hass.states.get(entry.entity_id)) is not None:
+        factor = {"kWh": 1, "Wh": 0.001}.get(state.attributes.get("unit_of_measurement"))
+        try:
+            kwh = round(float(state.state) * factor, 1) if factor else math.nan
+        except ValueError:
+            kwh = math.nan
+        if 5 <= kwh <= 200:
+            return kwh
+    return current if isinstance(current, (int, float)) and 5 <= current <= 200 else DEFAULT_CAPACITY_KWH
