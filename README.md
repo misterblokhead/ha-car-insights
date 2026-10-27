@@ -1,92 +1,49 @@
 # Car Insights for Home Assistant
 
-A Home Assistant integration that receives raw car data over an HMAC-signed webhook, stores it in SQLite, and gives you live sensors (status, speed, state of charge, range, power, plugged, location, ...) plus a **Car Insights** sidebar page.
+Car Insights records your car's trips, charges and costs in Home Assistant. It works for any car: from your car's own Home Assistant integration (Renault, Peugeot, Kia and more) or from an optional Android Automotive car app.
 
-Two parts:
+![Activity: trips and charges on one timeline](docs/images/activity.png)
+![A trip with its route and curves](docs/images/trip.png)
+![Statistics per week, month and year](docs/images/statistics.png)
 
-- `custom_components/car_insights/`: the integration (this repository, installed through HACS).
-- The car app: a separate project that runs on the car's head unit and sends the data. Any sender that follows [docs/protocol.md](docs/protocol.md) works.
+## What you get
 
-## Sidebar page
-
-The **Car Insights** sidebar page (`/car_insights`) has Activity (one timeline of trips and charges with route outlines, detail pages with curves), Statistics (week, month, year) and Settings. Vehicles can be put in cost groups (month and year totals per group) and a vehicle group, and viewers choose which HA users see which vehicles and groups; HA admins edit these on the page's Settings. Every user sees only what they may see. A ready-made dashboard is in [dashboard/car-insights.yaml](dashboard/car-insights.yaml).
+- **Activity**: one timeline of your trips and charges, with route outlines and a page per trip or charge.
+- **Statistics**: distance, energy and cost per week, month and year.
+- **Costs**: your electricity prices, charge locations, card fees and fixed costs such as insurance.
+- **Live sensors** in Home Assistant: charge level, range, plug, location and more, plus *Trip ended* and *Charge ended* events for automations.
+- **Several cars and several people**: group cars for shared totals, and choose who sees which car.
+- A **ready-made dashboard**.
 
 ## Requirements
 
-- Home Assistant 2026.9 or newer.
-- An https external URL for Home Assistant (your own domain with TLS), or Nabu Casa (the integration then uses a cloudhook, `https://hooks.nabu.casa/...`). The car app needs it to reach Home Assistant. Set it in Settings > System > Network before you add a vehicle: until then the integration waits and the `.conf` file does not appear.
+Home Assistant 2026.9 or newer.
 
-## Install from HACS
+## Install
 
-1. In HACS, open the menu (the three dots, top right) > **Custom repositories**, add `https://github.com/misterblokhead/ha-car-insights` with type **Integration**, then install **Car Insights** and restart Home Assistant.
-   Manual alternative: copy `custom_components/car_insights` into your HA `custom_components` directory.
-2. Settings > Devices & services > Add integration > **Car Insights**. Enter the vehicle's name, optionally its ID under **Advanced** (it defaults to the name), and choose where the car's data comes from (see [Cars without the car app](#cars-without-the-car-app)). Add the integration once per vehicle.
-3. For a car with the car app, the integration writes the app's config file to `/config/car_insights/<vehicle_id>.conf` and shows a notification saying so. It holds the webhook URL and the secret. Copy it to the car's USB stick for the car app. A car with only its Home Assistant integration gets no `.conf`.
+1. In HACS, open the menu (three dots, top right) > **Custom repositories**, add `https://github.com/misterblokhead/ha-car-insights` with type **Integration**, then download **Car Insights**.
+2. Restart Home Assistant.
+3. Click the button to add your first car:
 
-All data lives in `/config/car_insights/car_insights.db`, so it is included in Home Assistant backups.
+[![Open your Home Assistant instance and start setting up Car Insights.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=car_insights)
 
-## Cars without the car app
+Then follow [Getting started](docs/getting-started.md).
 
-A car that has no car app (or whose app you do not want) can still be added, from its own Home Assistant integration.
+## Guides
 
-1. Settings > Devices & services > Add integration > **Car Insights**, enter the car's name, then under "How does Car Insights get this car's data?" choose **Car app (Android Automotive)**, **My car's Home Assistant integration** or **Both**.
-2. For the integration, pick the car's device and confirm the entities. **Charge level** and **Odometer** are required; **Location**, **Charging**, **Plugged in**, **Battery energy**, **Range**, **Speed**, **Driving / ignition** and **Report time** are optional. For a car without the car app, then enter its usable battery capacity in kWh (the car app learns it for the others).
-   - Renault and Stellantis devices are recognized and their entities are filled in for you. For any other car, pick the entities yourself. The entity lists show matching entities from every device, so check the preset's choices.
-3. The integration's **Configure** button adds, changes or removes the car's integration source later.
+- [Getting started](docs/getting-started.md): install, add your first car, the checklist.
+- [Cars and data sources](docs/cars.md): your car's integration, the car app, which readings you need.
+- [Costs](docs/costs.md): prices, charge locations, cost groups, fixed costs.
+- [Sharing](docs/sharing.md): administrators, other users, groups.
+- [Sensors and dashboard](docs/sensors-and-dashboard.md): live sensors, events, the dashboard.
+- [Managing cars](docs/managing-cars.md): add, remove, archive, delete.
+- [Troubleshooting](docs/troubleshooting.md): no data, repairs, backups, uninstalling.
+- [Protocol](docs/protocol.md): for building your own sender.
+- [Development](docs/development.md): running the tests and building the panel.
 
-What you get:
+## Help
 
-- **A car with the car app** takes trips only from the car app. Its integration source adds charge level, charging, plug and odometer.
-- **A car with the integration only** gets approximate trips: distance, times, battery used, cost and a rough route. There is no driving style, and no speed or consumption curves. The trip page says "From your car's cloud data, approximate".
-- **Missing entities.** If an entity is removed or renamed, a repair says "some car data is missing". If Charge level or Odometer is missing, the car's cloud data is paused until you fix it. Nothing is lost: it catches up on up to 10 days.
-- **No data.** A car with only the integration and no new data for 7 days shows "No data since <date>" on its page. Stellantis cars stop being connected after 7 days without a trip of more than 15 minutes, so a parked Stellantis car shows this until you drive it.
-
-Upgrading from 1.0.0: a car-app vehicle's Renault cloud options are converted on the first start. The converted source keeps the same id, so nothing is read twice, and entity ids and stored data are unchanged. Take a Home Assistant backup before updating; going back to 1.0.0 means restoring it. A 1.0.0 cloud source that cannot be converted is dropped with a warning in the log; add it again in Configure.
-
-## Managing cars
-
-Only administrators can add, remove or delete a car's history.
-
-- **Add car** is on the Car Insights page under Settings. It opens Home Assistant's own Add integration dialog for Car Insights.
-- **Remove car** asks **Keep its history** or **Delete everything**. Keeping archives the car: its trips, charges and costs stay in Activity, Statistics and its cost group's totals. **Delete everything** cannot be undone.
-- **Archived** cars are listed under the active cars. **Delete history** removes an archived car's stored history for good.
-- Removing a car in Settings > Devices & services also keeps its history, and a repair offers to delete it or keep it.
-- Adding a car with the same vehicle ID again continues its archived history, and clears that repair.
-
-## Moving from the add-on
-
-1. Update the add-on to 0.11.0.
-2. Open the add-on's page, Settings, and press **Export for the integration**. This stops the add-on's MQTT sensors. Do this while the car is off (see below).
-3. Install the integration from HACS (see above) and restart Home Assistant. On first start it imports `/share/car_insights/export.db`. Your existing receiver entries stay, so keep them: a vehicle without an entry is not imported, and one with a cloud source (`sources` option) but no entry is dropped with its history.
-4. If the import fails, a repair appears. Restart Home Assistant to retry.
-5. Check the Car Insights page and the sensors.
-6. Remove the add-on, and Mosquitto if nothing else uses it.
-7. Delete the old `/share/car_insights/` folder. It holds an old copy of the car's secret and the internal token.
-
-Things to know:
-
-- **Order.** Exporting first, then updating, is the order to prefer. A late export still works: if the integration already received samples from the car, the import merges them into the history. Only the samples are carried (with their acknowledgements and each vehicle's name); settings made in the integration in the meantime (prices, groups, viewers, costs) are not. A failed import followed by uploads from the car and a fixed retry merges the same way.
-- **Samples sent in between.** What the car sent to the add-on after the export is not in the export. It is kept only if the add-on did not acknowledge it, because then the car sends it again. Do the move while the car is off.
-- **First start.** The history is derived again from the samples, so a warning that Home Assistant's setup is taking over 10 seconds is expected, once.
-- **Breaking: entities.** The sensors come back on the same entity IDs only where you never renamed them. Renamed entity IDs, names, areas, icons and disabled flags of the old MQTT devices do not carry over, and neither do device-based automation triggers, conditions and actions (the ones picked from a device in the UI). Check the automations that used them.
-
-## Development
-
-Tests run with `pytest-homeassistant-custom-component` (it pulls in Home Assistant), on Linux or WSL (Home Assistant does not run on Windows):
-
-```sh
-pip install -r tests/requirements.txt
-python -m pytest tests
-```
-
-The panel in `web/` is tested and built with npm:
-
-```sh
-cd web
-npm ci
-npm test
-npm run build
-```
+Found a bug or have a question? [Open an issue](https://github.com/misterblokhead/ha-car-insights/issues).
 
 ## License
 
