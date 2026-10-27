@@ -55,9 +55,11 @@ class _CloudSteps:
             entities = to_registry_ids(self.hass, picked)
             errors = {r: "entity_not_in_registry" for r in picked if r not in entities}  # one the registry lacks cannot be tracked
             if not errors:
+                # the same entities on another device (the integration was removed and added again) are still the same source
+                same_source = same_device or to_entity_ids(self.hass, entities) == to_entity_ids(self.hass, self._current.get("entities") or {})
                 return await self._save({
                     "preset": preset, "device_id": self._device_id, "entities": entities,
-                    "source_id": self._current.get("source_id") if same_device and self._current.get("source_id")
+                    "source_id": self._current["source_id"] if same_source and self._current.get("source_id")
                     else new_source_id(self._vehicle_id(), self._device_id),
                     **({} if car_app else {"capacity_kwh": user_input["capacity_kwh"]})})
             values = user_input

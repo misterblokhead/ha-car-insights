@@ -249,6 +249,17 @@ async def test_options_keep_source_id_when_the_device_is_unchanged(hass):
     assert entry.options["cloud"]["source_id"] == new_source_id("car1", other.device.id)
 
 
+async def test_options_keep_the_source_id_when_the_same_entities_come_back_on_another_device(hass):
+    car, readded = make_car(hass), make_car(hass, stem="invented_readded")  # the integration was removed and added again: a new device
+    picks = stellantis_picks(car)
+    entry = cloud_only_entry(hass, {"preset": "stellantis", "device_id": car.device.id, "source_id": "ha_entities-keepme", "capacity_kwh": 44.4,
+                                    "entities": {r: er.async_get(hass).async_get(e).id for r, e in picks.items()}})
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"device_id": readded.device.id})
+    await hass.config_entries.options.async_configure(result["flow_id"], picks | {"capacity_kwh": 44.4})
+    assert entry.options["cloud"]["device_id"] == readded.device.id and entry.options["cloud"]["source_id"] == "ha_entities-keepme"
+
+
 async def test_options_suggest_the_saved_capacity_before_the_integrations(hass):
     car = make_car(hass)
     hass.states.async_set(car.ents["battery_capacity"].entity_id, "50.8", {"unit_of_measurement": "kWh"})
