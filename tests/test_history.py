@@ -20,4 +20,4 @@ async def test_history_shape(recorder_mock, hass):
     assert all(set(row) <= {"entity_id", "state", "last_changed"} for rows in got for row in rows)
     assert [r["state"] for r in got[0]] == ["50", "55", "60"]
     parsed = parse_history(got)  # what the poller does with it
-    assert [s for _, s in parsed[eid]] == ["50", "55", "60"] and [s for _, s in parsed[other]] == ["unplugged"]
+    assert [s for _, s, _ in parsed[eid]] == ["50", "55", "60"] and [s for _, s, _ in parsed[other]] == ["unplugged"]

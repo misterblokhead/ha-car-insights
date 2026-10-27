@@ -11,7 +11,7 @@ _VEHICLE_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 class CarInsightsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    VERSION = 1
+    VERSION = 2  # 2: the cloud options name a device and registry ids (1: {"mapping", "entity_stem"})
 
     async def async_step_user(self, user_input=None):
         errors = {}

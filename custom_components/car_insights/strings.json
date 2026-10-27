@@ -21,6 +21,14 @@
     "import_failed": {
       "title": "The add-on's export could not be imported",
       "description": "Car Insights could not import the export of the Car Insights add-on, so it started with an empty database. The error was: {error}\n\nThe export file (/share/car_insights/export.db) is untouched. Fix the cause and restart Home Assistant to try again. The retry adds the export to the database: the car data received meanwhile is kept, but settings made in the meantime (prices, groups, viewers, costs) are not carried over."
+    },
+    "cloud_entity_missing": {
+      "title": "{vehicle}: some car data is missing",
+      "description": "Car Insights can no longer find these entities of {vehicle}: {readings}. They were probably removed or their integration was. Pick them again in Settings > Devices & services > Car Insights > Configure."
+    },
+    "cloud_entity_missing_required": {
+      "title": "{vehicle}: Car Insights paused its cloud data",
+      "description": "Car Insights can no longer find these entities of {vehicle}: {readings}. Without them it has paused reading this car's cloud data; nothing is lost, it catches up on up to 10 days once you pick them again in Settings > Devices & services > Car Insights > Configure."
     }
   }
 }

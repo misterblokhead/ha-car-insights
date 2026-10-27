@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 import pytest
-from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers import device_registry as dr, entity_registry as er, issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.car_insights import importer, service
@@ -16,6 +16,7 @@ from custom_components.car_insights.const import DOMAIN
 from custom_components.car_insights.core import db, store
 from custom_components.car_insights.core.derive import ALGO
 from custom_components.car_insights.core.kinds import TRIP
+from custom_components.car_insights.core.poller import legacy_source_id
 from custom_components.car_insights.core.protocol import Sample
 from custom_components.car_insights.service import Service
 
@@ -205,6 +206,11 @@ def test_broken_export_leaves_nothing_behind(tmp_path, share, break_it):
 
 
 async def test_service_imports_and_rederives(hass, share):
+    cfg = MockConfigEntry(domain="renault")
+    cfg.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(config_entry_id=cfg.entry_id, identifiers={("renault", "invented_zoe")})
+    battery = er.async_get(hass).async_get_or_create("sensor", "renault", "invented-zoe-battery", suggested_object_id="invented_zoe_battery",
+                                                     config_entry=cfg, device_id=device.id)
     entry = MockConfigEntry(domain=DOMAIN, data={"vehicle_id": "car1"}, options={"keep": 1})
     entry.add_to_hass(hass)
     other = MockConfigEntry(domain=DOMAIN, data={"vehicle_id": "car2"}, options={})  # no source in the export
@@ -212,9 +218,9 @@ async def test_service_imports_and_rederives(hass, share):
     export = make_export(share)
     svc = await Service.acquire(hass)
     try:
-        assert entry.options == {"keep": 1, "cloud": {"mapping": "renault", "entity_stem": "invented_zoe"}}
+        assert entry.options == {"keep": 1, "cloud": {  # the imported options arrive converted, with the add-on's source id
+            "preset": "renault", "device_id": device.id, "entities": {"charge_level": battery.id}, "source_id": legacy_source_id("renault", "invented_zoe")}}
         assert other.options == {}
-        assert svc.confs[0].mapping == "renault"  # the poller is built from the imported options
         assert ir.async_get(hass).async_get_issue(DOMAIN, "import_failed") is None
 
         def look(conn):
@@ -381,7 +387,8 @@ async def test_fresh_install_starts_empty(enable_custom_integrations, hass, shar
     assert ir.async_get(hass).async_get_issue(DOMAIN, "import_failed") is None
     admin = await hass_client()
     activity = "/api/car_insights/ui/activity?view=v:car1"
-    assert (await admin.get(activity)).status == 404  # nothing stored: the vehicle is not known yet
+    empty = await admin.get(activity)  # nothing stored, but the entry's vehicle is known from its setup on
+    assert empty.status == 200 and (await empty.json())["days"] == []
     t0 = int(time.time() * 1000) - 200_000
     body = json.dumps({"v": 1, "vehicle_id": "car1", "source_id": SRC, "samples": [
         {"seq": s.seq, "t": s.t, "k": s.k, "v": s.v} for s in [*_trip_samples(t0), Sample(500, t0, "meta", {"vehicle_name": "Invented car"})]]}).encode()
