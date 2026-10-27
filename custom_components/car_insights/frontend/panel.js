@@ -12586,7 +12586,7 @@ var rg = (e) => $r(ng, { target: e }), ig = () => new Promise((e) => {
 	});
 	n.onload = n.onerror = e, document.head.append(n);
 });
-customElements.define("car-insights-panel", class extends HTMLElement {
+addEventListener("click", (e) => e.target.closest?.("a[href^=\"#\"]:not([target])")?.setAttribute("target", "_self"), !0), customElements.define("car-insights-panel", class extends HTMLElement {
 	#e = !1;
 	set hass(e) {
 		d(e), !this.#e && (this.#e = !0, this.style.display = "block", this.style.height = "100%", ig().then(() => {

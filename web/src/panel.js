@@ -13,6 +13,10 @@ const css = () =>
     document.head.append(link);
   });
 
+// HA's iframe loader takes over every same-origin link click and routes it in HA's window, so the page's "#/…" routes never reach
+// this frame. It leaves a link that has a target alone: mark ours _self (the default) before the click reaches its listener on <body>.
+addEventListener("click", (e) => e.target.closest?.('a[href^="#"]:not([target])')?.setAttribute("target", "_self"), true);
+
 customElements.define(
   "car-insights-panel",
   class extends HTMLElement {
