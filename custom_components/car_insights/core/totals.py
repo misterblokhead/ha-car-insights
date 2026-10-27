@@ -13,6 +13,7 @@ def sums(conn, vids: list[str], lo: int, hi: int, tz: tzinfo, now_ms: int) -> di
     """Closed trips and charges of `vids` starting in [lo, hi): the one query behind the sensors and the Statistics page."""
     # a null counts as 0 in the sums only
     d, n, nt = store.sums(conn, TRIP, vids, lo, hi, ("distance_m", "net_wh"))
+    known = [(r["distance_m"] or 0, r["net_wh"]) for r in store.in_range(conn, TRIP, vids, lo, hi) if r["net_wh"] is not None]  # consumption counts measured trips only
     a, nc = store.sums(conn, CHARGE, vids, lo, hi, ("added_wh",))
     try:
         cost = costs.period_costs(conn, vids, lo, hi, tz, now_ms)
@@ -20,7 +21,7 @@ def sums(conn, vids: list[str], lo: int, hi: int, tz: tzinfo, now_ms: int) -> di
         log.exception("totals cost failed")
         cost = {"energy": None, "fixed": None, "total": None, "uncosted": None}
     return {"distance_m": float(d), "net_wh": float(n), "charged_wh": float(a), "trips": nt, "charges": nc, "cost": cost,
-            "wh_per_100km": wh_per_100km(d, n)}
+            "wh_per_100km": wh_per_100km(sum(m for m, _ in known) if known else None, sum(w for _, w in known))}
 
 
 def totals(conn, vids: list[str], now_ms: int, tz: tzinfo) -> dict:

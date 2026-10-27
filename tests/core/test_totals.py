@@ -106,3 +106,21 @@ def test_a_trip_with_unmeasured_energy_adds_distance_and_no_energy():
     c = conn_with(trips=[("a", s, s + 1000, 10_000.0, 2000.0), ("a", s + 5000, s + 6000, 26_000.0, None)])
     m = totals(c, ["a"], NOW, TZ)["month"]
     assert (m["distance_m"], m["net_wh"], m["trips"]) == (36_000, 2000, 2)
+
+
+def test_consumption_counts_only_trips_with_measured_energy():
+    s = ms(2026, 10, 5, 8)
+    c = conn_with(trips=[("a", s, s + 1000, 10_000.0, 2000.0), ("a", s + 5000, s + 6000, 26_000.0, None)])
+    assert totals(c, ["a"], NOW, TZ)["month"]["wh_per_100km"] == approx(20_000)  # 2000 Wh over the 10 km measured, not 36 km
+
+
+def test_consumption_is_unknown_when_no_trip_has_energy():
+    s = ms(2026, 10, 5, 8)
+    c = conn_with(trips=[("a", s, s + 1000, 26_000.0, None)])
+    assert totals(c, ["a"], NOW, TZ)["month"]["wh_per_100km"] is None
+
+
+def test_consumption_with_all_energy_known_is_total_energy_over_total_distance():
+    s = ms(2026, 10, 5, 8)
+    c = conn_with(trips=[("a", s, s + 1000, 10_000.0, 2000.0), ("a", s + 5000, s + 6000, 30_000.0, 6000.0)])
+    assert totals(c, ["a"], NOW, TZ)["month"]["wh_per_100km"] == approx(20_000)
