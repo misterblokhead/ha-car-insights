@@ -128,3 +128,29 @@ def test_device_omits_none_and_template_goes_unknown():
 
 def test_soc_needs_finite_capacity():
     assert "soc" not in snapshot(st(battery_wh=1.0), float("inf"))
+
+
+def test_cloud_only_snapshot_from_cloud_keys():
+    s = LiveState()
+    apply(s, [Sample(1, 1000, "soc_percent", 64.04), Sample(2, 1000, "plug_state", True), Sample(3, 1000, "charging_state", True)], 1000)
+    snap = snapshot(s, 50_000)
+    assert snap["soc"] == 64.0 and snap["plugged"] == "ON" and snap["status"] == "charging"
+
+
+@pytest.mark.parametrize("vals,status", [
+    ({"ignition": 4, "speed": 0.0}, "driving"),
+    ({"speed": 2.0, "charging_state": True}, "driving"),
+    ({"ignition": 2, "speed": 0.0, "charging_state": False}, "parked"),
+    ({"plug_state": True}, "parked"),
+])
+def test_cloud_status(vals, status):
+    assert snapshot(st(**vals), 50_000)["status"] == status
+
+
+def test_cloud_plug_state_false_is_off():
+    assert snapshot(st(plug_state=False), 50_000)["plugged"] == "OFF"
+
+
+def test_car_snapshot_unchanged_when_gear_present():
+    snap = snapshot(st(gear=4, charging_state=True, soc_percent=50.0, battery_wh=30000.0), 60000.0)
+    assert snap["status"] == "parked" and snap["soc"] == 50.0

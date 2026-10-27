@@ -18,6 +18,7 @@ from .protocol import fix, num
 
 log = logging.getLogger(__name__)
 RAW_SPAN_MS = 86_400_000
+SILENT_MS = 7 * 86_400_000  # a cloud-only car quiet this long shows "No data since"
 
 
 class ApiError(Exception):
@@ -186,16 +187,18 @@ class UiApi:
 
     def _vehicle_card(self, vid: str, now: int) -> dict:
         conn = self.conn
-        got = db.latest_at_or_before(conn, vid, now, ("battery_wh", "range_m", "gps"))
+        got = db.latest_at_or_before(conn, vid, now, ("battery_wh", "range_m", "gps", "soc_percent"))
         wh, cap, pos = got.get("battery_wh"), self.capacity(vid), fix(got.get("gps"))
+        updated = conn.execute("SELECT MAX(t) FROM samples WHERE vehicle_id=? AND t<=? AND key NOT IN ('meta','gap')", (vid, now)).fetchone()[0]
+        status = ("no_data" if updated is not None and updated < now - SILENT_MS and db.is_cloud_only(conn, vid)
+                  else "driving" if store.has_open(conn, TRIP, vid) else "charging" if store.has_open(conn, CHARGE, vid) else "parked")
         return {
             "id": vid, "name": db.device_info(conn, vid)[0],
-            "status": "driving" if store.has_open(conn, TRIP, vid) else "charging" if store.has_open(conn, CHARGE, vid) else "parked",
-            "battery_wh": wh, "soc_percent": pct(wh, cap),
+            "status": status,
+            "battery_wh": wh, "soc_percent": pct(wh, cap) if wh is not None else pct(num(got.get("soc_percent")), 100),
             "range_m": got.get("range_m"),
             "position": None if pos is None else {"lat": pos[0], "lon": pos[1], "place": self.zones(*pos)},
-            "updated": conn.execute("SELECT MAX(t) FROM samples WHERE vehicle_id=? AND t<=? AND key NOT IN ('meta','gap')",
-                                    (vid, now)).fetchone()[0],
+            "updated": updated,
         }
 
     def _detail(self, kind: Kind, viewer: Viewer, vid: str, start: int) -> tuple[dict, dict | None]:
