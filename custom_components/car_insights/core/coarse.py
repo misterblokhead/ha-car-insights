@@ -120,10 +120,14 @@ def _build(samples: list[Sample], seed: dict[str, Any], span: Span, capacity_wh:
         route += [f for s in samples if s.k == "gps" and start <= s.t and (cut is None or s.t <= cut) and (f := fix(s.v))]
         distance = sum(_haversine_m(*a, *b) for a, b in zip(route, route[1:]))
 
-    wh0, wh1 = reading("battery_wh", num, before=start), reading("battery_wh", num, upto=cut)
-    if wh0 is None or wh1 is None:
-        soc0, soc1 = reading("soc_percent", num, before=start), reading("soc_percent", num, upto=cut)
-        wh0, wh1 = (None, None) if soc0 is None or soc1 is None else (soc0 / 100 * capacity_wh, soc1 / 100 * capacity_wh)
+    def energy(k: str, scale: float) -> tuple[float | None, float | None]:
+        """start and end energy from reading k; the cloud refreshes some readings only after parking, so equal ends over a trip are not measured"""
+        a, b = reading(k, num, before=start), reading(k, num, upto=cut)
+        return (None, None) if a is None or b is None or (a == b and distance > 0) else (a * scale, b * scale)
+
+    wh0, wh1 = energy("battery_wh", 1)
+    if wh0 is None:
+        wh0, wh1 = energy("soc_percent", capacity_wh / 100)
 
     duration = (last - start) / 1000
     speeds = [v for s in samples if s.k == "speed" and start <= s.t <= last and (v := num(s.v)) is not None]

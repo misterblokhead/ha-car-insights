@@ -99,3 +99,10 @@ def test_null_distance_counts_as_zero():
     c = conn_with(trips=[("a", s, s + 1000, 10_000.0, 2000.0), ("a", s + 5000, s + 6000, None, None)])
     m = totals(c, ["a"], NOW, TZ)["month"]
     assert (m["distance_m"], m["net_wh"], m["trips"], m["wh_per_100km"]) == (10_000, 2000, 2, 20_000)
+
+
+def test_a_trip_with_unmeasured_energy_adds_distance_and_no_energy():
+    s = ms(2026, 10, 5, 8)
+    c = conn_with(trips=[("a", s, s + 1000, 10_000.0, 2000.0), ("a", s + 5000, s + 6000, 26_000.0, None)])
+    m = totals(c, ["a"], NOW, TZ)["month"]
+    assert (m["distance_m"], m["net_wh"], m["trips"]) == (36_000, 2000, 2)

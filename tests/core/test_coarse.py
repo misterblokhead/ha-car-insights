@@ -169,3 +169,26 @@ def test_a_restart_after_the_old_close_time_but_inside_ten_minutes_is_one_trip_i
     both = [*first, s(T0 + 25 * MIN, "ignition", 4), s(T0 + 30 * MIN, "odometer_km", 1010.0), s(T0 + 40 * MIN, "odometer_km", 1012.4), s(T0 + 40 * MIN, "ignition", 2)]
     (t,) = find_cloud_trips(both, {}, True, 60_000, T0 + 51 * MIN)
     assert (t.start, t.end) == (T0, T0 + 40 * MIN) and t.distance_m == pytest.approx(12_400)
+
+
+def test_an_unchanged_battery_reading_over_a_trip_is_not_measured_energy():  # the cloud updates it some time after parking
+    (t,) = find_cloud_trips(ign_trace(T0, T0 + 20 * MIN, odo=(1000.0, 1026.0), wh=(41_500, 41_500)), {}, True, 52_000, T0 + 30 * MIN)
+    assert t.distance_m == pytest.approx(26_000)
+    assert (t.start_wh, t.end_wh, t.net_wh, t.gross_wh, t.recup_wh) == (None, None, None, None, None)
+
+
+def test_an_unchanged_battery_reading_falls_back_to_soc_when_that_changed():
+    samples = [*ign_trace(T0, T0 + 20 * MIN, odo=(1000.0, 1026.0), wh=(41_500, 41_500)), s(T0 - MIN, "soc_percent", 70), s(T0 + 21 * MIN, "soc_percent", 64)]
+    (t,) = find_cloud_trips(sorted(samples, key=lambda x: (x.t, x.seq)), {}, True, 52_000, T0 + 30 * MIN)
+    assert t.net_wh == pytest.approx(3120)
+
+
+def test_unchanged_battery_and_soc_readings_are_no_energy():
+    samples = [*ign_trace(T0, T0 + 20 * MIN, odo=(1000.0, 1026.0), wh=(41_500, 41_500)), s(T0 - MIN, "soc_percent", 70), s(T0 + 21 * MIN, "soc_percent", 70)]
+    (t,) = find_cloud_trips(sorted(samples, key=lambda x: (x.t, x.seq)), {}, True, 52_000, T0 + 30 * MIN)
+    assert (t.start_wh, t.end_wh, t.net_wh) == (None, None, None)
+
+
+def test_a_changed_battery_reading_is_the_energy():
+    (t,) = find_cloud_trips(ign_trace(T0, T0 + 20 * MIN, odo=(1000.0, 1026.0), wh=(41_500, 37_600)), {}, True, 52_000, T0 + 30 * MIN)
+    assert t.net_wh == 3900
