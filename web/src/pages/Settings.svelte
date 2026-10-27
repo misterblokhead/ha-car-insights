@@ -103,9 +103,14 @@
     if (await change(() => send("PUT", "onboarding", { hidden: false }))) location.hash = "#/activity";
   };
 
-  // the route's section (#/settings/prices) comes into view once its heading is on the page
+  // the route's section (#/settings/prices) comes into view once its heading is on the page, once: a reload after a save must not scroll back
+  let scrolledTo = null;
   $effect(() => {
-    if (data && section) document.getElementById(section)?.scrollIntoView();
+    if (!section) scrolledTo = null;
+    else if (data && section !== scrolledTo) {
+      scrolledTo = section;
+      document.getElementById(section)?.scrollIntoView();
+    }
   });
 
   load();
