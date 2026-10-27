@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -8,7 +9,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.car_insights.cloud_setup import ENTITY_FILTERS
-from custom_components.car_insights.const import DOMAIN
+from custom_components.car_insights.const import DOCS, DOMAIN
 from custom_components.car_insights.core.ha_entities import READINGS
 from custom_components.car_insights.core.poller import new_source_id
 
@@ -118,7 +119,7 @@ async def test_cloud_flow_with_a_stellantis_device_prefills_and_stores_registry_
     result = await begin(hass, "cloud")
     assert result["step_id"] == "cloud_device"
     result = await pick_device(hass, result, car)
-    assert result["step_id"] == "cloud_entities" and result["description_placeholders"] == {"preset": "Stellantis"}
+    assert result["step_id"] == "cloud_entities" and result["description_placeholders"] == {"preset": "Stellantis", "docs": DOCS + "cars.md#readings"}
     assert suggested(result) == stellantis_picks(car) | {"capacity_kwh": 50.8}
     result = await hass.config_entries.flow.async_configure(result["flow_id"], stellantis_picks(car) | {"capacity_kwh": 50.8})
     assert result["type"] == "create_entry"
@@ -141,7 +142,7 @@ async def test_capacity_in_wh_is_converted_and_an_unusable_state_falls_back(hass
 async def test_cloud_flow_with_an_unknown_integration_opens_the_manual_step(hass):
     car = make_car(hass, "invented_brand", [("sensor", "soc"), ("sensor", "odo")])
     result = await pick_device(hass, await begin(hass, "cloud"), car)
-    assert result["step_id"] == "cloud_entities" and result["description_placeholders"] == {"preset": "none"}
+    assert result["step_id"] == "cloud_entities" and result["description_placeholders"] == {"preset": "none", "docs": DOCS + "cars.md#readings"}
     assert suggested(result) == {"capacity_kwh": 60}
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"charge_level": car.ents["soc"].entity_id, "odometer": car.ents["odo"].entity_id, "capacity_kwh": 40})
@@ -296,3 +297,49 @@ def test_device_pickers_have_a_label():
 
 def test_strings_and_translations_are_identical():
     assert json.loads(STRINGS.read_text()) == json.loads(EN.read_text())
+
+
+async def _walk_forms(hass):
+    """Every form of the config flow and of the options flow, as (flow kind, step id, placeholders)."""
+    car = make_car(hass)
+    forms = []
+
+    def seen(kind, result):
+        forms.append((kind, result["step_id"], result["description_placeholders"]))
+
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    seen("config", result)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"vehicle_name": "Invented Car", "source": "cloud", "advanced": {}})
+    seen("config", result)
+    seen("config", await pick_device(hass, result, car))
+    # a car-app car without cloud options opens cloud_add; one that already has some is a menu, and its device step is cloud_device
+    for entry in (app_entry(hass), app_entry(hass, {"device_id": car.device.id, "entities": {}, "source_id": "x"})):
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        if result["type"] == "menu":
+            result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "cloud_device"})
+        seen("options", result)
+        seen("options", await hass.config_entries.options.async_configure(result["flow_id"], {"device_id": car.device.id}))
+        await hass.config_entries.async_remove(entry.entry_id)
+    return forms
+
+
+async def test_every_form_gets_the_docs_link(hass):
+    forms = await _walk_forms(hass)
+    assert {step for _, step, _ in forms} == {"user", "cloud_device", "cloud_entities", "cloud_add"}
+    for _, step, placeholders in forms:
+        assert placeholders["docs"].startswith(DOCS), step
+    pages = {step: placeholders["docs"] for _, step, placeholders in forms}
+    assert pages == {"user": DOCS + "cars.md", "cloud_device": DOCS + "cars.md#pick-the-device",
+                     "cloud_entities": DOCS + "cars.md#readings", "cloud_add": DOCS + "cars.md#pick-the-device"}
+
+
+async def test_placeholders_in_strings_are_provided(hass):
+    strings = json.loads(STRINGS.read_text())
+    for kind, step, placeholders in await _walk_forms(hass):
+        description = strings["config" if kind == "config" else "options"]["step"][step].get("description", "")
+        assert set(re.findall(r"\{(\w+)\}", description)) <= set(placeholders), (kind, step)
+
+
+def test_success_text_exists():
+    assert json.loads(STRINGS.read_text())["config"]["create_entry"]["default"] == "Open Car Insights in the sidebar to finish setting up."

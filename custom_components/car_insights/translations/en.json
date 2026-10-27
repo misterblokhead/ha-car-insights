@@ -3,6 +3,7 @@
     "step": {
       "user": {
         "title": "Add a car",
+        "description": "Add one car at a time. [How Car Insights gets data]({docs})",
         "data": {
           "vehicle_name": "Car name",
           "source": "How does Car Insights get this car's data?"
@@ -21,14 +22,14 @@
       },
       "cloud_device": {
         "title": "Pick the car's device",
-        "description": "Pick the device of your car's Home Assistant integration.",
+        "description": "Pick the device of your car's Home Assistant integration. [Help]({docs})",
         "data": {
           "device_id": "Device"
         }
       },
       "cloud_entities": {
         "title": "Match the car's entities",
-        "description": "Preset: {preset}. A preset fills in the entities it knows for your car's integration: check them and pick the rest yourself. Charge level and Odometer are required, the other readings are optional. The capacity is the car's usable battery capacity.",
+        "description": "Preset: {preset}. A preset fills in the entities it knows for your car's integration: check them and pick the rest yourself. Charge level and Odometer are needed; the other readings make trips better. The capacity is the car's usable battery capacity. [Which reading is which]({docs})",
         "data": {
           "charge_level": "Charge level",
           "odometer": "Odometer",
@@ -54,6 +55,9 @@
     },
     "abort": {
       "already_configured": "This vehicle is already configured."
+    },
+    "create_entry": {
+      "default": "Open Car Insights in the sidebar to finish setting up."
     }
   },
   "options": {
@@ -67,21 +71,21 @@
       },
       "cloud_device": {
         "title": "Change the car's integration entities",
-        "description": "Pick the device of your car's Home Assistant integration.",
+        "description": "Pick the device of your car's Home Assistant integration. [Help]({docs})",
         "data": {
           "device_id": "Device"
         }
       },
       "cloud_add": {
         "title": "Add your car's integration",
-        "description": "Pick the device of your car's Home Assistant integration.",
+        "description": "Pick the device of your car's Home Assistant integration. [Help]({docs})",
         "data": {
           "device_id": "Device"
         }
       },
       "cloud_entities": {
         "title": "Match the car's entities",
-        "description": "Preset: {preset}. A preset fills in the entities it knows for your car's integration: check them and pick the rest yourself. Charge level and Odometer are required, the other readings are optional. The capacity is the car's usable battery capacity.",
+        "description": "Preset: {preset}. A preset fills in the entities it knows for your car's integration: check them and pick the rest yourself. Charge level and Odometer are needed; the other readings make trips better. The capacity is the car's usable battery capacity. [Which reading is which]({docs})",
         "data": {
           "charge_level": "Charge level",
           "odometer": "Odometer",
@@ -104,8 +108,8 @@
   "selector": {
     "source": {
       "options": {
-        "car_app": "Car app (Android Automotive)",
-        "cloud": "My car's Home Assistant integration",
+        "car_app": "Car app: an Android Automotive car with the Car Insights app (not publicly available yet)",
+        "cloud": "My car's Home Assistant integration: your car already shows up in Home Assistant (Renault, Peugeot, Kia…)",
         "both": "Both"
       }
     }

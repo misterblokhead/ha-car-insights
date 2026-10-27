@@ -5,7 +5,7 @@
   "codeowners": ["@misterblokhead"],
   "config_flow": true,
   "dependencies": ["webhook", "http", "frontend"],
-  "documentation": "https://github.com/misterblokhead/ha-car-insights",
+  "documentation": "https://github.com/misterblokhead/ha-car-insights/blob/main/docs/getting-started.md",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/misterblokhead/ha-car-insights/issues",
   "requirements": [],

@@ -10,11 +10,17 @@ from homeassistant.util import slugify
 
 from .cloud_setup import (
     ENTITY_FILTERS, capacity_default, device_entries, device_schema, entities_schema, has_car_app, to_entity_ids, to_registry_ids)
-from .const import DOMAIN
+from .const import DOCS, DOMAIN
 from .core.poller import new_source_id
 from .core.presets import PRESETS, capacity_entry, match
 
 _VEHICLE_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+_DOCS_PAGES = {"user": "cars.md", "cloud_device": "cars.md#pick-the-device", "cloud_add": "cars.md#pick-the-device", "cloud_entities": "cars.md#readings"}
+
+
+def _docs(step_id: str) -> dict:
+    """The help link a step's description shows (URLs may not be written into translation strings)."""
+    return {"docs": DOCS + _DOCS_PAGES[step_id]}
 
 
 class _CloudSteps:
@@ -43,7 +49,7 @@ class _CloudSteps:
             return await self.async_step_cloud_entities()
         current = self._current.get("device_id")
         return self.async_show_form(step_id=step_id, data_schema=self.add_suggested_values_to_schema(
-            device_schema(), {"device_id": current} if current else None))
+            device_schema(), {"device_id": current} if current else None), description_placeholders=_docs(step_id))
 
     async def async_step_cloud_entities(self, user_input=None):
         preset, matched = match(self._integration, self._entries)
@@ -69,7 +75,7 @@ class _CloudSteps:
                 values["capacity_kwh"] = capacity_default(self.hass, capacity_entry(self._integration, self._entries), self._current.get("capacity_kwh"))
         return self.async_show_form(
             step_id="cloud_entities", data_schema=self.add_suggested_values_to_schema(entities_schema(not car_app), values), errors=errors,
-            description_placeholders={"preset": PRESETS[self._integration].label if preset else "none"})
+            description_placeholders={"preset": PRESETS[self._integration].label if preset else "none", **_docs("cloud_entities")})
 
 
 class CarInsightsConfigFlow(_CloudSteps, config_entries.ConfigFlow, domain=DOMAIN):
@@ -117,7 +123,7 @@ class CarInsightsConfigFlow(_CloudSteps, config_entries.ConfigFlow, domain=DOMAI
             vol.Required("source", default="car_app"): sources,
             vol.Required("advanced"): section(vol.Schema({vol.Optional("vehicle_id"): str}), {"collapsed": True}),
         })
-        return self.async_show_form(step_id="user", data_schema=self.add_suggested_values_to_schema(schema, user_input), errors=errors)
+        return self.async_show_form(step_id="user", data_schema=self.add_suggested_values_to_schema(schema, user_input), errors=errors, description_placeholders=_docs("user"))
 
 
 class CarInsightsOptionsFlow(_CloudSteps, config_entries.OptionsFlow):
