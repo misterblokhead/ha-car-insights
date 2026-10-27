@@ -43,6 +43,16 @@ What you get:
 
 Upgrading from 1.0.0: a car-app vehicle's Renault cloud options are converted on the first start. The converted source keeps the same id, so nothing is read twice, and entity ids and stored data are unchanged. Take a Home Assistant backup before updating; going back to 1.0.0 means restoring it. A 1.0.0 cloud source that cannot be converted is dropped with a warning in the log; add it again in Configure.
 
+## Managing cars
+
+Only administrators can add, remove or delete a car's history.
+
+- **Add car** is on the Car Insights page under Settings. It opens Home Assistant's own Add integration dialog for Car Insights.
+- **Remove car** asks **Keep its history** or **Delete everything**. Keeping archives the car: its trips, charges and costs stay in Activity, Statistics and its cost group's totals. **Delete everything** cannot be undone.
+- **Archived** cars are listed under the active cars. **Delete history** removes an archived car's stored history for good.
+- Removing a car in Settings > Devices & services also keeps its history, and a repair offers to delete it or keep it.
+- Adding a car with the same vehicle ID again continues its archived history, and clears that repair.
+
 ## Moving from the add-on
 
 1. Update the add-on to 0.11.0.
