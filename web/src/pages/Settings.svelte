@@ -103,13 +103,15 @@
     if (await change(() => send("PUT", "onboarding", { hidden: false }))) location.hash = "#/activity";
   };
 
-  // the route's section (#/settings/prices) comes into view once its heading is on the page, once: a reload after a save must not scroll back
+  // the route's section (#/settings/prices) comes into view and gets focus once its heading is on the page, once: a reload after a save must not scroll back
   let scrolledTo = null;
   $effect(() => {
     if (!section) scrolledTo = null;
     else if (data && section !== scrolledTo) {
       scrolledTo = section;
-      document.getElementById(section)?.scrollIntoView();
+      const heading = document.getElementById(section);
+      heading?.scrollIntoView();
+      heading?.focus({ preventScroll: true }); // keyboard and screen reader users land at the section too
     }
   });
 
@@ -141,7 +143,7 @@
   <Prices {data} {change} />
 
   {@const cars = splitCars(data.vehicles)}
-  <h2 id="cars">Cars</h2>
+  <h2 id="cars" tabindex="-1">Cars</h2>
   <p class="note caption">Users appear here after they open this page once. Administrators always see every car.</p>
   <div class="row"><button class="press" type="button" disabled={busy} bind:this={addCar} onclick={() => navigateHa(ADD_CAR_PATH)}>Add car</button></div>
   {#each cars.active as v (v.id)}

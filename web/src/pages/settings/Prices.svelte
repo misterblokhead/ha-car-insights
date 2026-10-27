@@ -47,7 +47,7 @@
   {/if}
 {/snippet}
 
-<h2 id="prices">Prices</h2>
+<h2 id="prices" tabindex="-1">Prices</h2>
 <p class="note caption">A new price counts from its date.</p>
 <div class="list card">
   {#each defaults as d (d.id)}
