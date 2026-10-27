@@ -20,27 +20,33 @@ def _save(conn, row: dict) -> None:
     conn.execute("INSERT INTO settings VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (KEY, json.dumps(row)))
 
 
-def _row(conn) -> dict | None:
+def _row(conn, cars: dict[str, dict]) -> dict:
+    """The stored row over the defaults (a value that is missing or malformed is the default; a row that is not JSON is missing).
+    A missing row is decided here, whoever asks first: an install that already has data and a price starts hidden."""
     got = conn.execute("SELECT value FROM settings WHERE key=?", (KEY,)).fetchone()
-    return None if got is None else json.loads(got[0])
+    try:
+        stored = json.loads(got[0]) if got else None
+    except ValueError:
+        stored = None
+    if not isinstance(stored, dict):
+        row = {"opened": [], "hidden": _price_set(conn) and any(_has_data(conn, vid) for vid in cars)}
+        _save(conn, row)
+        return row
+    opened = stored.get("opened")
+    return {"opened": [s for s in STEPS_OPENED if isinstance(opened, list) and s in opened],
+            "hidden": stored["hidden"] if isinstance(stored.get("hidden"), bool) else False}
 
 
 def state(conn, cars: dict[str, dict]) -> dict:
-    """`cars`: vehicle id -> {"source", "missing_entities"} of the cars that have a config entry (an archived car is none of them).
-    The first read of an install decides `hidden` for good: one that already has data and a price needs no checklist."""
+    """`cars`: vehicle id -> {"source", "missing_entities"} of the cars that have a config entry (an archived car is none of them)."""
     listed = sorted(({"id": vid, "name": db.device_info(conn, vid)[0], "source": c["source"], "has_data": _has_data(conn, vid),
                       "missing_entities": c["missing_entities"]} for vid, c in cars.items()), key=lambda c: (c["name"].casefold(), c["id"]))
-    price_set = _price_set(conn)
-    row = _row(conn)
-    if row is None:
-        row = {"opened": [], "hidden": price_set and any(c["has_data"] for c in listed)}
-        _save(conn, row)
-    return {"cars": listed, "price_set": price_set, **row}
+    return {"cars": listed, "price_set": _price_set(conn), **_row(conn, cars)}
 
 
-def update(conn, opened: str | None = None, hidden: bool | None = None) -> None:
+def update(conn, cars: dict[str, dict], opened: str | None = None, hidden: bool | None = None) -> None:
     """Record that a step's link was opened, or hide or show the card; the caller has validated the values."""
-    row = _row(conn) or {"opened": [], "hidden": False}
+    row = _row(conn, cars)
     if opened is not None:
         row["opened"] = [s for s in STEPS_OPENED if s == opened or s in row["opened"]]
     if hidden is not None:

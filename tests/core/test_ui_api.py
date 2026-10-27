@@ -636,3 +636,18 @@ async def test_put_onboarding_rejects_bad_bodies(conn):
     for body in ({"opened": "prices"}, {}, {"opened": "viewers", "hidden": True}, {"hidden": "yes"}, {"hidden": 1}, {"opened": ["viewers"]}, None, ["hidden"]):
         assert (await c.put("/onboarding", body)).status_code == 422, body
     assert (await c.get("/onboarding", ADMIN)).json()["opened"] == []
+
+
+async def test_put_onboarding_before_any_get_still_starts_an_existing_install_hidden(conn):
+    db.ingest(conn, "car1", "src", [s(NOW - 1_000, "battery_wh", 30_000)], NOW)
+    prices.set_tariff(conn, "ac", 0, 0.3)
+    c, _ = client(conn, cars=lambda: CARS)
+    r = await c.put("/onboarding", {"opened": "viewers"})
+    assert (r.status_code, r.json()["opened"], r.json()["hidden"]) == (200, ["viewers"], True)
+
+
+async def test_onboarding_routes_survive_a_row_that_is_not_json(conn):
+    conn.execute("INSERT INTO settings VALUES('onboarding', '{oops')")
+    c, _ = client(conn, cars=lambda: CARS)
+    assert (await c.get("/onboarding", ADMIN)).status_code == 200
+    assert (await c.put("/onboarding", {"hidden": True})).json()["hidden"] is True

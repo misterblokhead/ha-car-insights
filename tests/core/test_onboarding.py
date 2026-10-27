@@ -60,12 +60,37 @@ def test_archived_cars_do_not_count(conn):
 
 
 def test_update_opened_and_hidden(conn):
-    onboarding.update(conn, opened="dashboard")
-    onboarding.update(conn, opened="viewers")
-    onboarding.update(conn, opened="viewers")
+    onboarding.update(conn, CARS, opened="dashboard")
+    onboarding.update(conn, CARS, opened="viewers")
+    onboarding.update(conn, CARS, opened="viewers")
     assert onboarding.state(conn, CARS)["opened"] == ["viewers", "dashboard"]  # once each, in step order
-    onboarding.update(conn, hidden=True)
+    onboarding.update(conn, CARS, hidden=True)
     got = onboarding.state(conn, CARS)
     assert got["hidden"] is True and got["opened"] == ["viewers", "dashboard"]
-    onboarding.update(conn, hidden=False)
+    onboarding.update(conn, CARS, hidden=False)
     assert onboarding.state(conn, CARS)["hidden"] is False
+
+
+def test_update_before_any_read_still_decides_hidden(conn):
+    sample(conn, "car1", "soc_percent")
+    prices.set_tariff(conn, "ac", 0, 0.3)
+    onboarding.update(conn, CARS, opened="viewers")
+    got = onboarding.state(conn, CARS)
+    assert got["hidden"] is True and got["opened"] == ["viewers"]
+
+
+@pytest.mark.parametrize("stored", ["{not json", "[]", "null", '{"hidden": true}', '{"opened": "viewers", "hidden": "yes"}',
+                                    '{"opened": ["viewers", "prices", 3], "hidden": false}'])
+def test_a_damaged_row_still_gives_a_working_state_and_can_be_updated(conn, stored):
+    conn.execute("INSERT INTO settings VALUES(?,?)", (onboarding.KEY, stored))
+    got = onboarding.state(conn, CARS)
+    assert isinstance(got["opened"], list) and set(got["opened"]) <= set(onboarding.STEPS_OPENED) and isinstance(got["hidden"], bool)
+    onboarding.update(conn, CARS, opened="dashboard")
+    assert "dashboard" in onboarding.state(conn, CARS)["opened"]
+
+
+def test_a_row_missing_a_key_keeps_the_other_key(conn):
+    conn.execute("INSERT INTO settings VALUES(?,?)", (onboarding.KEY, '{"hidden": true}'))
+    assert onboarding.state(conn, CARS)["hidden"] is True
+    conn.execute("UPDATE settings SET value=? WHERE key=?", ('{"opened": ["dashboard"]}', onboarding.KEY))
+    assert onboarding.state(conn, CARS)["opened"] == ["dashboard"]

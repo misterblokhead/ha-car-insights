@@ -269,7 +269,7 @@ class UiApi:
 
     @_admin
     def _put_onboarding(self, viewer, p, q, body):
-        onboarding.update(self.conn, **_body(_ONBOARDING, body))
+        onboarding.update(self.conn, self.cars(), **_body(_ONBOARDING, body))
         return onboarding.state(self.conn, self.cars())
 
     @_admin
