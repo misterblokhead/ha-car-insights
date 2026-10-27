@@ -18,6 +18,7 @@ from custom_components.car_insights.const import DOMAIN
 from custom_components.car_insights.core import pipeline, store
 from custom_components.car_insights.core.derive import ALGO
 from custom_components.car_insights.core.kinds import TRIP
+from custom_components.car_insights.service import Service
 
 UI = "/api/car_insights/ui"
 
@@ -207,6 +208,38 @@ async def test_an_upload_arriving_while_its_car_is_deleted_stores_nothing(hass, 
 
     assert resp.status == 404
     assert await rows(hass, "car1") == (0, 0, 0) and await rows(hass, "car2") == (1, 1, 1)
+
+
+async def test_a_worker_stopping_under_a_call_falls_back_to_its_own_connection(hass, monkeypatch):
+    """the worker cancels a call it accepted when it stops (HA stopping, or the last other car unloading)"""
+    await add_car(hass, "car1")
+    await add_car(hass, "car2")
+
+    async def cancelled(self, vid):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(Service, "has_vehicle", cancelled)
+    monkeypatch.setattr(Service, "forget", cancelled)
+    assert await vehicles.has_history(hass, "car1") is True
+    await vehicles.purge(hass, "car1")
+    assert await rows(hass, "car1") == (0, 0, 0) and await rows(hass, "car2") == (1, 1, 1)
+
+
+async def test_a_cancelled_caller_is_not_taken_for_a_stopped_worker(hass, monkeypatch):
+    await add_car(hass, "car1")
+    started = asyncio.Event()
+
+    async def hang(self, vid):
+        started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(Service, "forget", hang)
+    task = hass.async_create_task(vehicles.purge(hass, "car1"))
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert await rows(hass, "car1") == (1, 1, 1)  # cancelled, so nothing was deleted on another path
 
 
 async def test_second_removal_is_already_removed(hass, hass_admin_client):

@@ -8,6 +8,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .const import DB_PATH
 from .core import db
 from .core.kinds import KINDS
 
@@ -98,7 +99,7 @@ def run(config_dir: Path, share_dir: Path, entries: dict[str, str]) -> ImportRes
     The export is renamed first, so an import that cannot mark its export as done never starts (it would merge again at every restart and lose
     the settings made since). Builds the database beside its final place and moves it in only when whole; raises on any failure with nothing
     left behind, the export (under its own name again) and the live database untouched."""
-    final = config_dir / "car_insights" / "car_insights.db"
+    final = config_dir.joinpath(*DB_PATH)
     export = share_dir / "car_insights" / "export.db"
     marker = export.with_name("export.importing.db")
     if marker.exists() and not export.exists():  # the process died mid-import; one that died after replacing the database imports once more, which is rare

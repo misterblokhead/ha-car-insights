@@ -396,5 +396,5 @@ def test_delete_vehicle_rolls_back_as_one_transaction(conn):
     conn.execute("CREATE TRIGGER fixed_costs_stay BEFORE DELETE ON fixed_costs BEGIN SELECT RAISE(ABORT, 'boom'); END")
     before = snapshot(conn)
     with pytest.raises(sqlite3.DatabaseError, match="boom"):
-        db.delete_vehicle(conn, "car1")  # samples and the tables before fixed_costs were already emptied when it failed
+        db.delete_vehicle(conn, "car1")  # the charge tables, before fixed_costs in name order, were already emptied when it failed
     assert snapshot(conn) == before and not conn.in_transaction

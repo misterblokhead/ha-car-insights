@@ -14,9 +14,9 @@ from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.loader import async_get_integration
 
-from . import bridge, ha_adapters, importer
+from . import bridge, ha_adapters, importer, vehicles
 from .cloud_setup import convert_legacy, has_car_app, source_conf
-from .const import DOMAIN
+from .const import DB_PATH, DOMAIN
 from .core import capacity as capacity_learning, costs, db, geocode, pipeline, prices
 from .core.access import Viewer
 from .core.derive import Deriver
@@ -48,7 +48,7 @@ class Service:
         self.worker = Worker("car-insights")
         self.imported = importer.ImportResult()
         self._live: dict[str, str] = {}  # vehicle id -> entry title, of the entries configured now (the issues' names; on HA's loop)
-        self.entry_vehicles: frozenset[str] = frozenset()  # the vehicle ids of every entry of the domain, in any state; the rest are archived
+        self.entry_vehicles: frozenset[str] = frozenset()  # the vehicle ids of every entry of the domain, in any state, at the last page request; the rest are archived
         self._ready: asyncio.Future | None = None
         self.paused = False  # between a backup's start and its end
         self._unhold: asyncio.TimerHandle | None = None
@@ -89,27 +89,22 @@ class Service:
 
     async def _start(self) -> None:
         hass = self.hass
-        directory = Path(hass.config.path("car_insights"))
-        await hass.async_add_executor_job(partial(directory.mkdir, exist_ok=True))
+        path = Path(hass.config.path(*DB_PATH))
+        await hass.async_add_executor_job(partial(path.parent.mkdir, exist_ok=True))
         await self._import_export()
         sink = bridge.async_get(hass)  # made here, on HA's loop: the worker thread only publishes to it
         version = (await async_get_integration(hass, DOMAIN)).version
         self.worker.start()
         try:
-            await asyncio.wrap_future(self.worker.call(self._build, str(directory / "car_insights.db"), sink, version))
+            await asyncio.wrap_future(self.worker.call(self._build, str(path), sink, version))
         except BaseException:
             await self._stop()
             raise
-        self.refresh_entry_vehicles()
-
-    def refresh_entry_vehicles(self) -> None:
-        """On HA's loop: the page's archived cars are the stored ones without an entry, and a disabled or retrying entry is an entry."""
-        self.entry_vehicles = frozenset(e.data["vehicle_id"] for e in self.hass.config_entries.async_entries(DOMAIN) if "vehicle_id" in e.data)
 
     async def _import_export(self) -> None:
         """The add-on's export, on the first start after it: the database comes in beside the new one's place, the options go to the entries."""
         hass = self.hass
-        entries = {e.data["vehicle_id"]: e.entry_id for e in hass.config_entries.async_entries(DOMAIN) if "vehicle_id" in e.data}
+        entries = {vid: e.entry_id for vid, e in vehicles.entries_by_vehicle(hass).items()}
         try:
             self.imported = await hass.async_add_executor_job(importer.run, Path(hass.config.config_dir), SHARE_DIR, entries)
         except Exception as err:
@@ -186,7 +181,6 @@ class Service:
         await asyncio.shield(self._ready)
         vid, capacity = entry.data["vehicle_id"], (entry.options.get("cloud") or {}).get("capacity_kwh")
         self._live[vid] = entry.title
-        self.refresh_entry_vehicles()
         await asyncio.wrap_future(self.worker.call(self._configure, vid, entry.title, not has_car_app(entry), capacity, source_conf(entry)))
 
     def _configure(self, vid: str, title: str, cloud_only: bool, capacity_kwh: float | None, conf: SourceConf | None) -> None:
@@ -206,7 +200,6 @@ class Service:
     async def unconfigure(self, vehicle_id: str) -> None:
         """Stop reading a vehicle's cloud source and drop its repair and what was announced for it; its samples stay."""
         self._live.pop(vehicle_id, None)
-        self.refresh_entry_vehicles()
         ir.async_delete_issue(self.hass, DOMAIN, f"cloud_entity_missing_{vehicle_id}")
         with suppress(RuntimeError):  # a stopped worker polls nothing
             await asyncio.wrap_future(self.worker.call(self._unconfigure, vehicle_id))
@@ -274,8 +267,9 @@ class Service:
     async def has_vehicle(self, vid: str) -> bool:
         """Whether the database has a vehicles row for the car (its history, even when no entry is left)."""
         await asyncio.shield(self._ready)
-        return await asyncio.wrap_future(self.worker.call(lambda: self.conn.execute("SELECT 1 FROM vehicles WHERE vehicle_id=?", (vid,)).fetchone() is not None))
+        return await asyncio.wrap_future(self.worker.call(lambda: db.vehicle(self.conn, vid) is not None))
 
     async def ui(self, method: str, path: str, query: dict[str, str], body: Any, viewer: Viewer) -> tuple[int, Any]:
         await asyncio.shield(self._ready)
+        self.entry_vehicles = frozenset(vehicles.entries_by_vehicle(self.hass))  # read on HA's loop at each request: the registry is the truth
         return await asyncio.wrap_future(self.worker.call(self.ui_api.handle, method, path, query, body, viewer))

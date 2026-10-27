@@ -53,8 +53,6 @@ async def _release(hass: HomeAssistant) -> None:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    if (service := hass.data.get(DOMAIN)) is not None:  # an entry that is retried never reaches configure: it is still the page's car, not an archived one
-        service.refresh_entry_vehicles()
     vehicle_id = entry.data["vehicle_id"]
     ir.async_delete_issue(hass, DOMAIN, vehicles.issue_id(vehicle_id))  # the car is back, even while its setup is retried: nobody needs to answer
     secret = entry.data.get("secret")
@@ -191,8 +189,6 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    if (service := hass.data.get(DOMAIN)) is not None:  # HA drops the entry after its unload, so only now is it gone from the list (no service: it was the last car)
-        service.refresh_entry_vehicles()
     # a re-added vehicle gets a new secret, so the stale .conf must go (also one left by an entry that has no car app any more)
     path = Path(hass.config.path("car_insights", f"{entry.data['vehicle_id']}.conf"))
     await hass.async_add_executor_job(lambda: path.unlink(missing_ok=True))
