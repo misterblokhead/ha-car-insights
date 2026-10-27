@@ -98,7 +98,10 @@ def entities_schema() -> vol.Schema:
 
 
 def capacity_default(hass: HomeAssistant, entry: RegEntry | None, current: float | None) -> float:
-    """kWh: the integration's capacity entity when it has a usable number (kWh, or Wh), else the entry's current capacity, else 60"""
+    """kWh: the entry's saved capacity (the owner may have corrected the integration's), else the integration's capacity entity when it has a
+    usable number (kWh, or Wh), else 60"""
+    if isinstance(current, (int, float)) and 5 <= current <= 200:
+        return current
     if entry is not None and (state := hass.states.get(entry.entity_id)) is not None:
         factor = {"kWh": 1, "Wh": 0.001}.get(state.attributes.get("unit_of_measurement"))
         try:
@@ -107,4 +110,4 @@ def capacity_default(hass: HomeAssistant, entry: RegEntry | None, current: float
             kwh = math.nan
         if 5 <= kwh <= 200:
             return kwh
-    return current if isinstance(current, (int, float)) and 5 <= current <= 200 else DEFAULT_CAPACITY_KWH
+    return DEFAULT_CAPACITY_KWH

@@ -84,22 +84,22 @@ def _location(s: str, unit: str | None, attrs: dict | None) -> list[float]:
 @dataclass(frozen=True)
 class Reading:
     key: str | None  # sample key; None for report_time, which only stamps other rows
-    name: str
+    name: str  # the English label, for people
     convert: Callable[[str, str | None, dict | None], Any]  # (state, unit, attributes) -> value; ValueError = no reading
 
 
-READINGS: dict[str, Reading] = {r.name: r for r in (
-    Reading("soc_percent", "charge_level", _soc),
-    Reading("odometer_km", "odometer", _scaled({"km": 1, "mi": 1.609344, "m": 0.001})),
-    Reading("range_m", "range", _scaled({"km": 1000, "mi": 1609.344, "m": 1})),
-    Reading("battery_wh", "battery_energy", _scaled({"kWh": 1000, "Wh": 1})),
-    Reading("speed", "speed", _scaled({"km/h": 1 / 3.6, "mph": 0.44704, "m/s": 1})),
-    Reading("charging_state", "charging", _charging),
-    Reading("plug_state", "plugged", _plugged),
-    Reading("ignition", "ignition", _ignition),
-    Reading("gps", "location", _location),
-    Reading(None, "report_time", lambda s, u, a: _iso_ms(s)),
-)}
+READINGS: dict[str, Reading] = {  # reading -> how to read it
+    "charge_level": Reading("soc_percent", "Charge level", _soc),
+    "odometer": Reading("odometer_km", "Odometer", _scaled({"km": 1, "mi": 1.609344, "m": 0.001})),
+    "range": Reading("range_m", "Range", _scaled({"km": 1000, "mi": 1609.344, "m": 1})),
+    "battery_energy": Reading("battery_wh", "Battery energy", _scaled({"kWh": 1000, "Wh": 1})),
+    "speed": Reading("speed", "Speed", _scaled({"km/h": 1 / 3.6, "mph": 0.44704, "m/s": 1})),
+    "charging": Reading("charging_state", "Charging", _charging),
+    "plugged": Reading("plug_state", "Plugged in", _plugged),
+    "ignition": Reading("ignition", "Driving / ignition", _ignition),
+    "location": Reading("gps", "Location", _location),
+    "report_time": Reading(None, "Report time", lambda s, u, a: _iso_ms(s)),
+}
 
 
 def parse_history(payload: list[list[dict]]) -> dict[str, list[tuple[int, str, dict | None]]]:

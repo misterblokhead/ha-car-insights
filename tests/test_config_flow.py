@@ -85,19 +85,31 @@ async def test_taken_vehicle_id_is_an_error_not_an_abort(hass):
     MockConfigEntry(domain=DOMAIN, unique_id="car1", data={"vehicle_id": "car1", "vehicle_name": "Other"}).add_to_hass(hass)
     result = await begin(hass, vehicle_id="car1")
     assert result["type"] == "form" and result["errors"] == {"vehicle_id": "vehicle_id_taken"}
-    result = await begin(hass, name="Car1")  # the slug of the name is taken: the collapsed ID field could not show it
-    assert result["type"] == "form" and result["errors"] == {"base": "vehicle_id_taken"}
+    result = await begin(hass, name="Car1")  # the ID comes from the name: the error is on the name, not on the collapsed ID field
+    assert result["type"] == "form" and result["errors"] == {"vehicle_name": "vehicle_name_taken"}
 
 
 @pytest.mark.parametrize("name, vid, errors", [
     ("Two\nlines", None, {"vehicle_name": "invalid_vehicle_name"}),
     ("   ", "car1", {"vehicle_name": "invalid_vehicle_name"}),
     ("Invented Car", "no spaces", {"vehicle_id": "invalid_vehicle_id"}),
-    ("", None, {"vehicle_name": "invalid_vehicle_name", "base": "invalid_vehicle_id"}),  # an empty slug
+    ("", None, {"vehicle_name": "invalid_vehicle_name"}),
 ])
 async def test_bad_names_and_ids_are_errors(hass, name, vid, errors):
     result = await begin(hass, name=name, vehicle_id=vid)
     assert result["type"] == "form" and result["errors"] == errors
+
+
+async def test_a_long_name_gives_a_64_character_id_and_the_title_is_stripped(hass):
+    result = await begin(hass, name="  " + "Invented " * 10 + "  ")
+    assert result["type"] == "create_entry" and result["title"] == result["data"]["vehicle_name"] == ("Invented " * 10).strip()
+    assert result["data"]["vehicle_id"] == ("invented_" * 10)[:64]
+
+
+async def test_a_name_that_gives_no_id_is_an_error_on_the_name(hass, monkeypatch):
+    monkeypatch.setattr("custom_components.car_insights.config_flow.slugify", lambda _: "")
+    result = await begin(hass)
+    assert result["type"] == "form" and result["errors"] == {"vehicle_name": "vehicle_name_unusable"}
 
 
 async def test_cloud_flow_with_a_stellantis_device_prefills_and_stores_registry_ids(hass):
@@ -218,8 +230,29 @@ async def test_options_keep_source_id_when_the_device_is_unchanged(hass):
     assert entry.options["cloud"]["source_id"] == new_source_id("car1", other.device.id)
 
 
+async def test_options_suggest_the_saved_capacity_before_the_integrations(hass):
+    car = make_car(hass)
+    hass.states.async_set(car.ents["battery_capacity"].entity_id, "50.8", {"unit_of_measurement": "kWh"})
+    entry = app_entry(hass, {"preset": "stellantis", "device_id": car.device.id, "source_id": "ha_entities-keepme", "capacity_kwh": 44.4, "entities": {}})
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "cloud_device"})
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"device_id": car.device.id})
+    assert suggested(result)["capacity_kwh"] == 44.4  # the owner's correction wins over the integration's 50.8
+    entry = MockConfigEntry(domain=DOMAIN, version=2, unique_id="car2", data={"vehicle_id": "car2", "vehicle_name": "B", "webhook_id": "w2", "secret": "s"})
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"device_id": car.device.id})
+    assert suggested(result)["capacity_kwh"] == 50.8
+
+
 def test_every_reading_has_a_picker():
     assert set(ENTITY_FILTERS) == set(READINGS)  # report_time included: the form must not miss one
+
+
+def test_reading_labels_in_the_strings_are_the_reading_names():
+    strings = json.loads(STRINGS.read_text())
+    for flow in ("config", "options"):
+        assert {r: strings[flow]["step"]["cloud_entities"]["data"][r] for r in READINGS} == {r: rd.name for r, rd in READINGS.items()}
 
 
 def test_strings_and_translations_are_identical():

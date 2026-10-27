@@ -15,12 +15,15 @@ from .core.poller import new_source_id
 from .core.presets import capacity_entry, match
 
 _VEHICLE_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+_PRESET_NAMES = {"renault": "Renault", "stellantis": "Stellantis"}
 
 
 class _CloudSteps:
     """The steps both flows share: pick the car's HA device, then match its entities to the readings."""
 
-    _current: dict = {}  # the cloud options of the entry being changed; none for a new car
+    def __init__(self) -> None:
+        super().__init__()
+        self._current: dict = {}  # the cloud options of the entry being changed; none for a new car
 
     def _vehicle_id(self) -> str:
         raise NotImplementedError
@@ -59,7 +62,7 @@ class _CloudSteps:
             values = {**to_entity_ids(self.hass, (self._current.get("entities") or {}) if same_device else matched), "capacity_kwh": capacity}
         return self.async_show_form(
             step_id="cloud_entities", data_schema=self.add_suggested_values_to_schema(entities_schema(), values), errors=errors,
-            description_placeholders={"preset": preset.capitalize() if preset else "none"})
+            description_placeholders={"preset": _PRESET_NAMES.get(preset, preset) if preset else "none"})
 
 
 class CarInsightsConfigFlow(_CloudSteps, config_entries.ConfigFlow, domain=DOMAIN):
@@ -82,16 +85,17 @@ class CarInsightsConfigFlow(_CloudSteps, config_entries.ConfigFlow, domain=DOMAI
     async def async_step_user(self, user_input=None):
         errors = {}
         if user_input is not None:
-            name = user_input["vehicle_name"]
+            name = user_input["vehicle_name"].strip()
             typed = user_input["advanced"].get("vehicle_id") or ""
-            vehicle_id = typed or slugify(name)
-            field = "vehicle_id" if typed else "base"  # the ID field is collapsed: an error on it would stay hidden
-            if re.search(r"[\r\n]", name) or not name.strip():
+            if re.search(r"[\r\n]", name) or not name:
                 errors["vehicle_name"] = "invalid_vehicle_name"
-            if not _VEHICLE_ID.fullmatch(vehicle_id):
-                errors[field] = "invalid_vehicle_id"
-            elif await self.async_set_unique_id(vehicle_id, raise_on_progress=False) is not None:
-                errors[field] = "vehicle_id_taken"
+            # an ID that comes from the name is reported on the name: the ID field is collapsed and the user never saw that ID
+            vehicle_id, field = (typed, "vehicle_id") if typed else (slugify(name)[:64], "vehicle_name")
+            if typed or not errors:
+                if not _VEHICLE_ID.fullmatch(vehicle_id):
+                    errors[field] = "invalid_vehicle_id" if typed else "vehicle_name_unusable"
+                elif await self.async_set_unique_id(vehicle_id, raise_on_progress=False) is not None:
+                    errors[field] = f"{field}_taken"
             if not errors:
                 self._data, self._source = {"vehicle_id": vehicle_id, "vehicle_name": name}, user_input["source"]
                 if self._source == "car_app":

@@ -109,7 +109,7 @@ async def test_migrate_with_an_unresolvable_entity_leaves_that_reading_out_and_r
     await poll(hass)
     found = issue(hass)  # a required reading is gone: the source pauses
     assert found.severity is IssueSeverity.ERROR and found.translation_key == "cloud_entity_missing_required"
-    assert found.translation_placeholders == {"vehicle": "Test Car", "readings": "odometer"}
+    assert found.translation_placeholders == {"vehicle": "Test Car", "readings": "Odometer"}
     await hass.config_entries.async_unload(entry.entry_id)
     assert issue(hass) is None  # nothing polls the car any more
 
@@ -125,7 +125,7 @@ async def test_migrate_with_an_unresolvable_optional_entity_raises_the_warning_a
     await poll(hass)
     found = issue(hass)
     assert found.severity is IssueSeverity.WARNING and found.translation_key == "cloud_entity_missing"
-    assert found.translation_placeholders == {"vehicle": "Test Car", "readings": "charging"}
+    assert found.translation_placeholders == {"vehicle": "Test Car", "readings": "Charging"}
     er.async_get(hass).async_get_or_create("sensor", "renault", "invented_zoe-charge_state", suggested_object_id="invented_zoe_charge_state",
                                            config_entry=zoe.cfg, device_id=zoe.device.id)  # the entity comes back
     await poll(hass)
@@ -169,7 +169,7 @@ async def test_missing_optional_reading_raises_a_warning(hass):
     await poll(hass)
     found = issue(hass)
     assert found.severity is IssueSeverity.WARNING and found.translation_key == "cloud_entity_missing"
-    assert found.translation_placeholders == {"vehicle": "Test Car", "readings": "charging"}
+    assert found.translation_placeholders == {"vehicle": "Test Car", "readings": "Charging"}
     await hass.config_entries.async_unload(entry.entry_id)
 
 
@@ -301,7 +301,7 @@ async def test_missing_required_reading_raises_an_error_repair_and_fixing_delete
     await poll(hass)
     found = issue(hass)
     assert found.severity is IssueSeverity.ERROR and found.translation_key == "cloud_entity_missing_required"
-    assert found.translation_placeholders == {"vehicle": "Test Car", "readings": "odometer"} and not found.is_fixable
+    assert found.translation_placeholders == {"vehicle": "Test Car", "readings": "Odometer"} and not found.is_fixable
     new = er.async_get(hass).async_get_or_create("sensor", "renault", "invented_zoe-odo2", suggested_object_id="invented_zoe_odo2",
                                                  config_entry=zoe.cfg, device_id=zoe.device.id)
     hass.config_entries.async_update_entry(entry, options={"cloud": {**entry.options["cloud"], "entities": {
