@@ -58,5 +58,5 @@ actions:
 [dashboard/car-insights.yaml](../dashboard/car-insights.yaml) is a dashboard view with the live values, the last trip and charge, the month and year totals, and two charts.
 
 1. Install [apexcharts-card](https://github.com/RomRider/apexcharts-card) from HACS (for the two charts).
-2. Open a dashboard > Edit > the three dots > Raw configuration editor, and paste the file's content as a new view in the `views:` list.
+2. Open a dashboard and choose Edit, then add a new view. Open the new view's menu, choose Edit in YAML, and replace what is there with the file's content (the file is one view).
 3. Replace every `VEHICLE` with the id prefix of your car, for example `my_car` (so `sensor.VEHICLE_status` becomes `sensor.my_car_status`), and the view `title` with your car's name.

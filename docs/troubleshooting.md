@@ -28,7 +28,7 @@ Take a backup before updating Car Insights to a new major version.
 
 ## Uninstalling
 
-1. Remove each car's Car Insights entry in Settings > Devices & services > Car Insights. Keep or delete its history when asked.
+1. Remove each car's Car Insights entry in Settings > Devices & services > Car Insights. This does not ask about the history: it is kept, and a repair later offers to delete it (see [Managing cars](managing-cars.md)).
 2. In HACS, remove Car Insights, and restart Home Assistant.
 3. To erase the data for good, delete the `/config/car_insights/` folder. It holds the database and the `.conf` files with the cars' secrets.
 
