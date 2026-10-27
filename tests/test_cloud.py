@@ -248,6 +248,12 @@ async def test_device_entries_and_id_conversion(hass):
     assert cloud_setup.to_entity_ids(hass, {**registry_ids, "charge_level": "gone"}) == {"odometer": zoe.mileage.entity_id}
 
 
+async def test_device_entries_does_not_read_the_deprecated_config_entries(hass, monkeypatch):
+    zoe = make_zoe(hass)
+    monkeypatch.setattr(dr.DeviceEntry, "config_entries", property(lambda _: pytest.fail("DeviceEntry.config_entries breaks in HA 2027.10")))
+    assert cloud_setup.device_entries(hass, zoe.device.id)[0] == "renault"
+
+
 async def test_removing_the_cloud_source_stops_polling_and_keeps_samples(hass):
     zoe = make_zoe(hass)
     put(hass, zoe.battery.entity_id, "80", "%")

@@ -21,7 +21,10 @@
       },
       "cloud_device": {
         "title": "Pick the car's device",
-        "description": "Pick the device of your car's Home Assistant integration."
+        "description": "Pick the device of your car's Home Assistant integration.",
+        "data": {
+          "device_id": "Device"
+        }
       },
       "cloud_entities": {
         "title": "Match the car's entities",
@@ -64,11 +67,17 @@
       },
       "cloud_device": {
         "title": "Change the car's integration entities",
-        "description": "Pick the device of your car's Home Assistant integration."
+        "description": "Pick the device of your car's Home Assistant integration.",
+        "data": {
+          "device_id": "Device"
+        }
       },
       "cloud_add": {
         "title": "Add your car's integration",
-        "description": "Pick the device of your car's Home Assistant integration."
+        "description": "Pick the device of your car's Home Assistant integration.",
+        "data": {
+          "device_id": "Device"
+        }
       },
       "cloud_entities": {
         "title": "Match the car's entities",

@@ -288,5 +288,11 @@ def test_reading_labels_in_the_strings_are_the_reading_names():
         assert {r: strings[flow]["step"]["cloud_entities"]["data"][r] for r in READINGS} == {r: rd.name for r, rd in READINGS.items()}
 
 
+def test_device_pickers_have_a_label():
+    steps = json.loads(STRINGS.read_text())
+    for flow, step in (("config", "cloud_device"), ("options", "cloud_device"), ("options", "cloud_add")):
+        assert steps[flow]["step"][step]["data"]["device_id"] == "Device"  # without it HA shows the raw key "device_id"
+
+
 def test_strings_and_translations_are_identical():
     assert json.loads(STRINGS.read_text()) == json.loads(EN.read_text())

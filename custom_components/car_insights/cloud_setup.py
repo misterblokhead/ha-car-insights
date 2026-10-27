@@ -42,7 +42,9 @@ def device_entries(hass: HomeAssistant, device_id: str) -> tuple[str | None, lis
     device = dr.async_get(hass).async_get(device_id)
     if device is None:
         return None, []
-    domains = sorted({e.domain for eid in device.config_entries if (e := hass.config_entries.async_get_entry(eid))})
+    # shortcut: HA 2026.9 devices have no config_entry_id (2026.10 deprecates config_entries); drop the fallback once the minimum HA is 2026.10
+    entry_ids = [device.config_entry_id] if hasattr(device, "config_entry_id") else device.config_entries
+    domains = sorted({e.domain for eid in entry_ids if (e := hass.config_entries.async_get_entry(eid))})
     domain = next((d for d in domains if d in PRESETS), domains[0] if domains else None)
     return domain, [RegEntry(e.id, e.entity_id, e.entity_id.partition(".")[0], e.platform, e.translation_key, e.unique_id)
                     for e in er.async_entries_for_device(er.async_get(hass), device_id)]
