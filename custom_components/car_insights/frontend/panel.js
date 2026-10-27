@@ -3163,30 +3163,29 @@ function ls(e, t) {
 		kwhPer100: r >= t * 1e3 && r > 0 && i != null ? i / r * 100 : null
 	}));
 }
-// src/lib/costs.js
-var us = (e) => e == null ? "–" : `€${e.toFixed(2)}`, ds = (e) => e?.amount == null ? "–" : e.basis === "default" ? `≈ ${us(e.amount)}` : us(e.amount);
-function fs(e) {
+var us = (e, t = Date.now()) => `No data since ${Qa(qa(e), qa(t))}`, ds = (e) => e == null ? "–" : `€${e.toFixed(2)}`, fs = (e) => e?.amount == null ? "–" : e.basis === "default" ? `≈ ${ds(e.amount)}` : ds(e.amount);
+function ps(e) {
 	if (e?.amount == null) return "Not available: no price for this date, or no energy reading";
 	if (e.basis === "receipt") return "Receipt";
 	let t = e.tariff, n = [
 		e.basis === "spot" ? e.spot ?? "Spot" : `Default ${e.current.toUpperCase()} price`,
-		`${us(t.per_kwh)}/kWh`,
+		`${ds(t.per_kwh)}/kWh`,
 		`${Math.round((e.loss - 1) * 100)} % charging loss`
 	];
-	return t.start_fee && n.push(`start fee ${us(t.start_fee)}`), t.per_min && n.push(`${us(t.per_min)}/min`), e.card_markup_pct && n.push(`card +${e.card_markup_pct} %`), e.card_start_fee && n.push(`card fee ${us(e.card_start_fee)}`), n.join(" · ");
+	return t.start_fee && n.push(`start fee ${ds(t.start_fee)}`), t.per_min && n.push(`${ds(t.per_min)}/min`), e.card_markup_pct && n.push(`card +${e.card_markup_pct} %`), e.card_start_fee && n.push(`card fee ${ds(e.card_start_fee)}`), n.join(" · ");
 }
-var ps = ({ energy: e, fixed: t }) => e == null ? "" : `${us(e)} energy · ${t == null ? "fixed not available yet" : `${us(t)} fixed`}`, ms = (e, t) => e == null || !t ? "–" : `${us(e / t * 1e5)}/100 km`, hs = (e, t) => {
+var ms = ({ energy: e, fixed: t }) => e == null ? "" : `${ds(e)} energy · ${t == null ? "fixed not available yet" : `${ds(t)} fixed`}`, hs = (e, t) => e == null || !t ? "–" : `${ds(e / t * 1e5)}/100 km`, gs = (e, t) => {
 	let n = to(t), r = no(t);
 	return e.find((e) => e.valid_from >= n && e.valid_from < r)?.valid_from ?? n;
-}, gs = (e) => e > 0 ? `${e} ${e === 1 ? "charge" : "charges"} without a price` : "", _s = (e, t) => e.find((e) => e.valid_from <= t) ?? null, vs = /* @__PURE__ */ X(" <small> </small>", 1), ys = /* @__PURE__ */ X("<a><span class=\"glyph svelte-14efj7c\" aria-hidden=\"true\"><!></span> <span class=\"title svelte-14efj7c\"> </span> <span class=\"big svelte-14efj7c\"> <!></span> <span class=\"caption when svelte-14efj7c\"> </span> <!> <!></a>");
-function bs(e, t) {
+}, _s = (e) => e > 0 ? `${e} ${e === 1 ? "charge" : "charges"} without a price` : "", vs = (e, t) => e.find((e) => e.valid_from <= t) ?? null, ys = /* @__PURE__ */ X(" <small> </small>", 1), bs = /* @__PURE__ */ X("<a><span class=\"glyph svelte-14efj7c\" aria-hidden=\"true\"><!></span> <span class=\"title svelte-14efj7c\"> </span> <span class=\"big svelte-14efj7c\"> <!></span> <span class=\"caption when svelte-14efj7c\"> </span> <!> <!></a>");
+function xs(e, t) {
 	let n = ba(t, "current", 3, !1);
-	var r = ys();
+	var r = bs();
 	let i;
 	var a = G(r);
 	xi(G(a), () => t.glyph), R(a);
 	var o = q(a, 2), s = K(o, !0), c = q(o, 2), l = G(c, !0), u = q(l), d = (e) => {
-		var n = vs(), r = _n(n, !0);
+		var n = ys(), r = _n(n, !0);
 		r.nodeValue = " ";
 		var i = K(q(r), !0);
 		J(() => Q(i, t.unit)), Z(e, n);
@@ -3206,12 +3205,12 @@ function bs(e, t) {
 }
 Fr(["click"]);
 // src/lib/ui/ChargeBar.svelte
-var xs = /* @__PURE__ */ X("<i class=\"base svelte-1vubvs7\"></i>"), Ss = /* @__PURE__ */ X("<i class=\"room svelte-1vubvs7\"></i>"), Cs = /* @__PURE__ */ X("<div class=\"bar svelte-1vubvs7\" role=\"img\"><!> <i class=\"added svelte-1vubvs7\"></i> <!></div>");
-function ws(e, t) {
+var Ss = /* @__PURE__ */ X("<i class=\"base svelte-1vubvs7\"></i>"), Cs = /* @__PURE__ */ X("<i class=\"room svelte-1vubvs7\"></i>"), ws = /* @__PURE__ */ X("<div class=\"bar svelte-1vubvs7\" role=\"img\"><!> <i class=\"added svelte-1vubvs7\"></i> <!></div>");
+function Ts(e, t) {
 	let n = ba(t, "full", 3, !1), r = (e) => Math.min(100, Math.max(0, e)), i = /* @__PURE__ */ B(() => t.from != null && t.to != null), a = /* @__PURE__ */ B(() => Y(i) ? r(Math.min(t.from, t.to)) : 0), o = /* @__PURE__ */ B(() => Y(i) ? r(Math.max(t.from, t.to)) : 0);
 	var s = Kr(), c = _n(s), l = (e) => {
-		var i = Cs(), s = G(i), c = (e) => {
-			var t = xs();
+		var i = ws(), s = G(i), c = (e) => {
+			var t = Ss();
 			let n;
 			J(() => n = Vi(t, "", n, { width: `${Y(a) ?? ""}%` })), Z(e, t);
 		};
@@ -3221,7 +3220,7 @@ function ws(e, t) {
 		var l = q(s, 2);
 		let u;
 		var d = q(l, 2), f = (e) => {
-			var t = Ss();
+			var t = Cs();
 			let n;
 			J(() => n = Vi(t, "", n, { left: `${Y(o) ?? ""}%` })), Z(e, t);
 		};
@@ -3239,24 +3238,24 @@ function ws(e, t) {
 	}), Z(e, s);
 }
 // src/lib/ui/ChargeCard.svelte
-var Ts = /* @__PURE__ */ Wr("<svg viewBox=\"0 0 24 24\"><path d=\"M13 3 5 14h6l-1 7 8-11h-6z\"></path></svg>"), Es = /* @__PURE__ */ X("<span class=\"caption row svelte-1njo9sk\"> </span>"), Ds = /* @__PURE__ */ X("<span class=\"level row svelte-1njo9sk\"><!> <span class=\"caption svelte-1njo9sk\"> </span></span>"), Os = /* @__PURE__ */ X("<!> <!>", 1);
-function ks(e, t) {
+var Es = /* @__PURE__ */ Wr("<svg viewBox=\"0 0 24 24\"><path d=\"M13 3 5 14h6l-1 7 8-11h-6z\"></path></svg>"), Ds = /* @__PURE__ */ X("<span class=\"caption row svelte-1njo9sk\"> </span>"), Os = /* @__PURE__ */ X("<span class=\"level row svelte-1njo9sk\"><!> <span class=\"caption svelte-1njo9sk\"> </span></span>"), ks = /* @__PURE__ */ X("<!> <!>", 1);
+function As(e, t) {
 	tt(t, !0);
 	let n = ba(t, "current", 3, !1), r = /* @__PURE__ */ B(() => t.item.start_pct), i = /* @__PURE__ */ B(() => t.item.end_pct), a = /* @__PURE__ */ B(() => ts(t.item.added_wh, t.item.energy_source === "soc_estimate").split(" ")), o = /* @__PURE__ */ B(() => A(Y(a), 2)), s = /* @__PURE__ */ B(() => Y(o)[0]), c = /* @__PURE__ */ B(() => Y(o)[1]), l = /* @__PURE__ */ B(() => `${Zo(t.item.start, t.item.end)} · ${ka(t.item.avg_w)}`);
 	{
 		let a = (e) => {
-			Z(e, Ts());
+			Z(e, Es());
 		}, o = (e) => {
-			var n = Os(), a = _n(n), o = (e) => {
-				var n = Es(), r = K(n, !0);
-				J((e) => Q(r, e), [() => ds(t.item.cost)]), Z(e, n);
+			var n = ks(), a = _n(n), o = (e) => {
+				var n = Ds(), r = K(n, !0);
+				J((e) => Q(r, e), [() => fs(t.item.cost)]), Z(e, n);
 			};
 			$(a, (e) => {
 				t.item.cost?.amount != null && e(o);
 			});
 			var s = q(a, 2), c = (e) => {
-				var t = Ds(), n = G(t);
-				ws(n, {
+				var t = Os(), n = G(t);
+				Ts(n, {
 					get from() {
 						return Y(r);
 					},
@@ -3271,7 +3270,7 @@ function ks(e, t) {
 				Y(r) != null && Y(i) != null && e(c);
 			}), Z(e, n);
 		}, u = /* @__PURE__ */ B(() => jo(t.item)), d = /* @__PURE__ */ B(() => es(t.item));
-		bs(e, {
+		xs(e, {
 			get href() {
 				return Y(u);
 			},
@@ -3305,8 +3304,8 @@ function ks(e, t) {
 	nt();
 }
 // src/lib/ui/LiveStrip.svelte
-var As = /* @__PURE__ */ Wr("<svg class=\"icon svelte-lcylx6\" viewBox=\"0 0 24 24\" role=\"img\" aria-label=\"Plugged in\"><path d=\"M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4\"></path></svg>"), js = /* @__PURE__ */ X("<li class=\"svelte-lcylx6\"><i class=\"svelte-lcylx6\"></i> <span class=\"where svelte-lcylx6\"><b class=\"svelte-lcylx6\"> </b> </span> <span class=\"vals svelte-lcylx6\"> <!></span></li>"), Ms = /* @__PURE__ */ X("<ul class=\"card svelte-lcylx6\"></ul>");
-function Ns(e, t) {
+var js = /* @__PURE__ */ Wr("<svg class=\"icon svelte-lcylx6\" viewBox=\"0 0 24 24\" role=\"img\" aria-label=\"Plugged in\"><path d=\"M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4\"></path></svg>"), Ms = /* @__PURE__ */ X("<li class=\"svelte-lcylx6\"><i class=\"svelte-lcylx6\"></i> <span class=\"where svelte-lcylx6\"><b class=\"svelte-lcylx6\"> </b> </span> <span class=\"vals svelte-lcylx6\"> <!></span></li>"), Ns = /* @__PURE__ */ X("<ul class=\"card svelte-lcylx6\"></ul>");
+function Ps(e, t) {
 	tt(t, !0);
 	let n = {
 		driving: "Driving",
@@ -3320,20 +3319,24 @@ function Ns(e, t) {
 		no_data: "var(--muted)"
 	};
 	var i = Kr(), a = _n(i), o = (e) => {
-		var i = Ms();
+		var i = Ns();
 		mi(i, 21, () => t.vehicles, (e) => e.id, (e, t) => {
-			var i = js(), a = G(i);
+			var i = Ms(), a = G(i);
 			let o;
 			var s = q(a, 2), c = G(s), l = K(c, !0), u = q(c);
 			R(s);
 			var d = q(s, 2), f = G(d), p = q(f), m = (e) => {
-				Z(e, As());
+				Z(e, js());
 			};
 			$(p, (e) => {
 				Y(t).status === "charging" && e(m);
-			}), R(d), R(i), J((e, i) => {
-				o = Vi(a, "", o, { background: r[Y(t).status] ?? r.parked }), Q(l, Y(t).name), Q(u, ` · ${n[Y(t).status] ?? Y(t).status ?? ""} · ${(Y(t).position?.place || "–") ?? ""}`), Q(f, `${e ?? ""} · ${i ?? ""} `);
-			}, [() => Aa(Y(t).soc_percent), () => Da(Y(t).range_m)]), Z(e, i);
+			}), R(d), R(i), J((e, n, i) => {
+				o = Vi(a, "", o, { background: r[Y(t).status] ?? r.parked }), Q(l, Y(t).name), Q(u, ` · ${e ?? ""}`), Q(f, `${n ?? ""} · ${i ?? ""} `);
+			}, [
+				() => Y(t).status === "no_data" ? us(Y(t).updated) : `${n[Y(t).status] ?? Y(t).status} · ${Y(t).position?.place || "–"}`,
+				() => Aa(Y(t).soc_percent),
+				() => Da(Y(t).range_m)
+			]), Z(e, i);
 		}), R(i), Z(e, i);
 	};
 	$(a, (e) => {
@@ -3341,7 +3344,7 @@ function Ns(e, t) {
 	}), Z(e, i), nt();
 }
 // src/lib/spring.js
-function Ps({ value: e = 0, response: t = .35, damping: n = 1 } = {}) {
+function Fs({ value: e = 0, response: t = .35, damping: n = 1 } = {}) {
 	let r = (2 * Math.PI / t) ** 2, i = 4 * Math.PI * n / t, a = {
 		value: e,
 		velocity: 0,
@@ -3360,11 +3363,11 @@ function Ps({ value: e = 0, response: t = .35, damping: n = 1 } = {}) {
 	return a;
 }
 // src/lib/ui/Segmented.svelte
-var Fs = /* @__PURE__ */ X("<label><input type=\"radio\" class=\"svelte-5bfr2e\"/> <span> </span></label>"), Is = /* @__PURE__ */ X("<div class=\"group svelte-5bfr2e\" role=\"radiogroup\"><div class=\"marker svelte-5bfr2e\"></div> <!></div>");
-function Ls(e, t) {
+var Is = /* @__PURE__ */ X("<label><input type=\"radio\" class=\"svelte-5bfr2e\"/> <span> </span></label>"), Ls = /* @__PURE__ */ X("<div class=\"group svelte-5bfr2e\" role=\"radiogroup\"><div class=\"marker svelte-5bfr2e\"></div> <!></div>");
+function Rs(e, t) {
 	let n = qr();
 	tt(t, !0);
-	let r = [], i = ba(t, "value", 15, ""), a = Ps({
+	let r = [], i = ba(t, "value", 15, ""), a = Fs({
 		response: .35,
 		damping: 1
 	}), o = uo(a, { onFrame: (e) => W(c, e, !0) }), s = /* @__PURE__ */ U(0), c = /* @__PURE__ */ U(0), l = !1, u = /* @__PURE__ */ B(() => Math.max(0, (Y(s) - 4) / t.options.length));
@@ -3377,10 +3380,10 @@ function Ls(e, t) {
 		}), W(c, e);
 		else return o.to(e), o.stop;
 	});
-	var d = Is(), f = G(d);
+	var d = Ls(), f = G(d);
 	let p;
 	mi(q(f, 2), 17, () => t.options, (e) => e.value, (e, t) => {
-		var a = Fs();
+		var a = Is();
 		let o;
 		var s = G(a);
 		$i(s);
@@ -3396,28 +3399,28 @@ function Ls(e, t) {
 	}), pa(d, "clientWidth", (e) => W(s, e)), Z(e, d), nt();
 }
 // src/lib/gesture.js
-var Rs = (e, t = .998) => e / 1e3 * t / (1 - t), zs = (e, t, n) => e + Rs(t) > n / 2;
-function Bs(e) {
+var zs = (e, t = .998) => e / 1e3 * t / (1 - t), Bs = (e, t, n) => e + zs(t) > n / 2;
+function Vs(e) {
 	let t = e[0], n = e[e.length - 1];
 	return t && n && n.t > t.t ? (n.x - t.x) / (n.t - t.t) * 1e3 : 0;
 }
 // src/lib/ui/DetailPane.svelte
-var Vs = (e) => (document.body.appendChild(e), { destroy: () => e.remove() }), Hs = /* @__PURE__ */ X("<div class=\"item svelte-2a30b3\"><!></div>"), Us = /* @__PURE__ */ X("<header class=\"bar chrome svelte-2a30b3\"><button class=\"back press svelte-2a30b3\"><svg class=\"icon svelte-2a30b3\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m15 5-7 7 7 7\"></path></svg> </button> <span class=\"steps svelte-2a30b3\"><button class=\"press svelte-2a30b3\" aria-label=\"Previous activity\"><svg class=\"icon svelte-2a30b3\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m5 15 7-7 7 7\"></path></svg></button> <button class=\"press svelte-2a30b3\" aria-label=\"Next activity\"><svg class=\"icon svelte-2a30b3\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m5 9 7 7 7-7\"></path></svg></button></span></header> <div class=\"content svelte-2a30b3\"><!></div>", 1), Ws = /* @__PURE__ */ X("<div role=\"dialog\" tabindex=\"-1\" aria-label=\"Details\"><!></div>"), Gs = /* @__PURE__ */ X("<aside aria-label=\"Details\"><!></aside>");
-function Ks(e, t) {
+var Hs = (e) => (document.body.appendChild(e), { destroy: () => e.remove() }), Us = /* @__PURE__ */ X("<div class=\"item svelte-2a30b3\"><!></div>"), Ws = /* @__PURE__ */ X("<header class=\"bar chrome svelte-2a30b3\"><button class=\"back press svelte-2a30b3\"><svg class=\"icon svelte-2a30b3\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m15 5-7 7 7 7\"></path></svg> </button> <span class=\"steps svelte-2a30b3\"><button class=\"press svelte-2a30b3\" aria-label=\"Previous activity\"><svg class=\"icon svelte-2a30b3\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m5 15 7-7 7 7\"></path></svg></button> <button class=\"press svelte-2a30b3\" aria-label=\"Next activity\"><svg class=\"icon svelte-2a30b3\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m5 9 7 7 7-7\"></path></svg></button></span></header> <div class=\"content svelte-2a30b3\"><!></div>", 1), Gs = /* @__PURE__ */ X("<div role=\"dialog\" tabindex=\"-1\" aria-label=\"Details\"><!></div>"), Ks = /* @__PURE__ */ X("<aside aria-label=\"Details\"><!></aside>");
+function qs(e, t) {
 	tt(t, !0);
 	let n = (e) => {
-		var n = Us(), o = _n(n), s = G(o), c = q(G(s));
+		var n = Ws(), o = _n(n), s = G(o), c = q(G(s));
 		R(s);
 		var l = q(s, 2), u = G(l), d = q(u, 2);
 		R(l), R(o);
 		var f = q(o, 2);
 		li(G(f), () => t.id, (e) => {
-			var n = Hs();
+			var n = Us();
 			xi(G(n), () => t.children), R(n), Ai(1, n, () => lo, () => ({ duration: a })), Ai(2, n, () => lo, () => ({ duration: a })), Z(e, n);
 		}), R(f), J(() => {
 			Q(c, ` ${ro.wide ? "Close" : "Activity"}`), u.disabled = !r(), d.disabled = !i();
 		}), Pr("click", s, y), Pr("click", u, () => b(r())), Pr("click", d, () => b(i())), Z(e, n);
-	}, r = ba(t, "prev", 3, null), i = ba(t, "next", 3, null), a = po("--fade"), o = /* @__PURE__ */ B(() => !ro.split), s = /* @__PURE__ */ B(() => !ro.wide && !ro.reducedMotion), c = Ps({
+	}, r = ba(t, "prev", 3, null), i = ba(t, "next", 3, null), a = po("--fade"), o = /* @__PURE__ */ B(() => !ro.split), s = /* @__PURE__ */ B(() => !ro.wide && !ro.reducedMotion), c = Fs({
 		response: .35,
 		damping: 1
 	}), l = !ro.wide && !ro.reducedMotion, u = /* @__PURE__ */ U(on(l ? innerWidth : 0)), d = /* @__PURE__ */ U(!1), f = /* @__PURE__ */ U(!1), p = /* @__PURE__ */ U(!1), m = /* @__PURE__ */ U(void 0), h = 0, g = null, _ = uo(c, {
@@ -3493,10 +3496,10 @@ function Ks(e, t) {
 			t: e.timeStamp,
 			x: e.clientX
 		}), S(e);
-		let t = Bs(g.samples);
+		let t = Vs(g.samples);
 		g = null, W(f, !1);
 		let n = Y(m).offsetWidth;
-		v(zs(Y(u), t, n) ? n : 0, t);
+		v(Bs(Y(u), t, n) ? n : 0, t);
 	}
 	kn(() => {
 		if (!Y(o)) return;
@@ -3508,10 +3511,10 @@ function Ks(e, t) {
 	var D = Kr();
 	Nr("keydown", ln, x);
 	var O = _n(D), ee = (e) => {
-		var t = Ws();
+		var t = Gs();
 		let r, i;
 		var a = G(t);
-		n(a), R(t), ha(t, (e) => W(m, e), () => Y(m)), Mi(t, (e) => Vs?.(e)), J(() => {
+		n(a), R(t), ha(t, (e) => W(m, e), () => Y(m)), Mi(t, (e) => Hs?.(e)), J(() => {
 			r = zi(t, 1, "layer svelte-2a30b3", null, r, {
 				phone: !ro.wide,
 				busy: Y(d),
@@ -3521,7 +3524,7 @@ function Ks(e, t) {
 			}), na(t, "aria-modal", !ro.wide), i = Vi(t, "", i, { transform: Y(u) ? `translateX(${Y(u)}px)` : null });
 		}), Pr("pointerdown", t, w), Pr("pointermove", t, T), Pr("pointerup", t, E), Nr("pointercancel", t, E), Z(e, t);
 	}, te = (e) => {
-		var t = Gs();
+		var t = Ks();
 		let r;
 		var i = G(t);
 		n(i), R(t), ha(t, (e) => W(m, e), () => Y(m)), J(() => r = zi(t, 1, "column svelte-2a30b3", null, r, {
@@ -3539,24 +3542,24 @@ Fr([
 	"pointermove",
 	"pointerup"
 ]);
-var qs = 256;
-function Js(e, t, n) {
-	let r = qs * 2 ** n, i = e * Math.PI / 180;
+var Js = 256;
+function Ys(e, t, n) {
+	let r = Js * 2 ** n, i = e * Math.PI / 180;
 	return [(t + 180) / 360 * r, (1 - Math.log(Math.tan(i) + 1 / Math.cos(i)) / Math.PI) / 2 * r];
 }
-function Ys(e, t, n, r = 8) {
+function Xs(e, t, n, r = 8) {
 	let i = t - 2 * r, a = n - 2 * r, o = 17, s;
 	for (;; o--) {
-		s = e.map(([e, t]) => Js(e, t, o));
+		s = e.map(([e, t]) => Ys(e, t, o));
 		let r = s.map((e) => e[0]), c = s.map((e) => e[1]);
 		if (o === 0 || Math.max(...r) - Math.min(...r) <= i && Math.max(...c) - Math.min(...c) <= a) {
 			let e = Math.round((Math.max(...r) + Math.min(...r)) / 2 - t / 2), i = Math.round((Math.max(...c) + Math.min(...c)) / 2 - n / 2), a = [];
-			for (let r = Math.floor(e / qs); r <= Math.floor((e + t - 1) / qs); r++) for (let t = Math.floor(i / qs); t <= Math.floor((i + n - 1) / qs); t++) t >= 0 && t < 2 ** o && a.push({
+			for (let r = Math.floor(e / Js); r <= Math.floor((e + t - 1) / Js); r++) for (let t = Math.floor(i / Js); t <= Math.floor((i + n - 1) / Js); t++) t >= 0 && t < 2 ** o && a.push({
 				z: o,
 				x: r,
 				y: t,
-				left: r * qs - e,
-				top: t * qs - i
+				left: r * Js - e,
+				top: t * Js - i
 			});
 			return {
 				z: o,
@@ -3566,33 +3569,33 @@ function Ys(e, t, n, r = 8) {
 		}
 	}
 }
-var Xs = "/api/map_tiles/raster/{z}/{x}/{y}.png", Zs = ({ z: e, x: t, y: n }) => Xs.replace("{z}", e).replace("{x}", t).replace("{y}", n), Qs = /* @__PURE__ */ new Map();
-function $s(e) {
-	let t = Qs.get(e);
+var Zs = "/api/map_tiles/raster/{z}/{x}/{y}.png", Qs = ({ z: e, x: t, y: n }) => Zs.replace("{z}", e).replace("{x}", t).replace("{y}", n), $s = /* @__PURE__ */ new Map();
+function ec(e) {
+	let t = $s.get(e);
 	return t || (t = f(e).then(async (e) => {
 		if (!e.ok) throw Error(String(e.status));
 		return URL.createObjectURL(await e.blob());
-	}), t.catch(() => Qs.get(e) === t && Qs.delete(e)), Qs.set(e, t)), t;
+	}), t.catch(() => $s.get(e) === t && $s.delete(e)), $s.set(e, t)), t;
 }
 // src/lib/ui/RouteOutline.svelte
-var ec = /* @__PURE__ */ X("<img alt=\"\" width=\"256\" height=\"256\" class=\"svelte-wy78el\"/>"), tc = /* @__PURE__ */ X("<span class=\"box svelte-wy78el\"><span class=\"tiles svelte-wy78el\" aria-hidden=\"true\"><!></span> <svg role=\"img\" class=\"svelte-wy78el\"><polyline class=\"svelte-wy78el\"></polyline><circle class=\"open svelte-wy78el\" r=\"3.5\"></circle><circle class=\"end svelte-wy78el\" r=\"3.5\"></circle></svg></span>");
-function nc(e, t) {
+var tc = /* @__PURE__ */ X("<img alt=\"\" width=\"256\" height=\"256\" class=\"svelte-wy78el\"/>"), nc = /* @__PURE__ */ X("<span class=\"box svelte-wy78el\"><span class=\"tiles svelte-wy78el\" aria-hidden=\"true\"><!></span> <svg role=\"img\" class=\"svelte-wy78el\"><polyline class=\"svelte-wy78el\"></polyline><circle class=\"open svelte-wy78el\" r=\"3.5\"></circle><circle class=\"end svelte-wy78el\" r=\"3.5\"></circle></svg></span>");
+function rc(e, t) {
 	tt(t, !0);
-	let n = ba(t, "label", 3, "Route"), r = /* @__PURE__ */ B(() => t.points?.length >= 2 ? Ys(t.points, t.width, t.height, 8) : null), i = /* @__PURE__ */ B(() => Y(r)?.points ?? []), a = /* @__PURE__ */ B(() => Y(i)[0]), o = /* @__PURE__ */ B(() => Y(i)[Y(i).length - 1]), s = /* @__PURE__ */ U(void 0), c = /* @__PURE__ */ U(typeof IntersectionObserver > "u");
+	let n = ba(t, "label", 3, "Route"), r = /* @__PURE__ */ B(() => t.points?.length >= 2 ? Xs(t.points, t.width, t.height, 8) : null), i = /* @__PURE__ */ B(() => Y(r)?.points ?? []), a = /* @__PURE__ */ B(() => Y(i)[0]), o = /* @__PURE__ */ B(() => Y(i)[Y(i).length - 1]), s = /* @__PURE__ */ U(void 0), c = /* @__PURE__ */ U(typeof IntersectionObserver > "u");
 	kn(() => {
 		if (Y(c) || !Y(s)) return;
 		let e = new IntersectionObserver((e) => e.some((e) => e.isIntersecting) && W(c, !0), { rootMargin: "200px" });
 		return e.observe(Y(s)), () => e.disconnect();
 	});
 	var l = Kr(), u = _n(l), d = (e) => {
-		var l = tc();
+		var l = nc();
 		let u;
 		var d = G(l), f = G(d), p = (e) => {
 			var t = Kr();
 			mi(_n(t), 17, () => Y(r).tiles, (e) => `${e.x}/${e.y}`, (e, t) => {
 				var n = Kr();
-				si(_n(n), () => $s(Zs(Y(t))), null, (e, n) => {
-					var r = ec();
+				si(_n(n), () => ec(Qs(Y(t))), null, (e, n) => {
+					var r = tc();
 					let i;
 					J(() => {
 						na(r, "src", Y(n)), i = Vi(r, "", i, {
@@ -3619,18 +3622,18 @@ function nc(e, t) {
 	}), Z(e, l), nt();
 }
 // src/lib/ui/TripCard.svelte
-var rc = /* @__PURE__ */ Wr("<svg class=\"icon\" viewBox=\"0 0 24 24\"><path d=\"M5 16v-5l2-5h10l2 5v5M5 16h14M5 16v3h3v-3M16 16v3h3v-3M7 11h10\"></path></svg>"), ic = /* @__PURE__ */ X("<span class=\"route svelte-8nqrvt\"><!></span> <span class=\"caption stats svelte-8nqrvt\"> <br/> </span>", 1);
-function ac(e, t) {
+var ic = /* @__PURE__ */ Wr("<svg class=\"icon\" viewBox=\"0 0 24 24\"><path d=\"M5 16v-5l2-5h10l2 5v5M5 16h14M5 16v3h3v-3M16 16v3h3v-3M7 11h10\"></path></svg>"), ac = /* @__PURE__ */ X("<span class=\"route svelte-8nqrvt\"><!></span> <span class=\"caption stats svelte-8nqrvt\"> <br/> </span>", 1);
+function oc(e, t) {
 	tt(t, !0);
 	let n = ba(t, "current", 3, !1), r = /* @__PURE__ */ B(() => Da(t.item.distance_m).split(" ")), i = /* @__PURE__ */ B(() => A(Y(r), 2)), a = /* @__PURE__ */ B(() => Y(i)[0]), o = /* @__PURE__ */ B(() => Y(i)[1]), s = /* @__PURE__ */ B(() => `${Ya(t.item.start)} · ${t.item.end == null ? "now" : ja(t.item.duration_s)}`);
 	{
 		let r = (e) => {
-			Z(e, rc());
+			Z(e, ic());
 		}, i = (e) => {
-			var n = ic(), r = _n(n), i = G(r);
+			var n = ac(), r = _n(n), i = G(r);
 			{
 				let e = /* @__PURE__ */ B(() => rs(t.item));
-				nc(i, {
+				rc(i, {
 					get points() {
 						return t.item.route;
 					},
@@ -3647,7 +3650,7 @@ function ac(e, t) {
 				Q(o, e), Q(s, t);
 			}, [() => Pa(t.item.wh_per_100km), () => Oa(t.item.net_wh)]), Z(e, n);
 		}, c = /* @__PURE__ */ B(() => jo(t.item)), l = /* @__PURE__ */ B(() => ns(t.item));
-		bs(e, {
+		xs(e, {
 			get href() {
 				return Y(c);
 			},
@@ -3681,8 +3684,8 @@ function ac(e, t) {
 	nt();
 }
 // src/lib/series.js
-var oc = (e) => e.every((e) => e == null);
-function sc(e) {
+var sc = (e) => e.every((e) => e == null);
+function cc(e) {
 	if (!e || !e.rows || !e.rows.length) return null;
 	let t = (t) => e.cols.indexOf(t), n = e.rows.filter((e) => e[t("km")] != null);
 	if (!n.length) return null;
@@ -3693,13 +3696,13 @@ function sc(e) {
 			values: r(t),
 			scale: "y"
 		}));
-		return t.every((e) => oc(e.values)) ? null : {
+		return t.every((e) => sc(e.values)) ? null : {
 			x: r("km"),
 			series: t
 		};
 	})([["Speed km/h", "speed_kmh"]]) };
 }
-function cc(e) {
+function lc(e) {
 	let t = [...new Set(e.flatMap((e) => e.points.map((e) => e[0])))].sort((e, t) => e - t);
 	return {
 		x: t.map((e) => e / 1e3),
@@ -3713,15 +3716,15 @@ function cc(e) {
 		})
 	};
 }
-function lc(e) {
+function uc(e) {
 	let t = e?.car_kwh ?? [], n = e?.cloud_soc ?? [], r = e?.cloud_plugged ?? [];
 	return {
-		car: t.length ? cc([{
+		car: t.length ? lc([{
 			label: "Battery kWh",
 			scale: "y",
 			points: t
 		}]) : null,
-		cloud: n.length || r.length ? cc([{
+		cloud: n.length || r.length ? lc([{
 			label: "SoC %",
 			scale: "y",
 			points: n
@@ -3732,7 +3735,7 @@ function lc(e) {
 		}]) : null
 	};
 }
-function uc(e, t = .5) {
+function dc(e, t = .5) {
 	if (!e || !e.rows) return null;
 	let n = (t) => e.cols.indexOf(t), r = e.rows.filter((e) => e[n("km")] != null);
 	if (!r.length) return null;
@@ -3764,8 +3767,8 @@ function uc(e, t = .5) {
 	}
 	return u(), i.x.length ? i : null;
 }
-var dc = 12e4;
-function fc(e, t) {
+var fc = 12e4;
+function pc(e, t) {
 	if (!t) return null;
 	let n = (e, n) => {
 		let r = [];
@@ -3789,7 +3792,7 @@ function fc(e, t) {
 			max: Math.max(...n)
 		};
 	}, i = [];
-	for (let t of e?.car_kwh ?? []) (!i.length || t[0] - i.at(-1)[0] >= dc) && i.push(t);
+	for (let t of e?.car_kwh ?? []) (!i.length || t[0] - i.at(-1)[0] >= fc) && i.push(t);
 	let a = n(i, (e) => e * 1e3);
 	if (a.length >= 3) return r(a, "car");
 	let o = n(e?.cloud_soc ?? [], (e) => e / 100 * t);
@@ -3802,65 +3805,65 @@ function fc(e, t) {
 	}), "cloud");
 }
 // node_modules/uplot/dist/uPlot.esm.js
-var pc = !0, mc = "uplot", hc = "u-hz", gc = "u-vt", _c = "u-title", vc = "u-wrap", yc = "u-under", bc = "u-over", xc = "u-axis", Sc = "u-off", Cc = "u-select", wc = "u-cursor-x", Tc = "u-cursor-y", Ec = "u-cursor-pt", Dc = "u-legend", Oc = "u-live", kc = "u-inline", Ac = "u-series", jc = "u-marker", Mc = "u-label", Nc = "u-value", Pc = "width", Fc = "height", Ic = "top", Lc = "bottom", Rc = "left", zc = "right", Bc = "#000", Vc = "#0000", Hc = "mousemove", Uc = "mousedown", Wc = "mouseup", Gc = "mouseenter", Kc = "mouseleave", qc = "dblclick", Jc = "resize", Yc = "scroll", Xc = "change", Zc = "dppxchange", Qc = "--", $c = typeof window < "u", el = $c ? document : null, tl = $c ? window : null, nl = $c ? navigator : null, rl, il;
-function al() {
+var mc = !0, hc = "uplot", gc = "u-hz", _c = "u-vt", vc = "u-title", yc = "u-wrap", bc = "u-under", xc = "u-over", Sc = "u-axis", Cc = "u-off", wc = "u-select", Tc = "u-cursor-x", Ec = "u-cursor-y", Dc = "u-cursor-pt", Oc = "u-legend", kc = "u-live", Ac = "u-inline", jc = "u-series", Mc = "u-marker", Nc = "u-label", Pc = "u-value", Fc = "width", Ic = "height", Lc = "top", Rc = "bottom", zc = "left", Bc = "right", Vc = "#000", Hc = "#0000", Uc = "mousemove", Wc = "mousedown", Gc = "mouseup", Kc = "mouseenter", qc = "mouseleave", Jc = "dblclick", Yc = "resize", Xc = "scroll", Zc = "change", Qc = "dppxchange", $c = "--", el = typeof window < "u", tl = el ? document : null, nl = el ? window : null, rl = el ? navigator : null, il, al;
+function ol() {
 	let e = devicePixelRatio;
-	rl != e && (rl = e, il && bl(Xc, il, al), il = matchMedia(`(min-resolution: ${rl - .001}dppx) and (max-resolution: ${rl + .001}dppx)`), yl(Xc, il, al), tl.dispatchEvent(new CustomEvent(Zc)));
+	il != e && (il = e, al && xl(Zc, al, ol), al = matchMedia(`(min-resolution: ${il - .001}dppx) and (max-resolution: ${il + .001}dppx)`), bl(Zc, al, ol), nl.dispatchEvent(new CustomEvent(Qc)));
 }
-function ol(e, t) {
+function sl(e, t) {
 	if (t != null) {
 		let n = e.classList;
 		!n.contains(t) && n.add(t);
 	}
 }
-function sl(e, t) {
+function cl(e, t) {
 	let n = e.classList;
 	n.contains(t) && n.remove(t);
 }
-function cl(e, t, n) {
+function ll(e, t, n) {
 	e.style[t] = n + "px";
 }
-function ll(e, t, n, r) {
-	let i = el.createElement(e);
-	return t != null && ol(i, t), n?.insertBefore(i, r), i;
+function ul(e, t, n, r) {
+	let i = tl.createElement(e);
+	return t != null && sl(i, t), n?.insertBefore(i, r), i;
 }
-function ul(e, t) {
-	return ll("div", e, t);
+function dl(e, t) {
+	return ul("div", e, t);
 }
-var dl = /* @__PURE__ */ new WeakMap();
-function fl(e, t, n, r, i) {
+var fl = /* @__PURE__ */ new WeakMap();
+function pl(e, t, n, r, i) {
 	let a = "translate(" + t + "px," + n + "px)";
-	a != dl.get(e) && (e.style.transform = a, dl.set(e, a), t < 0 || n < 0 || t > r || n > i ? ol(e, Sc) : sl(e, Sc));
+	a != fl.get(e) && (e.style.transform = a, fl.set(e, a), t < 0 || n < 0 || t > r || n > i ? sl(e, Cc) : cl(e, Cc));
 }
-var pl = /* @__PURE__ */ new WeakMap();
-function ml(e, t, n) {
+var ml = /* @__PURE__ */ new WeakMap();
+function hl(e, t, n) {
 	let r = t + n;
-	r != pl.get(e) && (pl.set(e, r), e.style.background = t, e.style.borderColor = n);
+	r != ml.get(e) && (ml.set(e, r), e.style.background = t, e.style.borderColor = n);
 }
-var hl = /* @__PURE__ */ new WeakMap();
-function gl(e, t, n, r) {
+var gl = /* @__PURE__ */ new WeakMap();
+function _l(e, t, n, r) {
 	let i = t + "" + n;
-	i != hl.get(e) && (hl.set(e, i), e.style.height = n + "px", e.style.width = t + "px", e.style.marginLeft = r ? -t / 2 + "px" : 0, e.style.marginTop = r ? -n / 2 + "px" : 0);
+	i != gl.get(e) && (gl.set(e, i), e.style.height = n + "px", e.style.width = t + "px", e.style.marginLeft = r ? -t / 2 + "px" : 0, e.style.marginTop = r ? -n / 2 + "px" : 0);
 }
-var _l = { passive: !0 }, vl = {
-	..._l,
+var vl = { passive: !0 }, yl = {
+	...vl,
 	capture: !0
 };
-function yl(e, t, n, r) {
-	t.addEventListener(e, n, r ? vl : _l);
-}
 function bl(e, t, n, r) {
-	t.removeEventListener(e, n, _l);
+	t.addEventListener(e, n, r ? yl : vl);
 }
-$c && al();
 function xl(e, t, n, r) {
+	t.removeEventListener(e, n, vl);
+}
+el && ol();
+function Sl(e, t, n, r) {
 	let i;
 	n ||= 0, r ||= t.length - 1;
 	let a = r <= 2147483647;
-	for (; r - n > 1;) i = a ? n + r >> 1 : Ul((n + r) / 2), t[i] < e ? n = i : r = i;
+	for (; r - n > 1;) i = a ? n + r >> 1 : Wl((n + r) / 2), t[i] < e ? n = i : r = i;
 	return e - t[n] <= t[r] - e ? n : r;
 }
-function Sl(e) {
+function Cl(e) {
 	return (t, n, r) => {
 		let i = -1, a = -1;
 		for (let a = n; a <= r; a++) if (e(t[a])) {
@@ -3874,9 +3877,9 @@ function Sl(e) {
 		return [i, a];
 	};
 }
-var Cl = (e) => e != null, wl = (e) => e != null && e > 0, Tl = Sl(Cl), El = Sl(wl);
-function Dl(e, t, n, r = 0, i = !1) {
-	let a = i ? El : Tl, o = i ? wl : Cl;
+var wl = (e) => e != null, Tl = (e) => e != null && e > 0, El = Cl(wl), Dl = Cl(Tl);
+function Ol(e, t, n, r = 0, i = !1) {
+	let a = i ? Dl : El, o = i ? Tl : wl;
 	[t, n] = a(e, t, n);
 	let s = e[t], c = e[t];
 	if (t > -1) {
@@ -3887,106 +3890,106 @@ function Dl(e, t, n, r = 0, i = !1) {
 			o(t) && (t < s ? s = t : t > c && (c = t));
 		}
 	}
-	return [s ?? eu, c ?? -eu];
-}
-function Ol(e, t, n, r) {
-	let i = Yl(e), a = Yl(t);
-	e == t && (i == -1 ? (e *= n, t /= n) : (e /= n, t *= n));
-	let o = n == 10 ? Xl : Zl, s = i == 1 ? Ul : Gl, c = a == 1 ? Gl : Ul, l = s(o(Hl(e))), u = c(o(Hl(t))), d = Jl(n, l), f = Jl(n, u);
-	return n == 10 && (l < 0 && (d = gu(d, -l)), u < 0 && (f = gu(f, -u))), r || n == 2 ? (e = d * i, t = f * a) : (e = hu(e, d), t = mu(t, f)), [e, t];
+	return [s ?? tu, c ?? -tu];
 }
 function kl(e, t, n, r) {
-	let i = Ol(e, t, n, r);
+	let i = Xl(e), a = Xl(t);
+	e == t && (i == -1 ? (e *= n, t /= n) : (e /= n, t *= n));
+	let o = n == 10 ? Zl : Ql, s = i == 1 ? Wl : Kl, c = a == 1 ? Kl : Wl, l = s(o(Ul(e))), u = c(o(Ul(t))), d = Yl(n, l), f = Yl(n, u);
+	return n == 10 && (l < 0 && (d = _u(d, -l)), u < 0 && (f = _u(f, -u))), r || n == 2 ? (e = d * i, t = f * a) : (e = gu(e, d), t = hu(t, f)), [e, t];
+}
+function Al(e, t, n, r) {
+	let i = kl(e, t, n, r);
 	return e == 0 && (i[0] = 0), t == 0 && (i[1] = 0), i;
 }
-var Al = .1, jl = {
+var jl = .1, Ml = {
 	mode: 3,
-	pad: Al
-}, Ml = {
+	pad: jl
+}, Nl = {
 	pad: 0,
 	soft: null,
 	mode: 0
-}, Nl = {
-	min: Ml,
-	max: Ml
+}, Pl = {
+	min: Nl,
+	max: Nl
 };
-function Pl(e, t, n, r) {
-	return Du(n) ? Ll(e, t, n) : (Ml.pad = n, Ml.soft = r ? 0 : null, Ml.mode = r ? 3 : 0, Ll(e, t, Nl));
+function Fl(e, t, n, r) {
+	return Ou(n) ? Rl(e, t, n) : (Nl.pad = n, Nl.soft = r ? 0 : null, Nl.mode = r ? 3 : 0, Rl(e, t, Pl));
 }
-function Fl(e, t) {
+function Il(e, t) {
 	return e ?? t;
 }
-function Il(e, t, n) {
-	for (t = Fl(t, 0), n = Fl(n, e.length - 1); t <= n;) {
+function Ll(e, t, n) {
+	for (t = Il(t, 0), n = Il(n, e.length - 1); t <= n;) {
 		if (e[t] != null) return !0;
 		t++;
 	}
 	return !1;
 }
-function Ll(e, t, n) {
-	let r = n.min, i = n.max, a = Fl(r.pad, 0), o = Fl(i.pad, 0), s = Fl(r.hard, -eu), c = Fl(i.hard, eu), l = Fl(r.soft, eu), u = Fl(i.soft, -eu), d = Fl(r.mode, 0), f = Fl(i.mode, 0), p = t - e, m = Xl(p), h = ql(Hl(e), Hl(t)), g = Hl(Xl(h) - m);
-	(p < 1e-24 || g > 10) && (p = 0, (e == 0 || t == 0) && (p = 1e-24, d == 2 && l != eu && (a = 0), f == 2 && u != -eu && (o = 0)));
-	let _ = p || h || 1e3, v = Jl(10, Ul(Xl(_))), y = gu(hu(e - _ * (p == 0 ? e == 0 ? .1 : 1 : a), v / 10), 24), b = e >= l && (d == 1 || d == 3 && y <= l || d == 2 && y >= l) ? l : eu, x = ql(s, y < b && e >= b ? b : Kl(b, y)), S = gu(mu(t + _ * (p == 0 ? t == 0 ? .1 : 1 : o), v / 10), 24), C = t <= u && (f == 1 || f == 3 && S >= u || f == 2 && S <= u) ? u : -eu, w = Kl(c, S > C && t <= C ? C : ql(C, S));
+function Rl(e, t, n) {
+	let r = n.min, i = n.max, a = Il(r.pad, 0), o = Il(i.pad, 0), s = Il(r.hard, -tu), c = Il(i.hard, tu), l = Il(r.soft, tu), u = Il(i.soft, -tu), d = Il(r.mode, 0), f = Il(i.mode, 0), p = t - e, m = Zl(p), h = Jl(Ul(e), Ul(t)), g = Ul(Zl(h) - m);
+	(p < 1e-24 || g > 10) && (p = 0, (e == 0 || t == 0) && (p = 1e-24, d == 2 && l != tu && (a = 0), f == 2 && u != -tu && (o = 0)));
+	let _ = p || h || 1e3, v = Yl(10, Wl(Zl(_))), y = _u(gu(e - _ * (p == 0 ? e == 0 ? .1 : 1 : a), v / 10), 24), b = e >= l && (d == 1 || d == 3 && y <= l || d == 2 && y >= l) ? l : tu, x = Jl(s, y < b && e >= b ? b : ql(b, y)), S = _u(hu(t + _ * (p == 0 ? t == 0 ? .1 : 1 : o), v / 10), 24), C = t <= u && (f == 1 || f == 3 && S >= u || f == 2 && S <= u) ? u : -tu, w = ql(c, S > C && t <= C ? C : Jl(C, S));
 	return x == w && x == 0 && (w = 100), [x, w];
 }
-var Rl = new Intl.NumberFormat($c ? nl.language : "en-US"), zl = (e) => Rl.format(e), Bl = Math, Vl = Bl.PI, Hl = Bl.abs, Ul = Bl.floor, Wl = Bl.round, Gl = Bl.ceil, Kl = Bl.min, ql = Bl.max, Jl = Bl.pow, Yl = Bl.sign, Xl = Bl.log10, Zl = Bl.log2, Ql = (e, t = 1) => Bl.sinh(e) * t, $l = (e, t = 1) => Bl.asinh(e / t), eu = Infinity;
-function tu(e) {
-	return (Xl((e ^ e >> 31) - (e >> 31)) | 0) + 1;
+var zl = new Intl.NumberFormat(el ? rl.language : "en-US"), Bl = (e) => zl.format(e), Vl = Math, Hl = Vl.PI, Ul = Vl.abs, Wl = Vl.floor, Gl = Vl.round, Kl = Vl.ceil, ql = Vl.min, Jl = Vl.max, Yl = Vl.pow, Xl = Vl.sign, Zl = Vl.log10, Ql = Vl.log2, $l = (e, t = 1) => Vl.sinh(e) * t, eu = (e, t = 1) => Vl.asinh(e / t), tu = Infinity;
+function nu(e) {
+	return (Zl((e ^ e >> 31) - (e >> 31)) | 0) + 1;
 }
-function nu(e, t, n) {
-	return Kl(ql(e, t), n);
-}
-function ru(e) {
-	return typeof e == "function";
+function ru(e, t, n) {
+	return ql(Jl(e, t), n);
 }
 function iu(e) {
-	return ru(e) ? e : () => e;
+	return typeof e == "function";
 }
-var au = () => {}, ou = (e) => e, su = (e, t) => t, cu = (e) => null, lu = (e) => !0, uu = (e, t) => e == t, du = /\.\d*?(?=9{6,}|0{6,})/gm, fu = (e) => {
-	if (wu(e) || _u.has(e)) return e;
-	let t = `${e}`, n = t.match(du);
+function au(e) {
+	return iu(e) ? e : () => e;
+}
+var ou = () => {}, su = (e) => e, cu = (e, t) => t, lu = (e) => null, uu = (e) => !0, du = (e, t) => e == t, fu = /\.\d*?(?=9{6,}|0{6,})/gm, pu = (e) => {
+	if (Tu(e) || vu.has(e)) return e;
+	let t = `${e}`, n = t.match(fu);
 	if (n == null) return e;
 	let r = n[0].length - 1;
 	if (t.indexOf("e-") != -1) {
 		let [e, n] = t.split("e");
-		return +`${fu(e)}e${n}`;
+		return +`${pu(e)}e${n}`;
 	}
-	return gu(e, r);
+	return _u(e, r);
 };
-function pu(e, t) {
-	return fu(gu(fu(e / t)) * t);
-}
 function mu(e, t) {
-	return fu(Gl(fu(e / t)) * t);
+	return pu(_u(pu(e / t)) * t);
 }
 function hu(e, t) {
-	return fu(Ul(fu(e / t)) * t);
+	return pu(Kl(pu(e / t)) * t);
 }
-function gu(e, t = 0) {
-	if (wu(e)) return e;
+function gu(e, t) {
+	return pu(Wl(pu(e / t)) * t);
+}
+function _u(e, t = 0) {
+	if (Tu(e)) return e;
 	let n = 10 ** t;
-	return Wl(e * n * (1 + 2 ** -52)) / n;
+	return Gl(e * n * (1 + 2 ** -52)) / n;
 }
-var _u = /* @__PURE__ */ new Map();
-function vu(e) {
+var vu = /* @__PURE__ */ new Map();
+function yu(e) {
 	return (("" + e).split(".")[1] || "").length;
 }
-function yu(e, t, n, r) {
-	let i = [], a = r.map(vu);
+function bu(e, t, n, r) {
+	let i = [], a = r.map(yu);
 	for (let o = t; o < n; o++) {
-		let t = Hl(o), n = gu(Jl(e, o), t);
+		let t = Ul(o), n = _u(Yl(e, o), t);
 		for (let s = 0; s < r.length; s++) {
-			let c = e == 10 ? +`${r[s]}e${o}` : r[s] * n, l = (o >= 0 ? 0 : t) + (o >= a[s] ? 0 : a[s]), u = e == 10 ? c : gu(c, l);
-			i.push(u), _u.set(u, l);
+			let c = e == 10 ? +`${r[s]}e${o}` : r[s] * n, l = (o >= 0 ? 0 : t) + (o >= a[s] ? 0 : a[s]), u = e == 10 ? c : _u(c, l);
+			i.push(u), vu.set(u, l);
 		}
 	}
 	return i;
 }
-var bu = {}, xu = [], Su = [null, null], Cu = Array.isArray, wu = Number.isInteger, Tu = (e) => e === void 0;
-function Eu(e) {
+var xu = {}, Su = [], Cu = [null, null], wu = Array.isArray, Tu = Number.isInteger, Eu = (e) => e === void 0;
+function Du(e) {
 	return typeof e == "string";
 }
-function Du(e) {
+function Ou(e) {
 	let t = !1;
 	if (e != null) {
 		let n = e.constructor;
@@ -3994,35 +3997,35 @@ function Du(e) {
 	}
 	return t;
 }
-function Ou(e) {
+function ku(e) {
 	return typeof e == "object" && !!e;
 }
-var ku = Object.getPrototypeOf(Uint8Array), Au = "__proto__";
-function ju(e, t = Du) {
+var Au = Object.getPrototypeOf(Uint8Array), ju = "__proto__";
+function Mu(e, t = Ou) {
 	let n;
-	if (Cu(e)) {
+	if (wu(e)) {
 		let r = e.find((e) => e != null);
-		if (Cu(r) || t(r)) {
+		if (wu(r) || t(r)) {
 			n = Array(e.length);
-			for (let r = 0; r < e.length; r++) n[r] = ju(e[r], t);
+			for (let r = 0; r < e.length; r++) n[r] = Mu(e[r], t);
 		} else n = e.slice();
-	} else if (e instanceof ku) n = e.slice();
+	} else if (e instanceof Au) n = e.slice();
 	else if (t(e)) {
 		n = {};
-		for (let r in e) r != Au && (n[r] = ju(e[r], t));
+		for (let r in e) r != ju && (n[r] = Mu(e[r], t));
 	} else n = e;
 	return n;
 }
-function Mu(e) {
+function Nu(e) {
 	let t = arguments;
 	for (let n = 1; n < t.length; n++) {
 		let r = t[n];
-		for (let t in r) t != Au && (Du(e[t]) ? Mu(e[t], ju(r[t])) : e[t] = ju(r[t]));
+		for (let t in r) t != ju && (Ou(e[t]) ? Nu(e[t], Mu(r[t])) : e[t] = Mu(r[t]));
 	}
 	return e;
 }
-var Nu = 0, Pu = 1, Fu = 2;
-function Iu(e, t, n) {
+var Pu = 0, Fu = 1, Iu = 2;
+function Lu(e, t, n) {
 	for (let r = 0, i, a = -1; r < t.length; r++) {
 		let o = t[r];
 		if (o > a) {
@@ -4031,11 +4034,11 @@ function Iu(e, t, n) {
 		}
 	}
 }
-function Lu(e, t) {
-	if (Bu(e)) {
+function Ru(e, t) {
+	if (Vu(e)) {
 		let t = e[0].slice();
 		for (let n = 1; n < e.length; n++) t.push(...e[n].slice(1));
-		return Vu(t[0]) || (t = zu(t)), t;
+		return Hu(t[0]) || (t = Bu(t)), t;
 	}
 	let n = /* @__PURE__ */ new Set();
 	for (let t = 0; t < e.length; t++) {
@@ -4047,18 +4050,18 @@ function Lu(e, t) {
 	for (let n = 0; n < e.length; n++) {
 		let o = e[n], s = o[0];
 		for (let e = 1; e < o.length; e++) {
-			let c = o[e], l = Array(i).fill(void 0), u = t ? t[n][e] : Pu, d = [];
+			let c = o[e], l = Array(i).fill(void 0), u = t ? t[n][e] : Fu, d = [];
 			for (let e = 0; e < c.length; e++) {
 				let t = c[e], n = a.get(s[e]);
-				t === null ? u != Nu && (l[n] = t, u == Fu && d.push(n)) : l[n] = t;
+				t === null ? u != Pu && (l[n] = t, u == Iu && d.push(n)) : l[n] = t;
 			}
-			Iu(l, d, i), r.push(l);
+			Lu(l, d, i), r.push(l);
 		}
 	}
 	return r;
 }
-var Ru = typeof queueMicrotask > "u" ? (e) => Promise.resolve().then(e) : queueMicrotask;
-function zu(e) {
+var zu = typeof queueMicrotask > "u" ? (e) => Promise.resolve().then(e) : queueMicrotask;
+function Bu(e) {
 	let t = e[0], n = t.length, r = Array(n);
 	for (let e = 0; e < r.length; e++) r[e] = e;
 	r.sort((e, n) => t[e] - t[n]);
@@ -4070,7 +4073,7 @@ function zu(e) {
 	}
 	return i;
 }
-function Bu(e) {
+function Vu(e) {
 	let t = e[0][0], n = t.length;
 	for (let r = 1; r < e.length; r++) {
 		let i = e[r][0];
@@ -4081,14 +4084,14 @@ function Bu(e) {
 	}
 	return !0;
 }
-function Vu(e, t = 100) {
+function Hu(e, t = 100) {
 	let n = e.length;
 	if (n <= 1) return !0;
 	let r = 0, i = n - 1;
 	for (; r <= i && e[r] == null;) r++;
 	for (; i >= r && e[i] == null;) i--;
 	if (i <= r) return !0;
-	let a = ql(1, Ul((i - r + 1) / t));
+	let a = Jl(1, Wl((i - r + 1) / t));
 	for (let t = e[r], n = r + a; n <= i; n += a) {
 		let r = e[n];
 		if (r != null) {
@@ -4098,7 +4101,7 @@ function Vu(e, t = 100) {
 	}
 	return !0;
 }
-var Hu = [
+var Uu = [
 	"January",
 	"February",
 	"March",
@@ -4111,7 +4114,7 @@ var Hu = [
 	"October",
 	"November",
 	"December"
-], Uu = [
+], Wu = [
 	"Sunday",
 	"Monday",
 	"Tuesday",
@@ -4120,33 +4123,33 @@ var Hu = [
 	"Friday",
 	"Saturday"
 ];
-function Wu(e) {
+function Gu(e) {
 	return e.slice(0, 3);
 }
-var Gu = Uu.map(Wu), Ku = {
-	MMMM: Hu,
-	MMM: Hu.map(Wu),
-	WWWW: Uu,
-	WWW: Gu
+var Ku = Wu.map(Gu), qu = {
+	MMMM: Uu,
+	MMM: Uu.map(Gu),
+	WWWW: Wu,
+	WWW: Ku
 };
-function qu(e) {
+function Ju(e) {
 	return (e < 10 ? "0" : "") + e;
 }
-function Ju(e) {
+function Yu(e) {
 	return (e < 10 ? "00" : e < 100 ? "0" : "") + e;
 }
-var Yu = {
+var Xu = {
 	YYYY: (e) => e.getFullYear(),
 	YY: (e) => (e.getFullYear() + "").slice(2),
 	MMMM: (e, t) => t.MMMM[e.getMonth()],
 	MMM: (e, t) => t.MMM[e.getMonth()],
-	MM: (e) => qu(e.getMonth() + 1),
+	MM: (e) => Ju(e.getMonth() + 1),
 	M: (e) => e.getMonth() + 1,
-	DD: (e) => qu(e.getDate()),
+	DD: (e) => Ju(e.getDate()),
 	D: (e) => e.getDate(),
 	WWWW: (e, t) => t.WWWW[e.getDay()],
 	WWW: (e, t) => t.WWW[e.getDay()],
-	HH: (e) => qu(e.getHours()),
+	HH: (e) => Ju(e.getHours()),
 	H: (e) => e.getHours(),
 	h: (e) => {
 		let t = e.getHours();
@@ -4155,35 +4158,35 @@ var Yu = {
 	AA: (e) => e.getHours() >= 12 ? "PM" : "AM",
 	aa: (e) => e.getHours() >= 12 ? "pm" : "am",
 	a: (e) => e.getHours() >= 12 ? "p" : "a",
-	mm: (e) => qu(e.getMinutes()),
+	mm: (e) => Ju(e.getMinutes()),
 	m: (e) => e.getMinutes(),
-	ss: (e) => qu(e.getSeconds()),
+	ss: (e) => Ju(e.getSeconds()),
 	s: (e) => e.getSeconds(),
-	fff: (e) => Ju(e.getMilliseconds())
+	fff: (e) => Yu(e.getMilliseconds())
 };
-function Xu(e, t) {
-	t ||= Ku;
+function Zu(e, t) {
+	t ||= qu;
 	let n = [], r = /\{([a-z]+)\}|[^{]+/gi, i;
-	for (; i = r.exec(e);) n.push(i[0][0] == "{" ? Yu[i[1]] : i[0]);
+	for (; i = r.exec(e);) n.push(i[0][0] == "{" ? Xu[i[1]] : i[0]);
 	return (e) => {
 		let r = "";
 		for (let i = 0; i < n.length; i++) r += typeof n[i] == "string" ? n[i] : n[i](e, t);
 		return r;
 	};
 }
-var Zu = new Intl.DateTimeFormat().resolvedOptions().timeZone;
-function Qu(e, t) {
+var Qu = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+function $u(e, t) {
 	let n;
-	return t == "UTC" || t == "Etc/UTC" ? n = /* @__PURE__ */ new Date(+e + e.getTimezoneOffset() * 6e4) : t == Zu ? n = e : (n = new Date(e.toLocaleString("en-US", { timeZone: t })), n.setMilliseconds(e.getMilliseconds())), n;
+	return t == "UTC" || t == "Etc/UTC" ? n = /* @__PURE__ */ new Date(+e + e.getTimezoneOffset() * 6e4) : t == Qu ? n = e : (n = new Date(e.toLocaleString("en-US", { timeZone: t })), n.setMilliseconds(e.getMilliseconds())), n;
 }
-var $u = (e) => e % 1 == 0, ed = [
+var ed = (e) => e % 1 == 0, td = [
 	1,
 	2,
 	2.5,
 	5
-], td = yu(10, -32, 0, ed), nd = yu(10, 0, 32, ed), rd = nd.filter($u), id = td.concat(nd), ad = "\n", od = "{YYYY}", sd = ad + od, cd = "{M}/{D}", ld = ad + cd, ud = ld + "/{YY}", dd = "{aa}", fd = "{h}:{mm}" + dd, pd = ad + fd, md = ":{ss}", hd = null;
-function gd(e) {
-	let t = e * 1e3, n = t * 60, r = n * 60, i = r * 24, a = i * 30, o = i * 365, s = (e == 1 ? yu(10, 0, 3, ed).filter($u) : yu(10, -3, 0, ed)).concat([
+], nd = bu(10, -32, 0, td), rd = bu(10, 0, 32, td), id = rd.filter(ed), ad = nd.concat(rd), od = "\n", sd = "{YYYY}", cd = od + sd, ld = "{M}/{D}", ud = od + ld, dd = ud + "/{YY}", fd = "{aa}", pd = "{h}:{mm}" + fd, md = od + pd, hd = ":{ss}", gd = null;
+function _d(e) {
+	let t = e * 1e3, n = t * 60, r = n * 60, i = r * 24, a = i * 30, o = i * 365, s = (e == 1 ? bu(10, 0, 3, td).filter(ed) : bu(10, -3, 0, td)).concat([
 		t,
 		t * 5,
 		t * 10,
@@ -4227,100 +4230,100 @@ function gd(e) {
 	]), c = [
 		[
 			o,
-			od,
-			hd,
-			hd,
-			hd,
-			hd,
-			hd,
-			hd,
+			sd,
+			gd,
+			gd,
+			gd,
+			gd,
+			gd,
+			gd,
 			1
 		],
 		[
 			i * 28,
 			"{MMM}",
-			sd,
-			hd,
-			hd,
-			hd,
-			hd,
-			hd,
+			cd,
+			gd,
+			gd,
+			gd,
+			gd,
+			gd,
 			1
 		],
 		[
 			i,
+			ld,
 			cd,
-			sd,
-			hd,
-			hd,
-			hd,
-			hd,
-			hd,
+			gd,
+			gd,
+			gd,
+			gd,
+			gd,
 			1
 		],
 		[
 			r,
-			"{h}" + dd,
+			"{h}" + fd,
+			dd,
+			gd,
 			ud,
-			hd,
-			ld,
-			hd,
-			hd,
-			hd,
+			gd,
+			gd,
+			gd,
 			1
 		],
 		[
 			n,
-			fd,
+			pd,
+			dd,
+			gd,
 			ud,
-			hd,
-			ld,
-			hd,
-			hd,
-			hd,
+			gd,
+			gd,
+			gd,
 			1
 		],
 		[
 			t,
+			hd,
+			dd + " " + pd,
+			gd,
+			ud + " " + pd,
+			gd,
 			md,
-			ud + " " + fd,
-			hd,
-			ld + " " + fd,
-			hd,
-			pd,
-			hd,
+			gd,
 			1
 		],
 		[
 			e,
-			md + ".{fff}",
-			ud + " " + fd,
-			hd,
-			ld + " " + fd,
-			hd,
-			pd,
-			hd,
+			hd + ".{fff}",
+			dd + " " + pd,
+			gd,
+			ud + " " + pd,
+			gd,
+			md,
+			gd,
 			1
 		]
 	];
 	function l(t) {
 		return (s, c, l, u, d, f) => {
-			let p = [], m = d >= o, h = d >= a && d < o, g = t(l), _ = gu(g * e, 3), v = Ed(g.getFullYear(), m ? 0 : g.getMonth(), h || m ? 1 : g.getDate()), y = gu(v * e, 3);
+			let p = [], m = d >= o, h = d >= a && d < o, g = t(l), _ = _u(g * e, 3), v = Dd(g.getFullYear(), m ? 0 : g.getMonth(), h || m ? 1 : g.getDate()), y = _u(v * e, 3);
 			if (h || m) {
-				let n = h ? d / a : 0, r = m ? d / o : 0, i = _ == y ? _ : gu(Ed(v.getFullYear() + r, v.getMonth() + n, 1) * e, 3), s = new Date(Wl(i / e)), c = s.getFullYear(), l = s.getMonth();
+				let n = h ? d / a : 0, r = m ? d / o : 0, i = _ == y ? _ : _u(Dd(v.getFullYear() + r, v.getMonth() + n, 1) * e, 3), s = new Date(Gl(i / e)), c = s.getFullYear(), l = s.getMonth();
 				for (let a = 0; i <= u; a++) {
-					let o = Ed(c + r * a, l + n * a, 1), s = o - t(gu(o * e, 3));
-					i = gu((+o + s) * e, 3), i <= u && p.push(i);
+					let o = Dd(c + r * a, l + n * a, 1), s = o - t(_u(o * e, 3));
+					i = _u((+o + s) * e, 3), i <= u && p.push(i);
 				}
 			} else {
-				let a = d >= i ? i : d, o = y + (Ul(l) - Ul(_)) + mu(_ - y, a);
+				let a = d >= i ? i : d, o = y + (Wl(l) - Wl(_)) + hu(_ - y, a);
 				p.push(o);
 				let m = t(o), h = m.getHours() + m.getMinutes() / n + m.getSeconds() / r, g = d / r, v = f / s.axes[c]._space;
-				for (; o = gu(o + d, e == 1 ? 0 : 3), !(o > u);) if (g > 1) {
-					let e = Ul(gu(h + g, 6)) % 24, n = t(o).getHours() - e;
+				for (; o = _u(o + d, e == 1 ? 0 : 3), !(o > u);) if (g > 1) {
+					let e = Wl(_u(h + g, 6)) % 24, n = t(o).getHours() - e;
 					n > 1 && (n = -1), o -= n * r, h = (h + g) % 24;
 					let i = p[p.length - 1];
-					gu((o - i) / d, 3) * v >= .7 && p.push(o);
+					_u((o - i) / d, 3) * v >= .7 && p.push(o);
 				} else p.push(o);
 			}
 			return p;
@@ -4332,12 +4335,12 @@ function gd(e) {
 		l
 	];
 }
-var [_d, vd, yd] = gd(1), [bd, xd, Sd] = gd(.001);
-yu(2, -53, 53, [1]);
-function Cd(e, t) {
+var [vd, yd, bd] = _d(1), [xd, Sd, Cd] = _d(.001);
+bu(2, -53, 53, [1]);
+function wd(e, t) {
 	return e.map((e) => e.map((n, r) => r == 0 || r == 8 || n == null ? n : t(r == 1 || e[8] == 0 ? n : e[1] + n)));
 }
-function wd(e, t) {
+function Td(e, t) {
 	return (n, r, i, a, o) => {
 		let s = t.find((e) => o >= e[0]) || t[t.length - 1], c, l, u, d, f, p;
 		return r.map((t) => {
@@ -4346,98 +4349,98 @@ function wd(e, t) {
 		});
 	};
 }
-function Td(e, t) {
-	let n = Xu(t);
+function Ed(e, t) {
+	let n = Zu(t);
 	return (t, r, i, a, o) => r.map((t) => n(e(t)));
 }
-function Ed(e, t, n) {
+function Dd(e, t, n) {
 	return new Date(e, t, n);
 }
-function Dd(e, t) {
+function Od(e, t) {
 	return t(e);
 }
-var Od = "{YYYY}-{MM}-{DD} {h}:{mm}{aa}";
-function kd(e, t) {
-	return (n, r, i, a) => a == null ? Qc : t(e(r));
-}
+var kd = "{YYYY}-{MM}-{DD} {h}:{mm}{aa}";
 function Ad(e, t) {
+	return (n, r, i, a) => a == null ? $c : t(e(r));
+}
+function jd(e, t) {
 	let n = e.series[t];
 	return n.width ? n.stroke(e, t) : n.points.width ? n.points.stroke(e, t) : null;
 }
-function jd(e, t) {
+function Md(e, t) {
 	return e.series[t].fill(e, t);
 }
-var Md = {
+var Nd = {
 	show: !0,
 	live: !0,
 	isolate: !1,
-	mount: au,
+	mount: ou,
 	markers: {
 		show: !0,
 		width: 2,
-		stroke: Ad,
-		fill: jd,
+		stroke: jd,
+		fill: Md,
 		dash: "solid"
 	},
 	idx: null,
 	idxs: null,
 	values: []
 };
-function Nd(e, t) {
-	let n = e.cursor.points, r = ul(), i = n.size(e, t);
-	cl(r, Pc, i), cl(r, Fc, i);
-	let a = i / -2;
-	cl(r, "marginLeft", a), cl(r, "marginTop", a);
-	let o = n.width(e, t, i);
-	return o && cl(r, "borderWidth", o), r;
-}
 function Pd(e, t) {
-	let n = e.series[t].points;
-	return n._fill || n._stroke;
+	let n = e.cursor.points, r = dl(), i = n.size(e, t);
+	ll(r, Fc, i), ll(r, Ic, i);
+	let a = i / -2;
+	ll(r, "marginLeft", a), ll(r, "marginTop", a);
+	let o = n.width(e, t, i);
+	return o && ll(r, "borderWidth", o), r;
 }
 function Fd(e, t) {
 	let n = e.series[t].points;
-	return n._stroke || n._fill;
+	return n._fill || n._stroke;
 }
 function Id(e, t) {
+	let n = e.series[t].points;
+	return n._stroke || n._fill;
+}
+function Ld(e, t) {
 	return e.series[t].points.size;
 }
-var Ld = [0, 0];
-function Rd(e, t, n) {
-	return Ld[0] = t, Ld[1] = n, Ld;
+var Rd = [0, 0];
+function zd(e, t, n) {
+	return Rd[0] = t, Rd[1] = n, Rd;
 }
-function zd(e, t, n, r = !0) {
+function Bd(e, t, n, r = !0) {
 	return (e) => {
 		e.button != 0 || r && e.target != t || n(e);
 	};
 }
-function Bd(e, t, n, r = !0) {
+function Vd(e, t, n, r = !0) {
 	return (e) => {
 		r && e.target != t || n(e);
 	};
 }
-var Vd = {
+var Hd = {
 	show: !0,
 	x: !0,
 	y: !0,
 	lock: !1,
-	move: Rd,
+	move: zd,
 	points: {
 		one: !1,
-		show: Nd,
-		size: Id,
+		show: Pd,
+		size: Ld,
 		width: 0,
-		stroke: Fd,
-		fill: Pd
+		stroke: Id,
+		fill: Fd
 	},
 	bind: {
-		mousedown: zd,
-		mouseup: zd,
-		click: zd,
-		dblclick: zd,
-		mousemove: Bd,
-		mouseleave: Bd,
-		mouseenter: Bd
+		mousedown: Bd,
+		mouseup: Bd,
+		click: Bd,
+		dblclick: Bd,
+		mousemove: Vd,
+		mouseleave: Vd,
+		mouseenter: Vd
 	},
 	drag: {
 		setScale: !0,
@@ -4467,139 +4470,139 @@ var Vd = {
 	dataIdx: null,
 	idxs: null,
 	event: null
-}, Hd = {
+}, Ud = {
 	show: !0,
 	stroke: "rgba(0,0,0,0.07)",
 	width: 2
-}, Ud = Mu({}, Hd, { filter: su }), Wd = Mu({}, Ud, { size: 10 }), Gd = Mu({}, Hd, { show: !1 }), Kd = "12px system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, \"Noto Sans\", sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"", qd = "bold " + Kd, Jd = 1.5, Yd = {
+}, Wd = Nu({}, Ud, { filter: cu }), Gd = Nu({}, Wd, { size: 10 }), Kd = Nu({}, Ud, { show: !1 }), qd = "12px system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, \"Noto Sans\", sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"", Jd = "bold " + qd, Yd = 1.5, Xd = {
 	show: !0,
 	scale: "x",
-	stroke: Bc,
+	stroke: Vc,
 	space: 50,
 	gap: 5,
 	alignTo: 1,
 	size: 50,
 	labelGap: 0,
 	labelSize: 30,
-	labelFont: qd,
+	labelFont: Jd,
 	side: 2,
-	grid: Ud,
-	ticks: Wd,
-	border: Gd,
-	font: Kd,
-	lineGap: Jd,
+	grid: Wd,
+	ticks: Gd,
+	border: Kd,
+	font: qd,
+	lineGap: Yd,
 	rotate: 0
-}, Xd = "Value", Zd = "Time", Qd = {
+}, Zd = "Value", Qd = "Time", $d = {
 	show: !0,
 	scale: "x",
 	auto: !1,
 	sorted: 1,
-	min: eu,
+	min: tu,
 	max: -Infinity,
 	idxs: []
 };
-function $d(e, t, n, r, i) {
-	return t.map((e) => e == null ? "" : zl(e));
-}
-function ef(e, t, n, r, i, a, o) {
-	let s = [], c = _u.get(i) || 0;
-	n = o ? n : gu(mu(n, i), c);
-	for (let e = n; e <= r; e = gu(e + i, c)) s.push(Object.is(e, -0) ? 0 : e);
-	return s;
+function ef(e, t, n, r, i) {
+	return t.map((e) => e == null ? "" : Bl(e));
 }
 function tf(e, t, n, r, i, a, o) {
-	let s = [], c = e.scales[e.axes[t].scale].log;
-	i = Jl(c, Ul((c == 10 ? Xl : Zl)(n))), c == 10 && (i = id[xl(i, id)]);
-	let l = n, u = i * c;
-	c == 10 && (u = id[xl(u, id)]);
-	do
-		s.push(l), l += i, c == 10 && !_u.has(l) && (l = gu(l, _u.get(i))), l >= u && (i = l, u = i * c, c == 10 && (u = id[xl(u, id)]));
-	while (l <= r);
+	let s = [], c = vu.get(i) || 0;
+	n = o ? n : _u(hu(n, i), c);
+	for (let e = n; e <= r; e = _u(e + i, c)) s.push(Object.is(e, -0) ? 0 : e);
 	return s;
 }
 function nf(e, t, n, r, i, a, o) {
-	let s = e.scales[e.axes[t].scale].asinh, c = r > s ? tf(e, t, ql(s, n), r, i) : [s], l = r >= 0 && n <= 0 ? [0] : [];
-	return (n < -s ? tf(e, t, ql(s, -r), -n, i) : [s]).reverse().map((e) => -e).concat(l, c);
+	let s = [], c = e.scales[e.axes[t].scale].log;
+	i = Yl(c, Wl((c == 10 ? Zl : Ql)(n))), c == 10 && (i = ad[Sl(i, ad)]);
+	let l = n, u = i * c;
+	c == 10 && (u = ad[Sl(u, ad)]);
+	do
+		s.push(l), l += i, c == 10 && !vu.has(l) && (l = _u(l, vu.get(i))), l >= u && (i = l, u = i * c, c == 10 && (u = ad[Sl(u, ad)]));
+	while (l <= r);
+	return s;
 }
-var rf = /./, af = /[12357]/, of = /[125]/, sf = /1/, cf = (e, t, n, r) => e.map((e, i) => t == 4 && e == 0 || i % r == 0 && n.test(e.toExponential()[+(e < 0)]) ? e : null);
-function lf(e, t, n, r, i) {
-	let a = e.axes[n], o = a.scale, s = e.scales[o], c = e.valToPos, l = a._space, u = c(10, o), d = c(9, o) - u >= l ? rf : c(7, o) - u >= l ? af : c(5, o) - u >= l ? of : sf;
-	if (d == sf) {
-		let e = Hl(c(1, o) - u);
-		if (e < l) return cf(t.slice().reverse(), s.distr, d, Gl(l / e)).reverse();
-	}
-	return cf(t, s.distr, d, 1);
+function rf(e, t, n, r, i, a, o) {
+	let s = e.scales[e.axes[t].scale].asinh, c = r > s ? nf(e, t, Jl(s, n), r, i) : [s], l = r >= 0 && n <= 0 ? [0] : [];
+	return (n < -s ? nf(e, t, Jl(s, -r), -n, i) : [s]).reverse().map((e) => -e).concat(l, c);
 }
+var af = /./, of = /[12357]/, sf = /[125]/, cf = /1/, lf = (e, t, n, r) => e.map((e, i) => t == 4 && e == 0 || i % r == 0 && n.test(e.toExponential()[+(e < 0)]) ? e : null);
 function uf(e, t, n, r, i) {
-	let a = e.axes[n], o = a.scale, s = a._space, c = e.valToPos, l = Hl(c(1, o) - c(2, o));
-	return l < s ? cf(t.slice().reverse(), 3, rf, Gl(s / l)).reverse() : t;
+	let a = e.axes[n], o = a.scale, s = e.scales[o], c = e.valToPos, l = a._space, u = c(10, o), d = c(9, o) - u >= l ? af : c(7, o) - u >= l ? of : c(5, o) - u >= l ? sf : cf;
+	if (d == cf) {
+		let e = Ul(c(1, o) - u);
+		if (e < l) return lf(t.slice().reverse(), s.distr, d, Kl(l / e)).reverse();
+	}
+	return lf(t, s.distr, d, 1);
 }
-function df(e, t, n, r) {
-	return r == null ? Qc : t == null ? "" : zl(t);
+function df(e, t, n, r, i) {
+	let a = e.axes[n], o = a.scale, s = a._space, c = e.valToPos, l = Ul(c(1, o) - c(2, o));
+	return l < s ? lf(t.slice().reverse(), 3, af, Kl(s / l)).reverse() : t;
 }
-var ff = {
+function ff(e, t, n, r) {
+	return r == null ? $c : t == null ? "" : Bl(t);
+}
+var pf = {
 	show: !0,
 	scale: "y",
-	stroke: Bc,
+	stroke: Vc,
 	space: 30,
 	gap: 5,
 	alignTo: 1,
 	size: 50,
 	labelGap: 0,
 	labelSize: 30,
-	labelFont: qd,
+	labelFont: Jd,
 	side: 3,
-	grid: Ud,
-	ticks: Wd,
-	border: Gd,
-	font: Kd,
-	lineGap: Jd,
+	grid: Wd,
+	ticks: Gd,
+	border: Kd,
+	font: qd,
+	lineGap: Yd,
 	rotate: 0
 };
-function pf(e, t) {
-	return gu((3 + (e || 1) * 2) * t, 3);
-}
 function mf(e, t) {
-	let { scale: n, idxs: r } = e.series[0], i = e._data[0], a = e.valToPos(i[r[0]], n, !0), o = Hl(e.valToPos(i[r[1]], n, !0) - a) / (e.series[t].points.space * rl);
+	return _u((3 + (e || 1) * 2) * t, 3);
+}
+function hf(e, t) {
+	let { scale: n, idxs: r } = e.series[0], i = e._data[0], a = e.valToPos(i[r[0]], n, !0), o = Ul(e.valToPos(i[r[1]], n, !0) - a) / (e.series[t].points.space * il);
 	return r[1] - r[0] <= o;
 }
-var hf = {
+var gf = {
 	scale: null,
 	auto: !0,
 	sorted: 0,
-	min: eu,
+	min: tu,
 	max: -Infinity
-}, gf = (e, t, n, r, i) => i, _f = {
+}, _f = (e, t, n, r, i) => i, vf = {
 	show: !0,
 	auto: !0,
 	sorted: 0,
-	gaps: gf,
+	gaps: _f,
 	alpha: 1,
-	facets: [Mu({}, hf, { scale: "x" }), Mu({}, hf, { scale: "y" })]
-}, vf = {
+	facets: [Nu({}, gf, { scale: "x" }), Nu({}, gf, { scale: "y" })]
+}, yf = {
 	scale: "y",
 	auto: !0,
 	sorted: 0,
 	show: !0,
 	spanGaps: !1,
-	gaps: gf,
+	gaps: _f,
 	alpha: 1,
 	points: {
-		show: mf,
+		show: hf,
 		filter: null
 	},
 	values: null,
-	min: eu,
+	min: tu,
 	max: -Infinity,
 	idxs: [],
 	path: null,
 	clip: null
 };
-function yf(e, t, n, r, i) {
+function bf(e, t, n, r, i) {
 	return n / 10;
 }
-var bf = {
-	time: pc,
+var xf = {
+	time: mc,
 	auto: !0,
 	distr: 1,
 	log: 10,
@@ -4608,12 +4611,12 @@ var bf = {
 	max: null,
 	dir: 1,
 	ori: 0
-}, xf = Mu({}, bf, {
+}, Sf = Nu({}, xf, {
 	time: !1,
 	ori: 1
-}), Sf = {};
-function Cf(e, t) {
-	let n = Sf[e];
+}), Cf = {};
+function wf(e, t) {
+	let n = Cf[e];
 	return n || (n = {
 		key: e,
 		plots: [],
@@ -4626,38 +4629,38 @@ function Cf(e, t) {
 		pub(e, t, r, i, a, o, s) {
 			for (let c = 0; c < n.plots.length; c++) n.plots[c] != t && n.plots[c].pub(e, t, r, i, a, o, s);
 		}
-	}, e != null && (Sf[e] = n)), n;
+	}, e != null && (Cf[e] = n)), n;
 }
-var wf = 1, Tf = 2;
-function Ef(e, t, n) {
+var Tf = 1, Ef = 2;
+function Df(e, t, n) {
 	let r = e.mode, i = e.series[t], a = r == 2 ? e._data[t] : e._data, o = e.scales, s = e.bbox, c = a[0], l = r == 2 ? a[1] : a[t], u = r == 2 ? o[i.facets[0].scale] : o[e.series[0].scale], d = r == 2 ? o[i.facets[1].scale] : o[i.scale], f = s.left, p = s.top, m = s.width, h = s.height, g = e.valToPosH, _ = e.valToPosV;
-	return u.ori == 0 ? n(i, c, l, u, d, g, _, f, p, m, h, Ff, Lf, zf, Vf, Uf) : n(i, c, l, u, d, _, g, p, f, h, m, If, Rf, Bf, Hf, Wf);
+	return u.ori == 0 ? n(i, c, l, u, d, g, _, f, p, m, h, If, Rf, Bf, Hf, Wf) : n(i, c, l, u, d, _, g, p, f, h, m, Lf, zf, Vf, Uf, Gf);
 }
-function Df(e, t) {
-	let n = 0, r = 0, i = Fl(e.bands, xu);
+function Of(e, t) {
+	let n = 0, r = 0, i = Il(e.bands, Su);
 	for (let e = 0; e < i.length; e++) {
 		let a = i[e];
 		a.series[0] == t ? n = a.dir : a.series[1] == t && (a.dir == 1 ? r |= 1 : r |= 2);
 	}
 	return [n, r == 1 ? -1 : r == 2 ? 1 : r == 3 ? 2 : 0];
 }
-function Of(e, t, n, r, i) {
+function kf(e, t, n, r, i) {
 	let a = e.mode, o = e.series[t], s = a == 2 ? o.facets[1].scale : o.scale, c = e.scales[s];
 	return i == -1 ? c.min : i == 1 ? c.max : c.distr == 3 ? c.dir == 1 ? c.min : c.max : 0;
 }
-function kf(e, t, n, r, i, a) {
-	return Ef(e, t, (e, t, o, s, c, l, u, d, f, p, m) => {
-		let h = e.pxRound, g = s.dir * (s.ori == 0 ? 1 : -1), _ = s.ori == 0 ? Lf : Rf, v, y;
+function Af(e, t, n, r, i, a) {
+	return Df(e, t, (e, t, o, s, c, l, u, d, f, p, m) => {
+		let h = e.pxRound, g = s.dir * (s.ori == 0 ? 1 : -1), _ = s.ori == 0 ? Rf : zf, v, y;
 		g == 1 ? (v = n, y = r) : (v = r, y = n);
 		let b = h(l(t[v], s, p, d)), x = h(u(o[v], c, m, f)), S = h(l(t[y], s, p, d)), C = h(u(a == 1 ? c.max : c.min, c, m, f)), w = new Path2D(i);
 		return _(w, S, C), _(w, b, C), _(w, b, x), w;
 	});
 }
-function Af(e, t, n, r, i, a) {
+function jf(e, t, n, r, i, a) {
 	let o = null;
 	if (e.length > 0) {
 		o = new Path2D();
-		let s = t == 0 ? zf : Bf, c = n;
+		let s = t == 0 ? Bf : Vf, c = n;
 		for (let t = 0; t < e.length; t++) {
 			let n = e[t];
 			if (n[1] > n[0]) {
@@ -4670,11 +4673,11 @@ function Af(e, t, n, r, i, a) {
 	}
 	return o;
 }
-function jf(e, t, n) {
+function Mf(e, t, n) {
 	let r = e[e.length - 1];
 	r && r[0] == t ? r[1] = n : e.push([t, n]);
 }
-function Mf(e, t, n, r, i, a, o) {
+function Nf(e, t, n, r, i, a, o) {
 	let s = [], c = e.length;
 	for (let l = i == 1 ? n : r; l >= n && l <= r; l += i) if (t[l] === null) {
 		let u = l, d = l;
@@ -4687,11 +4690,11 @@ function Mf(e, t, n, r, i, a, o) {
 	}
 	return s;
 }
-function Nf(e) {
-	return e == 0 ? ou : e == 1 ? Wl : (t) => pu(t, e);
-}
 function Pf(e) {
-	let t = e == 0 ? Ff : If, n = e == 0 ? (e, t, n, r, i, a) => {
+	return e == 0 ? su : e == 1 ? Gl : (t) => mu(t, e);
+}
+function Ff(e) {
+	let t = e == 0 ? If : Lf, n = e == 0 ? (e, t, n, r, i, a) => {
 		e.arcTo(t, n, r, i, a);
 	} : (e, t, n, r, i, a) => {
 		e.arcTo(n, t, i, r, a);
@@ -4701,36 +4704,36 @@ function Pf(e) {
 		e.rect(n, t, i, r);
 	};
 	return (e, i, a, o, s, c = 0, l = 0) => {
-		c == 0 && l == 0 ? r(e, i, a, o, s) : (c = Kl(c, o / 2, s / 2), l = Kl(l, o / 2, s / 2), t(e, i + c, a), n(e, i + o, a, i + o, a + s, c), n(e, i + o, a + s, i, a + s, l), n(e, i, a + s, i, a, l), n(e, i, a, i + o, a, c), e.closePath());
+		c == 0 && l == 0 ? r(e, i, a, o, s) : (c = ql(c, o / 2, s / 2), l = ql(l, o / 2, s / 2), t(e, i + c, a), n(e, i + o, a, i + o, a + s, c), n(e, i + o, a + s, i, a + s, l), n(e, i, a + s, i, a, l), n(e, i, a, i + o, a, c), e.closePath());
 	};
 }
-var Ff = (e, t, n) => {
+var If = (e, t, n) => {
 	e.moveTo(t, n);
-}, If = (e, t, n) => {
-	e.moveTo(n, t);
 }, Lf = (e, t, n) => {
-	e.lineTo(t, n);
+	e.moveTo(n, t);
 }, Rf = (e, t, n) => {
+	e.lineTo(t, n);
+}, zf = (e, t, n) => {
 	e.lineTo(n, t);
-}, zf = Pf(0), Bf = Pf(1), Vf = (e, t, n, r, i, a) => {
+}, Bf = Ff(0), Vf = Ff(1), Hf = (e, t, n, r, i, a) => {
 	e.arc(t, n, r, i, a);
-}, Hf = (e, t, n, r, i, a) => {
+}, Uf = (e, t, n, r, i, a) => {
 	e.arc(n, t, r, i, a);
-}, Uf = (e, t, n, r, i, a, o) => {
-	e.bezierCurveTo(t, n, r, i, a, o);
 }, Wf = (e, t, n, r, i, a, o) => {
+	e.bezierCurveTo(t, n, r, i, a, o);
+}, Gf = (e, t, n, r, i, a, o) => {
 	e.bezierCurveTo(n, t, i, r, o, a);
 };
-function Gf(e) {
-	return (e, t, n, r, i) => Ef(e, t, (t, a, o, s, c, l, u, d, f, p, m) => {
+function Kf(e) {
+	return (e, t, n, r, i) => Df(e, t, (t, a, o, s, c, l, u, d, f, p, m) => {
 		let { pxRound: h, points: g } = t, _, v;
-		s.ori == 0 ? (_ = Ff, v = Vf) : (_ = If, v = Hf);
-		let y = gu(g.width * rl, 3), b = (g.size - g.width) / 2 * rl, x = gu(b * 2, 3), S = new Path2D(), C = new Path2D(), { left: w, top: T, width: E, height: D } = e.bbox;
-		zf(C, w - x, T - x, E + x * 2, D + x * 2);
+		s.ori == 0 ? (_ = If, v = Hf) : (_ = Lf, v = Uf);
+		let y = _u(g.width * il, 3), b = (g.size - g.width) / 2 * il, x = _u(b * 2, 3), S = new Path2D(), C = new Path2D(), { left: w, top: T, width: E, height: D } = e.bbox;
+		Bf(C, w - x, T - x, E + x * 2, D + x * 2);
 		let O = (e) => {
 			if (o[e] != null) {
 				let t = h(l(a[e], s, p, d)), n = h(u(o[e], c, m, f));
-				_(S, t + b, n), v(S, t, n, b, 0, Vl * 2);
+				_(S, t + b, n), v(S, t, n, b, 0, Hl * 2);
 			}
 		};
 		if (i) i.forEach(O);
@@ -4743,25 +4746,25 @@ function Gf(e) {
 		};
 	});
 }
-function Kf(e) {
+function qf(e) {
 	return (t, n, r, i, a, o) => {
 		r != i && (a != r && o != r && e(t, n, r), a != i && o != i && e(t, n, i), e(t, n, o));
 	};
 }
-var qf = Kf(Lf), Jf = Kf(Rf);
-function Yf(e) {
-	let t = Fl(e?.alignGaps, 0);
-	return (e, n, r, i) => Ef(e, n, (a, o, s, c, l, u, d, f, p, m, h) => {
-		[r, i] = Tl(s, r, i);
+var Jf = qf(Rf), Yf = qf(zf);
+function Xf(e) {
+	let t = Il(e?.alignGaps, 0);
+	return (e, n, r, i) => Df(e, n, (a, o, s, c, l, u, d, f, p, m, h) => {
+		[r, i] = El(s, r, i);
 		let g = a.pxRound, _ = (e) => g(u(e, c, m, f)), v = (e) => g(d(e, l, h, p)), y, b;
-		c.ori == 0 ? (y = Lf, b = qf) : (y = Rf, b = Jf);
+		c.ori == 0 ? (y = Rf, b = Jf) : (y = zf, b = Yf);
 		let x = c.dir * (c.ori == 0 ? 1 : -1), S = {
 			stroke: new Path2D(),
 			fill: null,
 			clip: null,
 			band: null,
 			gaps: null,
-			flags: wf
+			flags: Tf
 		}, C = S.stroke, w = !1;
 		if (i - r >= m * 4) {
 			let t = (t) => e.posToVal(t, c.key, !0), n = null, a = null, l, u, d, f = _(o[x == 1 ? r : i]), p = _(o[r]), m = _(o[i]), h = t(x == 1 ? p + 1 : m - 1);
@@ -4774,29 +4777,29 @@ function Yf(e) {
 			let t = s[e];
 			t === null ? w = !0 : t != null && y(C, _(o[e]), v(t));
 		}
-		let [T, E] = Df(e, n);
+		let [T, E] = Of(e, n);
 		if (a.fill != null || T != 0) {
 			let t = S.fill = new Path2D(C), s = v(a.fillTo(e, n, a.min, a.max, T)), c = _(o[r]), l = _(o[i]);
 			x == -1 && ([l, c] = [c, l]), y(t, l, s), y(t, c, s);
 		}
 		if (!a.spanGaps) {
 			let l = [];
-			w && l.push(...Mf(o, s, r, i, x, _, t)), S.gaps = l = a.gaps(e, n, r, i, l), S.clip = Af(l, c.ori, f, p, m, h);
+			w && l.push(...Nf(o, s, r, i, x, _, t)), S.gaps = l = a.gaps(e, n, r, i, l), S.clip = jf(l, c.ori, f, p, m, h);
 		}
-		return E != 0 && (S.band = E == 2 ? [kf(e, n, r, i, C, -1), kf(e, n, r, i, C, 1)] : kf(e, n, r, i, C, E)), S;
+		return E != 0 && (S.band = E == 2 ? [Af(e, n, r, i, C, -1), Af(e, n, r, i, C, 1)] : Af(e, n, r, i, C, E)), S;
 	});
 }
-function Xf(e) {
-	let t = Fl(e.align, 1), n = Fl(e.ascDesc, !1), r = Fl(e.alignGaps, 0), i = Fl(e.extend, !1);
-	return (e, a, o, s) => Ef(e, a, (c, l, u, d, f, p, m, h, g, _, v) => {
-		[o, s] = Tl(u, o, s);
-		let y = c.pxRound, { left: b, width: x } = e.bbox, S = (e) => y(p(e, d, _, h)), C = (e) => y(m(e, f, v, g)), w = d.ori == 0 ? Lf : Rf, T = {
+function Zf(e) {
+	let t = Il(e.align, 1), n = Il(e.ascDesc, !1), r = Il(e.alignGaps, 0), i = Il(e.extend, !1);
+	return (e, a, o, s) => Df(e, a, (c, l, u, d, f, p, m, h, g, _, v) => {
+		[o, s] = El(u, o, s);
+		let y = c.pxRound, { left: b, width: x } = e.bbox, S = (e) => y(p(e, d, _, h)), C = (e) => y(m(e, f, v, g)), w = d.ori == 0 ? Rf : zf, T = {
 			stroke: new Path2D(),
 			fill: null,
 			clip: null,
 			band: null,
 			gaps: null,
-			flags: wf
+			flags: Tf
 		}, E = T.stroke, D = d.dir * (d.ori == 0 ? 1 : -1), O = C(u[D == 1 ? o : s]), ee = S(l[D == 1 ? o : s]), te = ee, k = ee;
 		i && t == -1 && (k = b, w(E, k, O)), w(E, ee, O);
 		for (let e = D == 1 ? o : s; e >= o && e <= s; e += D) {
@@ -4807,50 +4810,50 @@ function Xf(e) {
 		}
 		let A = te;
 		i && t == 1 && (A = b + x, w(E, A, O));
-		let [ne, j] = Df(e, a);
+		let [ne, j] = Of(e, a);
 		if (c.fill != null || ne != 0) {
 			let t = T.fill = new Path2D(E), n = C(c.fillTo(e, a, c.min, c.max, ne));
 			w(t, A, n), w(t, k, n);
 		}
 		if (!c.spanGaps) {
 			let i = [];
-			i.push(...Mf(l, u, o, s, D, S, r));
-			let f = c.width * rl / 2, p = n || t == 1 ? f : -f, m = n || t == -1 ? -f : f;
+			i.push(...Nf(l, u, o, s, D, S, r));
+			let f = c.width * il / 2, p = n || t == 1 ? f : -f, m = n || t == -1 ? -f : f;
 			i.forEach((e) => {
 				e[0] += p, e[1] += m;
-			}), T.gaps = i = c.gaps(e, a, o, s, i), T.clip = Af(i, d.ori, h, g, _, v);
+			}), T.gaps = i = c.gaps(e, a, o, s, i), T.clip = jf(i, d.ori, h, g, _, v);
 		}
-		return j != 0 && (T.band = j == 2 ? [kf(e, a, o, s, E, -1), kf(e, a, o, s, E, 1)] : kf(e, a, o, s, E, j)), T;
+		return j != 0 && (T.band = j == 2 ? [Af(e, a, o, s, E, -1), Af(e, a, o, s, E, 1)] : Af(e, a, o, s, E, j)), T;
 	});
 }
-function Zf(e, t, n, r, i, a, o = eu) {
+function Qf(e, t, n, r, i, a, o = tu) {
 	if (e.length > 1) {
 		let s = null;
 		for (let c = 0, l = Infinity; c < e.length; c++) if (t[c] !== void 0) {
 			if (s != null) {
-				let t = Hl(e[c] - e[s]);
-				t < l && (l = t, o = Hl(n(e[c], r, i, a) - n(e[s], r, i, a)));
+				let t = Ul(e[c] - e[s]);
+				t < l && (l = t, o = Ul(n(e[c], r, i, a) - n(e[s], r, i, a)));
 			}
 			s = c;
 		}
 	}
 	return o;
 }
-function Qf(e) {
-	e ||= bu;
-	let t = Fl(e.size, [
+function $f(e) {
+	e ||= xu;
+	let t = Il(e.size, [
 		.6,
-		eu,
+		tu,
 		1
 	]), n = e.align || 0, r = e.gap || 0, i = e.radius;
 	i = i == null ? [0, 0] : typeof i == "number" ? [i, 0] : i;
-	let a = iu(i), o = 1 - t[0], s = Fl(t[1], eu), c = Fl(t[2], 1), l = Fl(e.disp, bu), u = Fl(e.each, (e) => {}), { fill: d, stroke: f } = l;
-	return (e, t, i, p) => Ef(e, t, (m, h, g, _, v, y, b, x, S, C, w) => {
-		let T = m.pxRound, E = n, D = r * rl, O = s * rl, ee = c * rl, te, k;
+	let a = au(i), o = 1 - t[0], s = Il(t[1], tu), c = Il(t[2], 1), l = Il(e.disp, xu), u = Il(e.each, (e) => {}), { fill: d, stroke: f } = l;
+	return (e, t, i, p) => Df(e, t, (m, h, g, _, v, y, b, x, S, C, w) => {
+		let T = m.pxRound, E = n, D = r * il, O = s * il, ee = c * il, te, k;
 		_.ori == 0 ? [te, k] = a(e, t) : [k, te] = a(e, t);
-		let A = _.dir * (_.ori == 0 ? 1 : -1), ne = _.ori == 0 ? zf : Bf, j = _.ori == 0 ? u : (e, t, n, r, i, a, o) => {
+		let A = _.dir * (_.ori == 0 ? 1 : -1), ne = _.ori == 0 ? Bf : Vf, j = _.ori == 0 ? u : (e, t, n, r, i, a, o) => {
 			u(e, t, n, i, r, o, a);
-		}, re = Fl(e.bands, xu).find((e) => e.series[0] == t), ie = re == null ? 0 : re.dir, ae = m.fillTo(e, t, m.min, m.max, ie), oe = T(b(ae, v, w, S)), M, N, se, ce = C, le = T(m.width * rl), ue = !1, de = null, fe = null, pe = null, me = null;
+		}, re = Il(e.bands, Su).find((e) => e.series[0] == t), ie = re == null ? 0 : re.dir, ae = m.fillTo(e, t, m.min, m.max, ie), oe = T(b(ae, v, w, S)), M, N, se, ce = C, le = T(m.width * il), ue = !1, de = null, fe = null, pe = null, me = null;
 		d != null && (le == 0 || f != null) && (ue = !0, de = d.values(e, t, i, p), fe = /* @__PURE__ */ new Map(), new Set(de).forEach((e) => {
 			e != null && fe.set(e, new Path2D());
 		}), le > 0 && (pe = f.values(e, t, i, p), me = /* @__PURE__ */ new Map(), new Set(pe).forEach((e) => {
@@ -4860,11 +4863,11 @@ function Qf(e) {
 		if (he != null && ge != null) {
 			E = 1, h = he.values(e, t, i, p), he.unit == 2 && (h = h.map((t) => e.posToVal(x + t * C, _.key, !0)));
 			let n = ge.values(e, t, i, p);
-			N = ge.unit == 2 ? n[0] * C : y(n[0], _, C, x) - y(0, _, C, x), ce = Zf(h, g, y, _, C, x, ce), se = ce - N + D;
-		} else ce = Zf(h, g, y, _, C, x, ce), se = ce * o + D, N = ce - se;
-		se < 1 && (se = 0), le >= N / 2 && (le = 0), se < 5 && (T = ou);
+			N = ge.unit == 2 ? n[0] * C : y(n[0], _, C, x) - y(0, _, C, x), ce = Qf(h, g, y, _, C, x, ce), se = ce - N + D;
+		} else ce = Qf(h, g, y, _, C, x, ce), se = ce * o + D, N = ce - se;
+		se < 1 && (se = 0), le >= N / 2 && (le = 0), se < 5 && (T = su);
 		let _e = se > 0, ve = ce - se - (_e ? le : 0);
-		N = T(nu(ve, ee, O)), M = (E == 0 ? N / 2 : E == A ? 0 : N) - E * A * ((E == 0 ? D / 2 : 0) + (_e ? le / 2 : 0));
+		N = T(ru(ve, ee, O)), M = (E == 0 ? N / 2 : E == A ? 0 : N) - E * A * ((E == 0 ? D / 2 : 0) + (_e ? le / 2 : 0));
 		let ye = {
 			stroke: null,
 			fill: null,
@@ -4887,21 +4890,21 @@ function Qf(e) {
 				if (r - e == 0) continue;
 				oe = b(e, v, w, S);
 			}
-			let i = y(_.distr != 2 || l != null ? h[n] : n, _, C, x), a = b(Fl(r, ae), v, w, S), o = T(i - M), s = T(ql(a, oe)), c = T(Kl(a, oe)), u = s - c;
+			let i = y(_.distr != 2 || l != null ? h[n] : n, _, C, x), a = b(Il(r, ae), v, w, S), o = T(i - M), s = T(Jl(a, oe)), c = T(ql(a, oe)), u = s - c;
 			if (r != null) {
 				let i = r < 0 ? Ce : Se, a = r < 0 ? Se : Ce;
-				ue ? (le > 0 && pe[n] != null && ne(me.get(pe[n]), o, c + Ul(le / 2), N, ql(0, u - le), i, a), de[n] != null && ne(fe.get(de[n]), o, c + Ul(le / 2), N, ql(0, u - le), i, a)) : ne(be, o, c + Ul(le / 2), N, ql(0, u - le), i, a), j(e, t, n, o - le / 2, c, N + le, u);
+				ue ? (le > 0 && pe[n] != null && ne(me.get(pe[n]), o, c + Wl(le / 2), N, Jl(0, u - le), i, a), de[n] != null && ne(fe.get(de[n]), o, c + Wl(le / 2), N, Jl(0, u - le), i, a)) : ne(be, o, c + Wl(le / 2), N, Jl(0, u - le), i, a), j(e, t, n, o - le / 2, c, N + le, u);
 			}
 		}
 		return le > 0 ? ye.stroke = ue ? me : be : ue || (ye._fill = m.width == 0 ? m._fill : m._stroke ?? m._fill, ye.width = 0), ye.fill = ue ? fe : be, ye;
 	});
 }
-function $f(e, t) {
-	let n = Fl(t?.alignGaps, 0);
-	return (t, r, i, a) => Ef(t, r, (o, s, c, l, u, d, f, p, m, h, g) => {
-		[i, a] = Tl(c, i, a);
+function ep(e, t) {
+	let n = Il(t?.alignGaps, 0);
+	return (t, r, i, a) => Df(t, r, (o, s, c, l, u, d, f, p, m, h, g) => {
+		[i, a] = El(c, i, a);
 		let _ = o.pxRound, v = (e) => _(d(e, l, h, p)), y = (e) => _(f(e, u, g, m)), b, x, S;
-		l.ori == 0 ? (b = Ff, S = Lf, x = Uf) : (b = If, S = Rf, x = Wf);
+		l.ori == 0 ? (b = If, S = Rf, x = Wf) : (b = Lf, S = zf, x = Gf);
 		let C = l.dir * (l.ori == 0 ? 1 : -1), w = v(s[C == 1 ? i : a]), T = w, E = [], D = [];
 		for (let e = C == 1 ? i : a; e >= i && e <= a; e += C) if (c[e] != null) {
 			let t = s[e], n = v(t);
@@ -4913,23 +4916,23 @@ function $f(e, t) {
 			clip: null,
 			band: null,
 			gaps: null,
-			flags: wf
-		}, ee = O.stroke, [te, k] = Df(t, r);
+			flags: Tf
+		}, ee = O.stroke, [te, k] = Of(t, r);
 		if (o.fill != null || te != 0) {
 			let e = O.fill = new Path2D(ee), n = y(o.fillTo(t, r, o.min, o.max, te));
 			S(e, T, n), S(e, w, n);
 		}
 		if (!o.spanGaps) {
 			let e = [];
-			e.push(...Mf(s, c, i, a, C, v, n)), O.gaps = e = o.gaps(t, r, i, a, e), O.clip = Af(e, l.ori, p, m, h, g);
+			e.push(...Nf(s, c, i, a, C, v, n)), O.gaps = e = o.gaps(t, r, i, a, e), O.clip = jf(e, l.ori, p, m, h, g);
 		}
-		return k != 0 && (O.band = k == 2 ? [kf(t, r, i, a, ee, -1), kf(t, r, i, a, ee, 1)] : kf(t, r, i, a, ee, k)), O;
+		return k != 0 && (O.band = k == 2 ? [Af(t, r, i, a, ee, -1), Af(t, r, i, a, ee, 1)] : Af(t, r, i, a, ee, k)), O;
 	});
 }
-function ep(e) {
-	return $f(tp, e);
+function tp(e) {
+	return ep(np, e);
 }
-function tp(e, t, n, r, i, a) {
+function np(e, t, n, r, i, a) {
 	let o = e.length;
 	if (o < 2) return null;
 	let s = new Path2D();
@@ -4944,62 +4947,62 @@ function tp(e, t, n, r, i, a) {
 	}
 	return s;
 }
-var np = /* @__PURE__ */ new Set();
-function rp() {
-	for (let e of np) e.syncRect(!0);
+var rp = /* @__PURE__ */ new Set();
+function ip() {
+	for (let e of rp) e.syncRect(!0);
 }
-$c && (yl(Jc, tl, rp), yl(Yc, tl, rp, !0), yl(Zc, tl, () => {
-	yp.pxRatio = rl;
+el && (bl(Yc, nl, ip), bl(Xc, nl, ip, !0), bl(Qc, nl, () => {
+	bp.pxRatio = il;
 }));
-var ip = Yf(), ap = Gf();
-function op(e, t, n, r) {
-	return (r ? [e[0], e[1]].concat(e.slice(2)) : [e[0]].concat(e.slice(1))).map((e, r) => cp(e, r, t, n));
+var ap = Xf(), op = Kf();
+function sp(e, t, n, r) {
+	return (r ? [e[0], e[1]].concat(e.slice(2)) : [e[0]].concat(e.slice(1))).map((e, r) => lp(e, r, t, n));
 }
-function sp(e, t) {
-	return e.map((e, n) => n == 0 ? {} : Mu({}, t, e));
+function cp(e, t) {
+	return e.map((e, n) => n == 0 ? {} : Nu({}, t, e));
 }
-function cp(e, t, n, r) {
-	return Mu({}, t == 0 ? n : r, e);
+function lp(e, t, n, r) {
+	return Nu({}, t == 0 ? n : r, e);
 }
-function lp(e, t, n) {
-	return t == null ? Su : [t, n];
+function up(e, t, n) {
+	return t == null ? Cu : [t, n];
 }
-var up = lp;
-function dp(e, t, n) {
-	return t == null ? Su : Pl(t, n, Al, !0);
+var dp = up;
+function fp(e, t, n) {
+	return t == null ? Cu : Fl(t, n, jl, !0);
 }
-function fp(e, t, n, r) {
-	return t == null ? Su : Ol(t, n, e.scales[r].log, !1);
+function pp(e, t, n, r) {
+	return t == null ? Cu : kl(t, n, e.scales[r].log, !1);
 }
-var pp = fp;
-function mp(e, t, n, r) {
-	return t == null ? Su : kl(t, n, e.scales[r].log, !1);
+var mp = pp;
+function hp(e, t, n, r) {
+	return t == null ? Cu : Al(t, n, e.scales[r].log, !1);
 }
-var hp = mp;
-function gp(e, t, n, r, i) {
-	let a = ql(tu(e), tu(t)), o = t - e, s = xl(i / r * o, n);
+var gp = hp;
+function _p(e, t, n, r, i) {
+	let a = Jl(nu(e), nu(t)), o = t - e, s = Sl(i / r * o, n);
 	do {
 		let e = n[s], t = r * e / o;
-		if (t >= i && a + (e < 5 ? _u.get(e) : 0) <= 17) return [e, t];
+		if (t >= i && a + (e < 5 ? vu.get(e) : 0) <= 17) return [e, t];
 	} while (++s < n.length);
 	return [0, 0];
 }
-function _p(e) {
+function vp(e) {
 	let t, n;
-	return e = e.replace(/(\d+)px/, (e, r) => (t = Wl((n = +r) * rl)) + "px"), [
+	return e = e.replace(/(\d+)px/, (e, r) => (t = Gl((n = +r) * il)) + "px"), [
 		e,
 		t,
 		n
 	];
 }
-function vp(e) {
+function yp(e) {
 	e.show && [e.font, e.labelFont].forEach((e) => {
-		let t = gu(e[2] * rl, 1);
+		let t = _u(e[2] * il, 1);
 		e[0] = e[0].replace(/[0-9.]+px/, t + "px"), e[1] = t;
 	});
 }
-function yp(e, t, n) {
-	let r = { mode: Fl(e.mode, 1) }, i = r.mode;
+function bp(e, t, n) {
+	let r = { mode: Il(e.mode, 1) }, i = r.mode;
 	function a(e, t, n, r) {
 		let i = t.valToPct(e);
 		return r + n * (t.dir == -1 ? 1 - i : i);
@@ -5014,33 +5017,33 @@ function yp(e, t, n) {
 	r.valToPosH = a, r.valToPosV = o;
 	let c = !1;
 	r.status = 0;
-	let l = r.root = ul(mc);
-	if (e.id != null && (l.id = e.id), ol(l, e.class), e.title) {
-		let t = ul(_c, l);
+	let l = r.root = dl(hc);
+	if (e.id != null && (l.id = e.id), sl(l, e.class), e.title) {
+		let t = dl(vc, l);
 		t.textContent = e.title;
 	}
-	let u = ll("canvas"), d = r.ctx = u.getContext("2d"), f = ul(vc, l);
-	yl("click", f, (e) => {
+	let u = ul("canvas"), d = r.ctx = u.getContext("2d"), f = dl(yc, l);
+	bl("click", f, (e) => {
 		e.target === m && (an != en || on != tn) && cn.click(r, e);
 	}, !0);
-	let p = r.under = ul(yc, f);
+	let p = r.under = dl(bc, f);
 	f.appendChild(u);
-	let m = r.over = ul(bc, f);
-	e = ju(e);
-	let h = +Fl(e.pxAlign, 1), g = Nf(h);
+	let m = r.over = dl(xc, f);
+	e = Mu(e);
+	let h = +Il(e.pxAlign, 1), g = Pf(h);
 	(e.plugins || []).forEach((t) => {
 		t.opts && (e = t.opts(r, e) || e);
 	});
-	let _ = e.ms || .001, v = r.series = i == 1 ? op(e.series || [], Qd, vf, !1) : sp(e.series || [null], _f), y = r.axes = op(e.axes || [], Yd, ff, !0), b = r.scales = {}, x = r.bands = e.bands || [];
+	let _ = e.ms || .001, v = r.series = i == 1 ? sp(e.series || [], $d, yf, !1) : cp(e.series || [null], vf), y = r.axes = sp(e.axes || [], Xd, pf, !0), b = r.scales = {}, x = r.bands = e.bands || [];
 	x.forEach((e) => {
-		e.fill = iu(e.fill || null), e.dir = Fl(e.dir, -1);
+		e.fill = au(e.fill || null), e.dir = Il(e.dir, -1);
 	});
 	let S = i == 2 ? v[1].facets[0].scale : v[0].scale, C = {
 		axes: Vt,
 		series: V
 	}, w = (e.drawOrder || ["axes", "series"]).map((e) => C[e]);
 	function T(e) {
-		let t = e.distr == 3 ? (t) => Xl(t > 0 ? t : e.clamp(r, t, e.min, e.max, e.key)) : e.distr == 4 ? (t) => $l(t, e.asinh) : e.distr == 100 ? (t) => e.fwd(t) : (e) => e;
+		let t = e.distr == 3 ? (t) => Zl(t > 0 ? t : e.clamp(r, t, e.min, e.max, e.key)) : e.distr == 4 ? (t) => eu(t, e.asinh) : e.distr == 100 ? (t) => e.fwd(t) : (e) => e;
 		return (n) => {
 			let r = t(n), { _min: i, _max: a } = e, o = a - i;
 			return (r - i) / o;
@@ -5049,30 +5052,30 @@ function yp(e, t, n) {
 	function E(t) {
 		let n = b[t];
 		if (n == null) {
-			let r = (e.scales || bu)[t] || bu;
+			let r = (e.scales || xu)[t] || xu;
 			if (r.from != null) {
 				E(r.from);
-				let e = Mu({}, b[r.from], r, { key: t });
+				let e = Nu({}, b[r.from], r, { key: t });
 				e.valToPct = T(e), b[t] = e;
 			} else {
-				n = b[t] = Mu({}, t == S ? bf : xf, r), n.key = t;
-				let e = n.time, a = n.range, o = Cu(a);
+				n = b[t] = Nu({}, t == S ? xf : Sf, r), n.key = t;
+				let e = n.time, a = n.range, o = wu(a);
 				if ((t != S || i == 2 && !e) && (o && (a[0] == null || a[1] == null) && (a = {
-					min: a[0] == null ? jl : {
+					min: a[0] == null ? Ml : {
 						mode: 1,
 						hard: a[0],
 						soft: a[0]
 					},
-					max: a[1] == null ? jl : {
+					max: a[1] == null ? Ml : {
 						mode: 1,
 						hard: a[1],
 						soft: a[1]
 					}
-				}, o = !1), !o && Du(a))) {
+				}, o = !1), !o && Ou(a))) {
 					let e = a;
-					a = (t, n, r) => n == null ? Su : Pl(n, r, e);
+					a = (t, n, r) => n == null ? Cu : Fl(n, r, e);
 				}
-				n.range = iu(a || (e ? up : t == S ? n.distr == 3 ? pp : n.distr == 4 ? hp : lp : n.distr == 3 ? fp : n.distr == 4 ? mp : dp)), n.auto = iu(!o && n.auto), n.clamp = iu(n.clamp || yf), n._min = n._max = null, n.valToPct = T(n);
+				n.range = au(a || (e ? dp : t == S ? n.distr == 3 ? mp : n.distr == 4 ? gp : up : n.distr == 3 ? pp : n.distr == 4 ? hp : fp)), n.auto = au(!o && n.auto), n.clamp = au(n.clamp || bf), n._min = n._max = null, n.valToPct = T(n);
 			}
 		}
 	}
@@ -5083,7 +5086,7 @@ function yp(e, t, n) {
 	});
 	for (let t in e.scales) E(t);
 	let D = b[S], O = D.distr, ee, te;
-	D.ori == 0 ? (ol(l, hc), ee = a, te = o) : (ol(l, gc), ee = o, te = a);
+	D.ori == 0 ? (sl(l, gc), ee = a, te = o) : (sl(l, _c), ee = o, te = a);
 	let k = {};
 	for (let e in b) {
 		let t = b[e];
@@ -5092,35 +5095,35 @@ function yp(e, t, n) {
 			max: t.max
 		}, t.min = t.max = null);
 	}
-	let A = e.tzDate || ((e) => new Date(Wl(e / _))), ne = e.fmtDate || Xu, j = _ == 1 ? yd(A) : Sd(A), re = wd(A, Cd(_ == 1 ? vd : xd, ne)), ie = kd(A, Dd(Od, ne)), ae = [], oe = r.legend = Mu({}, Md, e.legend), M = r.cursor = Mu({}, Vd, { drag: { y: i == 2 } }, e.cursor), N = oe.show, se = M.show, ce = oe.markers;
-	oe.idxs = ae, ce.width = iu(ce.width), ce.dash = iu(ce.dash), ce.stroke = iu(ce.stroke), ce.fill = iu(ce.fill);
+	let A = e.tzDate || ((e) => new Date(Gl(e / _))), ne = e.fmtDate || Zu, j = _ == 1 ? bd(A) : Cd(A), re = Td(A, wd(_ == 1 ? yd : Sd, ne)), ie = Ad(A, Od(kd, ne)), ae = [], oe = r.legend = Nu({}, Nd, e.legend), M = r.cursor = Nu({}, Hd, { drag: { y: i == 2 } }, e.cursor), N = oe.show, se = M.show, ce = oe.markers;
+	oe.idxs = ae, ce.width = au(ce.width), ce.dash = au(ce.dash), ce.stroke = au(ce.stroke), ce.fill = au(ce.fill);
 	let le, ue, de, fe = [], pe = [], me, he = !1, ge = {};
 	if (oe.live) {
 		let e = v[1] ? v[1].values : null;
 		he = e != null, me = he ? e(r, 1, 0) : { _: 0 };
-		for (let e in me) ge[e] = Qc;
+		for (let e in me) ge[e] = $c;
 	}
 	if (N) {
-		if (le = ll("table", Dc, l), de = ll("tbody", null, le), oe.mount(r, le), he) {
-			ue = ll("thead", null, le, de);
-			let e = ll("tr", null, ue);
-			for (var _e in ll("th", null, e), me) ll("th", Mc, e).textContent = _e;
-		} else ol(le, kc), oe.live && ol(le, Oc);
+		if (le = ul("table", Oc, l), de = ul("tbody", null, le), oe.mount(r, le), he) {
+			ue = ul("thead", null, le, de);
+			let e = ul("tr", null, ue);
+			for (var _e in ul("th", null, e), me) ul("th", Nc, e).textContent = _e;
+		} else sl(le, Ac), oe.live && sl(le, kc);
 	}
 	let ve = { show: !0 }, ye = { show: !1 };
 	function be(e, t) {
-		if (t == 0 && (he || !oe.live || i == 2)) return Su;
-		let n = [], a = ll("tr", Ac, de, de.childNodes[t]);
-		ol(a, e.class), e.show || ol(a, Sc);
-		let o = ll("th", null, a);
+		if (t == 0 && (he || !oe.live || i == 2)) return Cu;
+		let n = [], a = ul("tr", jc, de, de.childNodes[t]);
+		sl(a, e.class), e.show || sl(a, Cc);
+		let o = ul("th", null, a);
 		if (ce.show) {
-			let e = ul(jc, o);
+			let e = dl(Mc, o);
 			if (t > 0) {
 				let n = ce.width(r, t);
 				n && (e.style.border = n + "px " + ce.dash(r, t) + " " + ce.stroke(r, t)), e.style.background = ce.fill(r, t);
 			}
 		}
-		let s = ul(Mc, o);
+		let s = dl(Nc, o);
 		for (var c in e.label instanceof HTMLElement ? s.appendChild(e.label) : s.textContent = e.label, t > 0 && (ce.show || (s.style.color = e.width > 0 ? ce.stroke(r, t) : ce.fill(r, t)), Se("click", o, (t) => {
 			if (M._lock) return;
 			Ke(t);
@@ -5131,10 +5134,10 @@ function yp(e, t, n) {
 					r > 0 && gn(r, e ? r == n ? ve : ye : ve, !0, Zn.setSeries);
 				});
 			} else gn(n, { show: !e.show }, !0, Zn.setSeries);
-		}, !1), Ye && Se(Gc, o, (t) => {
+		}, !1), Ye && Se(Kc, o, (t) => {
 			M._lock || (Ke(t), gn(v.indexOf(e), xn, !0, Zn.setSeries));
 		}, !1)), me) {
-			let e = ll("td", Nc, a);
+			let e = ul("td", Pc, a);
 			e.textContent = "--", n.push(e);
 		}
 		return [a, n];
@@ -5142,11 +5145,11 @@ function yp(e, t, n) {
 	let xe = /* @__PURE__ */ new Map();
 	function Se(e, t, n, i = !0) {
 		let a = xe.get(t) || {}, o = M.bind[e](r, t, n, i);
-		o && (yl(e, t, a[e] = o), xe.set(t, a));
+		o && (bl(e, t, a[e] = o), xe.set(t, a));
 	}
 	function Ce(e, t, n) {
 		let r = xe.get(t) || {};
-		for (let n in r) (e == null || n == e) && (bl(n, t, r[n]), delete r[n]);
+		for (let n in r) (e == null || n == e) && (xl(n, t, r[n]), delete r[n]);
 		e ?? xe.delete(t);
 	}
 	let we = 0, Te = 0, P = 0, Ee = 0, De = 0, Oe = 0, ke = De, Ae = Oe, je = P, Me = Ee, F = 0, Ne = 0, I = 0, Pe = 0;
@@ -5158,7 +5161,7 @@ function yp(e, t, n) {
 	function Ve(e, t) {
 		r.width = we = P = e, r.height = Te = Ee = t, De = Oe = 0, We(), Ge();
 		let n = r.bbox;
-		F = n.left = pu(De * rl, .5), Ne = n.top = pu(Oe * rl, .5), I = n.width = pu(P * rl, .5), Pe = n.height = pu(Ee * rl, .5);
+		F = n.left = mu(De * il, .5), Ne = n.top = mu(Oe * il, .5), I = n.width = mu(P * il, .5), Pe = n.height = mu(Ee * il, .5);
 	}
 	function He() {
 		let e = !1, t = 0;
@@ -5201,10 +5204,10 @@ function yp(e, t, n) {
 	if (M.dataIdx == null) {
 		let e = M.hover, n = e.skip = new Set(e.skip ?? []);
 		n.add(void 0);
-		let r = e.prox = iu(e.prox), i = e.bias ??= 0;
+		let r = e.prox = au(e.prox), i = e.bias ??= 0;
 		M.dataIdx = (e, a, o, s) => {
 			if (a == 0) return o;
-			let c = o, l = r(e, a, o, s) ?? eu, u = l >= 0 && l < eu, d = D.ori == 0 ? P : Ee, f = M.left, p = t[0], m = t[a];
+			let c = o, l = r(e, a, o, s) ?? tu, u = l >= 0 && l < tu, d = D.ori == 0 ? P : Ee, f = M.left, p = t[0], m = t[a];
 			if (n.has(m[o])) {
 				c = null;
 				let e = null, t = null, r;
@@ -5216,7 +5219,7 @@ function yp(e, t, n) {
 						i <= a ? i <= l && (c = e) : a <= l && (c = t);
 					} else c = t == null ? e : e == null ? t : o - e <= t - o ? e : t;
 				}
-			} else u && Hl(f - ee(p[o], D, d, 0)) > l && (c = null);
+			} else u && Ul(f - ee(p[o], D, d, 0)) > l && (c = null);
 			return c;
 		};
 	}
@@ -5225,29 +5228,29 @@ function yp(e, t, n) {
 	};
 	M.idxs = ae, M._lock = !1;
 	let qe = M.points;
-	qe.show = iu(qe.show), qe.size = iu(qe.size), qe.stroke = iu(qe.stroke), qe.width = iu(qe.width), qe.fill = iu(qe.fill);
-	let Je = r.focus = Mu({}, e.focus || { alpha: .3 }, M.focus), Ye = Je.prox >= 0, Xe = Ye && qe.one, z = [], Ze = [], Qe = [];
+	qe.show = au(qe.show), qe.size = au(qe.size), qe.stroke = au(qe.stroke), qe.width = au(qe.width), qe.fill = au(qe.fill);
+	let Je = r.focus = Nu({}, e.focus || { alpha: .3 }, M.focus), Ye = Je.prox >= 0, Xe = Ye && qe.one, z = [], Ze = [], Qe = [];
 	function $e(e, t) {
 		let n = qe.show(r, t);
-		if (n instanceof HTMLElement) return ol(n, Ec), ol(n, e.class), fl(n, -10, -10, P, Ee), m.insertBefore(n, z[t]), n;
+		if (n instanceof HTMLElement) return sl(n, Dc), sl(n, e.class), pl(n, -10, -10, P, Ee), m.insertBefore(n, z[t]), n;
 	}
 	function et(e, t) {
 		if (i == 1 || t > 0) {
 			let t = i == 1 && b[e.scale].time, n = e.value;
-			e.value = t ? Eu(n) ? kd(A, Dd(n, ne)) : n || ie : n || df, e.label = e.label || (t ? Zd : Xd);
+			e.value = t ? Du(n) ? Ad(A, Od(n, ne)) : n || ie : n || ff, e.label = e.label || (t ? Qd : Zd);
 		}
 		if (Xe || t > 0) {
-			e.width = e.width == null ? 1 : e.width, e.paths = e.paths || ip || cu, e.fillTo = iu(e.fillTo || Of), e.pxAlign = +Fl(e.pxAlign, h), e.pxRound = Nf(e.pxAlign), e.stroke = iu(e.stroke || null), e.fill = iu(e.fill || null), e._stroke = e._fill = e._paths = e._focus = null;
-			let t = pf(ql(1, e.width), 1), n = e.points = Mu({}, {
+			e.width = e.width == null ? 1 : e.width, e.paths = e.paths || ap || lu, e.fillTo = au(e.fillTo || kf), e.pxAlign = +Il(e.pxAlign, h), e.pxRound = Pf(e.pxAlign), e.stroke = au(e.stroke || null), e.fill = au(e.fill || null), e._stroke = e._fill = e._paths = e._focus = null;
+			let t = mf(Jl(1, e.width), 1), n = e.points = Nu({}, {
 				size: t,
-				width: ql(1, t * .2),
+				width: Jl(1, t * .2),
 				stroke: e.stroke,
 				space: t * 2,
-				paths: ap,
+				paths: op,
 				_stroke: null,
 				_fill: null
 			}, e.points);
-			n.show = iu(n.show), n.filter = iu(n.filter), n.fill = iu(n.fill), n.stroke = iu(n.stroke), n.paths = iu(n.paths), n.pxAlign = e.pxAlign;
+			n.show = au(n.show), n.filter = au(n.filter), n.fill = au(n.fill), n.stroke = au(n.stroke), n.paths = au(n.paths), n.pxAlign = e.pxAlign;
 		}
 		if (N) {
 			let n = be(e, t);
@@ -5261,7 +5264,7 @@ function yp(e, t, n) {
 		Yn("addSeries", t);
 	}
 	function tt(e, t) {
-		t ??= v.length, e = i == 1 ? cp(e, t, Qd, vf) : cp(e, t, {}, _f), v.splice(t, 0, e), et(v[t], t);
+		t ??= v.length, e = i == 1 ? lp(e, t, $d, yf) : lp(e, t, {}, vf), v.splice(t, 0, e), et(v[t], t);
 	}
 	r.addSeries = tt;
 	function nt(e) {
@@ -5284,23 +5287,23 @@ function yp(e, t, n) {
 			let n = e.side % 2, i = b[e.scale];
 			i ??= (e.scale = n ? v[1].scale : S, b[e.scale]);
 			let a = i.time;
-			e.size = iu(e.size), e.space = iu(e.space), e.rotate = iu(e.rotate), Cu(e.incrs) && e.incrs.forEach((e) => {
-				!_u.has(e) && _u.set(e, vu(e));
-			}), e.incrs = iu(e.incrs || (i.distr == 2 ? rd : a ? _ == 1 ? _d : bd : id)), e.splits = iu(e.splits || (a && i.distr == 1 ? j : i.distr == 3 ? tf : i.distr == 4 ? nf : ef)), e.stroke = iu(e.stroke), e.grid.stroke = iu(e.grid.stroke), e.ticks.stroke = iu(e.ticks.stroke), e.border.stroke = iu(e.border.stroke);
+			e.size = au(e.size), e.space = au(e.space), e.rotate = au(e.rotate), wu(e.incrs) && e.incrs.forEach((e) => {
+				!vu.has(e) && vu.set(e, yu(e));
+			}), e.incrs = au(e.incrs || (i.distr == 2 ? id : a ? _ == 1 ? vd : xd : ad)), e.splits = au(e.splits || (a && i.distr == 1 ? j : i.distr == 3 ? nf : i.distr == 4 ? rf : tf)), e.stroke = au(e.stroke), e.grid.stroke = au(e.grid.stroke), e.ticks.stroke = au(e.ticks.stroke), e.border.stroke = au(e.border.stroke);
 			let o = e.values;
-			e.values = Cu(o) && !Cu(o[0]) ? iu(o) : a ? Cu(o) ? wd(A, Cd(o, ne)) : Eu(o) ? Td(A, o) : o || re : o || $d, e.filter = iu(e.filter || (i.distr >= 3 && i.log == 10 ? lf : i.distr == 3 && i.log == 2 ? uf : su)), e.font = _p(e.font), e.labelFont = _p(e.labelFont), e._size = e.size(r, null, t, 0), e._space = e._rotate = e._incrs = e._found = e._splits = e._values = null, e._size > 0 && (rt[t] = !0, e._el = ul(xc, f));
+			e.values = wu(o) && !wu(o[0]) ? au(o) : a ? wu(o) ? Td(A, wd(o, ne)) : Du(o) ? Ed(A, o) : o || re : o || ef, e.filter = au(e.filter || (i.distr >= 3 && i.log == 10 ? uf : i.distr == 3 && i.log == 2 ? df : cu)), e.font = vp(e.font), e.labelFont = vp(e.labelFont), e._size = e.size(r, null, t, 0), e._space = e._rotate = e._incrs = e._found = e._splits = e._values = null, e._size > 0 && (rt[t] = !0, e._el = dl(Sc, f));
 		}
 	}
 	function at(e, t, n, r) {
 		let [i, a, o, s] = n, c = t % 2, l = 0;
-		return c == 0 && (s || a) && (l = t == 0 && !i || t == 2 && !o ? Wl(Yd.size / 3) : 0), c == 1 && (i || o) && (l = t == 1 && !a || t == 3 && !s ? Wl(ff.size / 2) : 0), l;
+		return c == 0 && (s || a) && (l = t == 0 && !i || t == 2 && !o ? Gl(Xd.size / 3) : 0), c == 1 && (i || o) && (l = t == 1 && !a || t == 3 && !s ? Gl(pf.size / 2) : 0), l;
 	}
 	let ot = r.padding = (e.padding || [
 		at,
 		at,
 		at,
 		at
-	]).map((e) => iu(Fl(e, at))), st = r._padding = ot.map((e, t) => e(r, t, rt, 0)), ct, lt = null, ut = null, dt = i == 1 ? v[0].idxs : null, ft = null, pt = !1;
+	]).map((e) => au(Il(e, at))), st = r._padding = ot.map((e, t) => e(r, t, rt, 0)), ct, lt = null, ut = null, dt = i == 1 ? v[0].idxs : null, ft = null, pt = !1;
 	function mt(e, n) {
 		if (t = e ?? [], r.data = r._data = t, i == 2) {
 			ct = 0;
@@ -5324,19 +5327,19 @@ function yp(e, t, n) {
 	function ht() {
 		pt = !0;
 		let e, n;
-		i == 1 && (ct > 0 ? (lt = dt[0] = 0, ut = dt[1] = ct - 1, e = t[0][lt], n = t[0][ut], O == 2 ? (e = lt, n = ut) : e == n && (O == 3 ? [e, n] = Ol(e, e, D.log, !1) : O == 4 ? [e, n] = kl(e, e, D.log, !1) : D.time ? n = e + Wl(86400 / _) : [e, n] = Pl(e, n, Al, !0))) : (lt = dt[0] = e = null, ut = dt[1] = n = null)), hn(S, e, n);
+		i == 1 && (ct > 0 ? (lt = dt[0] = 0, ut = dt[1] = ct - 1, e = t[0][lt], n = t[0][ut], O == 2 ? (e = lt, n = ut) : e == n && (O == 3 ? [e, n] = kl(e, e, D.log, !1) : O == 4 ? [e, n] = Al(e, e, D.log, !1) : D.time ? n = e + Gl(86400 / _) : [e, n] = Fl(e, n, jl, !0))) : (lt = dt[0] = e = null, ut = dt[1] = n = null)), hn(S, e, n);
 	}
 	let gt, _t, vt, yt, bt, xt, St, Ct, B, wt;
 	function Tt(e, t, n, r, i, a) {
-		e ??= Vc, n ??= xu, r ??= "butt", i ??= Vc, a ??= "round", e != gt && (d.strokeStyle = gt = e), i != _t && (d.fillStyle = _t = i), t != vt && (d.lineWidth = vt = t), a != bt && (d.lineJoin = bt = a), r != xt && (d.lineCap = xt = r), n != yt && d.setLineDash(yt = n);
+		e ??= Hc, n ??= Su, r ??= "butt", i ??= Hc, a ??= "round", e != gt && (d.strokeStyle = gt = e), i != _t && (d.fillStyle = _t = i), t != vt && (d.lineWidth = vt = t), a != bt && (d.lineJoin = bt = a), r != xt && (d.lineCap = xt = r), n != yt && d.setLineDash(yt = n);
 	}
 	function Et(e, t, n, r) {
 		t != _t && (d.fillStyle = _t = t), e != St && (d.font = St = e), n != Ct && (d.textAlign = Ct = n), r != B && (d.textBaseline = B = r);
 	}
 	function Dt(e, t, n, i, a = 0) {
 		if (i.length > 0 && e.auto(r, pt) && (t == null || t.min == null)) {
-			let t = Fl(lt, 0), r = Fl(ut, i.length - 1), o = n.min == null ? Dl(i, t, r, a, e.distr == 3) : [n.min, n.max];
-			e.min = Kl(e.min, n.min = o[0]), e.max = ql(e.max, n.max = o[1]);
+			let t = Il(lt, 0), r = Il(ut, i.length - 1), o = n.min == null ? Ol(i, t, r, a, e.distr == 3) : [n.min, n.max];
+			e.min = ql(e.min, n.min = o[0]), e.max = Jl(e.max, n.max = o[1]);
 		}
 	}
 	let Ot = {
@@ -5357,13 +5360,13 @@ function yp(e, t, n) {
 		for (let t in k) {
 			let n = k[t];
 			if (n != null) {
-				let a = e[t] = ju(b[t], Ou);
-				if (n.min != null) Mu(a, n);
+				let a = e[t] = Mu(b[t], ku);
+				if (n.min != null) Nu(a, n);
 				else if (t != S || i == 2) {
 					if (ct == 0 && a.from == null) {
 						let e = a.range(r, null, null, t);
 						a.min = e[0], a.max = e[1];
-					} else a.min = eu, a.max = -Infinity;
+					} else a.min = tu, a.max = -Infinity;
 				}
 			}
 		}
@@ -5375,7 +5378,7 @@ function yp(e, t, n) {
 					let s = e[i];
 					if (a == 0) {
 						let e = s.range(r, s.min, s.max, i);
-						s.min = e[0], s.max = e[1], lt = xl(s.min, t[0]), ut = xl(s.max, t[0]), ut - lt > 1 && (t[0][lt] < s.min && lt++, t[0][ut] > s.max && ut--), n.min = ft[lt], n.max = ft[ut];
+						s.min = e[0], s.max = e[1], lt = Sl(s.min, t[0]), ut = Sl(s.max, t[0]), ut - lt > 1 && (t[0][lt] < s.min && lt++, t[0][ut] > s.max && ut--), n.min = ft[lt], n.max = ft[ut];
 					} else n.show && n.auto && Dt(s, o, n, t[a], n.sorted);
 					n.idxs[0] = lt, n.idxs[1] = ut;
 				} else if (a > 0 && n.show && n.auto) {
@@ -5386,7 +5389,7 @@ function yp(e, t, n) {
 			for (let t in e) {
 				let n = e[t], i = k[t];
 				if (n.from == null && (i == null || i.min == null)) {
-					let e = n.range(r, n.min == eu ? null : n.min, n.max == -Infinity ? null : n.max, t);
+					let e = n.range(r, n.min == tu ? null : n.min, n.max == -Infinity ? null : n.max, t);
 					n.min = e[0], n.max = e[1];
 				}
 			}
@@ -5408,7 +5411,7 @@ function yp(e, t, n) {
 			if (i.min != r.min || i.max != r.max) {
 				i.min = r.min, i.max = r.max;
 				let e = i.distr;
-				i._min = e == 3 ? Xl(i.min) : e == 4 ? $l(i.min, i.asinh) : e == 100 ? i.fwd(i.min) : i.min, i._max = e == 3 ? Xl(i.max) : e == 4 ? $l(i.max, i.asinh) : e == 100 ? i.fwd(i.max) : i.max, n[t] = a = !0;
+				i._min = e == 3 ? Zl(i.min) : e == 4 ? eu(i.min, i.asinh) : e == 100 ? i.fwd(i.min) : i.min, i._max = e == 3 ? Zl(i.max) : e == 4 ? eu(i.max, i.asinh) : e == 100 ? i.fwd(i.max) : i.max, n[t] = a = !0;
 			}
 		}
 		if (a) {
@@ -5421,7 +5424,7 @@ function yp(e, t, n) {
 		for (let e in k) k[e] = null;
 	}
 	function At(e) {
-		let t = nu(lt - 1, 0, ct - 1), n = nu(ut + 1, 0, ct - 1);
+		let t = ru(lt - 1, 0, ct - 1), n = ru(ut + 1, 0, ct - 1);
 		for (; e[t] == null && t > 0;) t--;
 		for (; e[n] == null && n < ct - 1;) n++;
 		return [t, n];
@@ -5455,7 +5458,7 @@ function yp(e, t, n) {
 	}
 	function Mt(e, t) {
 		let n = t ? v[e].points : v[e], { stroke: r, fill: i, clip: a, flags: o, _stroke: s = n._stroke, _fill: c = n._fill, _width: l = n.width } = n._paths;
-		l = gu(l * rl, 3);
+		l = _u(l * il, 3);
 		let u = null, f = l % 2 / 2;
 		t && c == null && (c = l > 0 ? "#fff" : s);
 		let p = n.pxAlign == 1 && f > 0;
@@ -5469,15 +5472,15 @@ function yp(e, t, n) {
 		let p = !1;
 		u != 0 && x.forEach((m, h) => {
 			if (m.series[0] == e) {
-				let e = v[m.series[1]], g = t[m.series[1]], _ = (e._paths || bu).band;
-				Cu(_) && (_ = m.dir == 1 ? _[0] : _[1]);
+				let e = v[m.series[1]], g = t[m.series[1]], _ = (e._paths || xu).band;
+				wu(_) && (_ = m.dir == 1 ? _[0] : _[1]);
 				let y, b = null;
-				e.show && _ && Il(g, lt, ut) ? (b = m.fill(r, h) || s, y = e._paths.clip) : _ = null, Pt(n, i, a, o, b, c, l, u, d, f, y, _), p = !0;
+				e.show && _ && Ll(g, lt, ut) ? (b = m.fill(r, h) || s, y = e._paths.clip) : _ = null, Pt(n, i, a, o, b, c, l, u, d, f, y, _), p = !0;
 			}
 		}), p || Pt(n, i, a, o, s, c, l, u, d, f);
 	}
 	function Pt(e, t, n, r, i, a, o, s, c, l, u, f) {
-		Tt(e, t, n, r, i), (c || l || f) && (d.save(), c && d.clip(c), l && d.clip(l)), f ? (s & 3) == 3 ? (d.clip(f), u && d.clip(u), It(i, o), Ft(e, a, t)) : s & Tf ? (It(i, o), d.clip(f), Ft(e, a, t)) : s & wf && (d.save(), d.clip(f), u && d.clip(u), It(i, o), d.restore(), Ft(e, a, t)) : (It(i, o), Ft(e, a, t)), (c || l || f) && d.restore();
+		Tt(e, t, n, r, i), (c || l || f) && (d.save(), c && d.clip(c), l && d.clip(l)), f ? (s & 3) == 3 ? (d.clip(f), u && d.clip(u), It(i, o), Ft(e, a, t)) : s & Ef ? (It(i, o), d.clip(f), Ft(e, a, t)) : s & Tf && (d.save(), d.clip(f), u && d.clip(u), It(i, o), d.restore(), Ft(e, a, t)) : (It(i, o), Ft(e, a, t)), (c || l || f) && d.restore();
 	}
 	function Ft(e, t, n) {
 		n > 0 && (t instanceof Map ? t.forEach((e, t) => {
@@ -5494,7 +5497,7 @@ function yp(e, t, n) {
 		if (i <= 0) o = [0, 0];
 		else {
 			let s = a._space = a.space(r, e, t, n, i);
-			o = gp(t, n, a._incrs = a.incrs(r, e, t, n, i, s), i, s);
+			o = _p(t, n, a._incrs = a.incrs(r, e, t, n, i, s), i, s);
 		}
 		return a._found = o;
 	}
@@ -5521,7 +5524,7 @@ function yp(e, t, n) {
 			let f = a.distr == 2, p = n._splits = n.splits(r, i, c, l, u, d, f), m = a.distr == 2 ? p.map((e) => ft[e]) : p, h = a.distr == 2 ? ft[p[1]] - ft[p[0]] : u, g = n._values = n.values(r, n.filter(r, m, i, d, h), i, d, h);
 			n._rotate = o == 2 ? n.rotate(r, g, i, d) : 0;
 			let _ = n._size;
-			n._size = Gl(n.size(r, g, i, e)), _ != null && n._size != _ && (t = !1);
+			n._size = Kl(n.size(r, g, i, e)), _ != null && n._size != _ && (t = !1);
 		}), t;
 	}
 	function Bt(e) {
@@ -5537,16 +5540,16 @@ function yp(e, t, n) {
 			if (!t.show || !t._show) continue;
 			let n = t.side, i = n % 2, a, o, c = t.stroke(r, e), l = n == 0 || n == 3 ? -1 : 1, [u, f] = t._found;
 			if (t.label != null) {
-				let s = t.labelGap * l, p = Wl((t._lpos + s) * rl);
-				Et(t.labelFont[0], c, "center", n == 2 ? Ic : Lc), d.save(), i == 1 ? (a = o = 0, d.translate(p, Wl(Ne + Pe / 2)), d.rotate((n == 3 ? -Vl : Vl) / 2)) : (a = Wl(F + I / 2), o = p);
-				let m = ru(t.label) ? t.label(r, e, u, f) : t.label;
+				let s = t.labelGap * l, p = Gl((t._lpos + s) * il);
+				Et(t.labelFont[0], c, "center", n == 2 ? Lc : Rc), d.save(), i == 1 ? (a = o = 0, d.translate(p, Gl(Ne + Pe / 2)), d.rotate((n == 3 ? -Hl : Hl) / 2)) : (a = Gl(F + I / 2), o = p);
+				let m = iu(t.label) ? t.label(r, e, u, f) : t.label;
 				d.fillText(m, a, o), d.restore();
 			}
 			if (f == 0) continue;
-			let p = b[t.scale], m = i == 0 ? I : Pe, h = i == 0 ? F : Ne, _ = t._splits, v = p.distr == 2 ? _.map((e) => ft[e]) : _, x = p.distr == 2 ? ft[_[1]] - ft[_[0]] : u, S = t.ticks, C = t.border, w = S.show ? S.size : 0, T = Wl(w * rl), E = Wl((t.alignTo == 2 ? t._size - w - t.gap : t.gap) * rl), D = t._rotate * -Vl / 180, O = g(t._pos * rl), ee = O + (T + E) * l;
+			let p = b[t.scale], m = i == 0 ? I : Pe, h = i == 0 ? F : Ne, _ = t._splits, v = p.distr == 2 ? _.map((e) => ft[e]) : _, x = p.distr == 2 ? ft[_[1]] - ft[_[0]] : u, S = t.ticks, C = t.border, w = S.show ? S.size : 0, T = Gl(w * il), E = Gl((t.alignTo == 2 ? t._size - w - t.gap : t.gap) * il), D = t._rotate * -Hl / 180, O = g(t._pos * il), ee = O + (T + E) * l;
 			o = i == 0 ? ee : 0, a = i == 1 ? ee : 0;
 			let te = t.font[0];
-			Et(te, c, t.align == 1 ? Rc : t.align == 2 ? zc : D > 0 ? Rc : D < 0 ? zc : i == 0 ? "center" : n == 3 ? zc : Rc, D || i == 1 ? "middle" : n == 2 ? Ic : Lc);
+			Et(te, c, t.align == 1 ? zc : t.align == 2 ? Bc : D > 0 ? zc : D < 0 ? Bc : i == 0 ? "center" : n == 3 ? Bc : zc, D || i == 1 ? "middle" : n == 2 ? Lc : Rc);
 			let k = t.font[1] * t.lineGap, A = _.map((e) => g(s(e, p, m, h))), ne = t._values;
 			for (let e = 0; e < ne.length; e++) {
 				let t = ne[e];
@@ -5559,9 +5562,9 @@ function yp(e, t, n) {
 					}
 				}
 			}
-			S.show && Rt(A, S.filter(r, v, e, f, x), i, n, O, T, gu(S.width * rl, 3), S.stroke(r, e), S.dash, S.cap);
+			S.show && Rt(A, S.filter(r, v, e, f, x), i, n, O, T, _u(S.width * il, 3), S.stroke(r, e), S.dash, S.cap);
 			let j = t.grid;
-			j.show && Rt(A, j.filter(r, v, e, f, x), i, i == 0 ? 2 : 1, i == 0 ? Ne : F, i == 0 ? Pe : I, gu(j.width * rl, 3), j.stroke(r, e), j.dash, j.cap), C.show && Rt([O], [1], +(i == 0), i == 0 ? 1 : 2, i == 1 ? Ne : F, i == 1 ? Pe : I, gu(C.width * rl, 3), C.stroke(r, e), C.dash, C.cap);
+			j.show && Rt(A, j.filter(r, v, e, f, x), i, i == 0 ? 2 : 1, i == 0 ? Ne : F, i == 0 ? Pe : I, _u(j.width * il, 3), j.stroke(r, e), j.dash, j.cap), C.show && Rt([O], [1], +(i == 0), i == 0 ? 1 : 2, i == 1 ? Ne : F, i == 1 ? Pe : I, _u(C.width * il, 3), C.stroke(r, e), C.dash, C.cap);
 		}
 		Yn("drawAxes");
 	}
@@ -5579,7 +5582,7 @@ function yp(e, t, n) {
 		Gt.length = 0;
 	}
 	function qt() {
-		Ut ||= (Ru(H), !0);
+		Ut ||= (zu(H), !0);
 	}
 	function Jt(e, t = !1) {
 		Ut = !0, Wt = t, e(r), H(), t && Gt.length > 0 && queueMicrotask(Kt);
@@ -5587,26 +5590,26 @@ function yp(e, t, n) {
 	r.batch = Jt;
 	function H() {
 		if (Fe &&= (kt(), !1), Ie &&= (He(), !1), R) {
-			if (cl(p, Rc, De), cl(p, Ic, Oe), cl(p, Pc, P), cl(p, Fc, Ee), cl(m, Rc, De), cl(m, Ic, Oe), cl(m, Pc, P), cl(m, Fc, Ee), cl(f, Pc, we), cl(f, Fc, Te), u.width = Wl(we * rl), u.height = Wl(Te * rl), y.forEach(({ _el: e, _show: t, _size: n, _pos: r, side: i }) => {
+			if (ll(p, zc, De), ll(p, Lc, Oe), ll(p, Fc, P), ll(p, Ic, Ee), ll(m, zc, De), ll(m, Lc, Oe), ll(m, Fc, P), ll(m, Ic, Ee), ll(f, Fc, we), ll(f, Ic, Te), u.width = Gl(we * il), u.height = Gl(Te * il), y.forEach(({ _el: e, _show: t, _size: n, _pos: r, side: i }) => {
 				if (e != null) {
 					if (t) {
 						let t = i === 3 || i === 0 ? n : 0, a = i % 2 == 1;
-						cl(e, a ? "left" : "top", r - t), cl(e, a ? "width" : "height", n), cl(e, a ? "top" : "left", a ? Oe : De), cl(e, a ? "height" : "width", a ? Ee : P), sl(e, Sc);
-					} else ol(e, Sc);
+						ll(e, a ? "left" : "top", r - t), ll(e, a ? "width" : "height", n), ll(e, a ? "top" : "left", a ? Oe : De), ll(e, a ? "height" : "width", a ? Ee : P), cl(e, Cc);
+					} else sl(e, Cc);
 				}
 			}), gt = _t = vt = bt = xt = St = Ct = B = yt = null, wt = 1, Pn(!0), De != ke || Oe != Ae || P != je || Ee != Me) {
 				Ht(!1);
 				let e = P / je, t = Ee / Me;
 				if (se && !Le && M.left >= 0) {
-					M.left *= e, M.top *= t, Zt && fl(Zt, Wl(M.left), 0, P, Ee), W && fl(W, 0, Wl(M.top), P, Ee);
+					M.left *= e, M.top *= t, Zt && pl(Zt, Gl(M.left), 0, P, Ee), W && pl(W, 0, Gl(M.top), P, Ee);
 					for (let n = 0; n < z.length; n++) {
 						let r = z[n];
-						r != null && (Ze[n] *= e, Qe[n] *= t, fl(r, Gl(Ze[n]), Gl(Qe[n]), P, Ee));
+						r != null && (Ze[n] *= e, Qe[n] *= t, pl(r, Kl(Ze[n]), Kl(Qe[n]), P, Ee));
 					}
 				}
 				if (dn.show && !Re && dn.left >= 0 && dn.width > 0) {
 					dn.left *= e, dn.width *= e, dn.top *= t, dn.height *= t;
-					for (let e in In) cl(fn, e, dn[e]);
+					for (let e in In) ll(fn, e, dn[e]);
 				}
 				ke = De, Ae = Oe, je = P, Me = Ee;
 			}
@@ -5629,32 +5632,32 @@ function yp(e, t, n) {
 				n.min = n.max, n.max = e;
 			}
 			if (ct > 1 && n.min != null && n.max != null && n.max - n.min < 1e-16) return;
-			e == S && i.distr == 2 && ct > 0 && (n.min = xl(n.min, t[0]), n.max = xl(n.max, t[0]), n.min == n.max && n.max++), k[e] = n, Fe = !0, qt();
+			e == S && i.distr == 2 && ct > 0 && (n.min = Sl(n.min, t[0]), n.max = Sl(n.max, t[0]), n.min == n.max && n.max++), k[e] = n, Fe = !0, qt();
 		}
 	}
 	r.setScale = Yt;
 	let Xt, U, Zt, W, Qt, $t, en, tn, nn, rn, an, on, sn = !1, cn = M.drag, ln = cn.x, un = cn.y;
-	se && (M.x && (Xt = ul(wc, m)), M.y && (U = ul(Tc, m)), D.ori == 0 ? (Zt = Xt, W = U) : (Zt = U, W = Xt), an = M.left, on = M.top);
-	let dn = r.select = Mu({
+	se && (M.x && (Xt = dl(Tc, m)), M.y && (U = dl(Ec, m)), D.ori == 0 ? (Zt = Xt, W = U) : (Zt = U, W = Xt), an = M.left, on = M.top);
+	let dn = r.select = Nu({
 		show: !0,
 		over: !0,
 		left: 0,
 		width: 0,
 		top: 0,
 		height: 0
-	}, e.select), fn = dn.show ? ul(Cc, dn.over ? m : p) : null;
+	}, e.select), fn = dn.show ? dl(wc, dn.over ? m : p) : null;
 	function pn(e, t) {
 		if (dn.show) {
-			for (let t in e) dn[t] = e[t], t in In && cl(fn, t, e[t]);
+			for (let t in e) dn[t] = e[t], t in In && ll(fn, t, e[t]);
 			t !== !1 && Yn("setSelect");
 		}
 	}
 	r.setSelect = pn;
 	function mn(e) {
-		if (v[e].show) N && sl(fe[e], Sc);
-		else if (N && ol(fe[e], Sc), se) {
+		if (v[e].show) N && cl(fe[e], Cc);
+		else if (N && sl(fe[e], Cc), se) {
 			let t = Xe ? z[0] : z[e];
-			t != null && fl(t, -10, -10, P, Ee);
+			t != null && pl(t, -10, -10, P, Ee);
 		}
 	}
 	function hn(e, t, n) {
@@ -5670,10 +5673,10 @@ function yp(e, t, n) {
 	}
 	r.setSeries = gn;
 	function G(e, t) {
-		Mu(x[e], t);
+		Nu(x[e], t);
 	}
 	function _n(e, t) {
-		e.fill = iu(e.fill || null), e.dir = Fl(e.dir, -1), t ??= x.length, x.splice(t, 0, e);
+		e.fill = au(e.fill || null), e.dir = Il(e.dir, -1), t ??= x.length, x.splice(t, 0, e);
 	}
 	function K(e) {
 		e == null ? x.length = 0 : x.splice(e, 1);
@@ -5694,28 +5697,28 @@ function yp(e, t, n) {
 			}), bn = e, n && qt();
 		}
 	}
-	N && Ye && Se(Kc, le, (e) => {
+	N && Ye && Se(qc, le, (e) => {
 		M._lock || (Ke(e), bn != null && gn(null, xn, !0, Zn.setSeries));
 	});
 	function Cn(e, t, n) {
 		let r = b[t];
-		n && (e = e / rl - (r.ori == 1 ? Oe : De));
+		n && (e = e / il - (r.ori == 1 ? Oe : De));
 		let i = P;
 		r.ori == 1 && (i = Ee, e = i - e), r.dir == -1 && (e = i - e);
 		let a = r._min, o = r._max, s = e / i, c = a + (o - a) * s, l = r.distr;
-		return l == 3 ? Jl(10, c) : l == 4 ? Ql(c, r.asinh) : l == 100 ? r.bwd(c) : c;
+		return l == 3 ? Yl(10, c) : l == 4 ? $l(c, r.asinh) : l == 100 ? r.bwd(c) : c;
 	}
 	function wn(e, n) {
-		return xl(Cn(e, S, n), t[0], lt, ut);
+		return Sl(Cn(e, S, n), t[0], lt, ut);
 	}
-	r.valToIdx = (e) => xl(e, t[0]), r.posToIdx = wn, r.posToVal = Cn, r.valToPos = (e, t, n) => b[t].ori == 0 ? a(e, b[t], n ? I : P, n ? F : 0) : o(e, b[t], n ? Pe : Ee, n ? Ne : 0), r.setCursor = (e, t, n) => {
+	r.valToIdx = (e) => Sl(e, t[0]), r.posToIdx = wn, r.posToVal = Cn, r.valToPos = (e, t, n) => b[t].ori == 0 ? a(e, b[t], n ? I : P, n ? F : 0) : o(e, b[t], n ? Pe : Ee, n ? Ne : 0), r.setCursor = (e, t, n) => {
 		an = e.left, on = e.top, Mn(null, t, n);
 	};
 	function Tn(e, t) {
-		cl(fn, Rc, dn.left = e), cl(fn, Pc, dn.width = t);
+		ll(fn, zc, dn.left = e), ll(fn, Fc, dn.width = t);
 	}
 	function En(e, t) {
-		cl(fn, Ic, dn.top = e), cl(fn, Fc, dn.height = t);
+		ll(fn, Lc, dn.top = e), ll(fn, Ic, dn.height = t);
 	}
 	let Dn = D.ori == 0 ? Tn : En, On = D.ori == 1 ? Tn : En;
 	function kn() {
@@ -5728,7 +5731,7 @@ function yp(e, t, n) {
 	function An(e, t) {
 		if (e != null && (e.idxs ? e.idxs.forEach((e, t) => {
 			ae[t] = e;
-		}) : Tu(e.idx) || ae.fill(e.idx), oe.idx = ae[0]), N && oe.live) {
+		}) : Eu(e.idx) || ae.fill(e.idx), oe.idx = ae[0]), N && oe.live) {
 			for (let e = 0; e < v.length; e++) (e > 0 || i == 1 && !he) && jn(e, ae[e]);
 			kn();
 		}
@@ -5740,27 +5743,27 @@ function yp(e, t, n) {
 		he ? o = i.values(r, e, n) ?? ge : (o = i.value(r, n == null ? null : a[n], e, n), o = o == null ? ge : { _: o }), oe.values[e] = o;
 	}
 	function Mn(e, n, a) {
-		nn = an, rn = on, [an, on] = M.move(r, an, on), M.left = an, M.top = on, se && (Zt && fl(Zt, Wl(an), 0, P, Ee), W && fl(W, 0, Wl(on), P, Ee));
+		nn = an, rn = on, [an, on] = M.move(r, an, on), M.left = an, M.top = on, se && (Zt && pl(Zt, Gl(an), 0, P, Ee), W && pl(W, 0, Gl(on), P, Ee));
 		let o, s = lt > ut;
-		vn = eu, yn = null;
+		vn = tu, yn = null;
 		let c = D.ori == 0 ? P : Ee, l = D.ori == 1 ? P : Ee;
 		if (an < 0 || ct == 0 || s) {
 			o = M.idx = null;
 			for (let e = 0; e < v.length; e++) {
 				let t = z[e];
-				t != null && fl(t, -10, -10, P, Ee);
+				t != null && pl(t, -10, -10, P, Ee);
 			}
 			Ye && gn(null, xn, !0, e == null && Zn.setSeries), oe.live && (ae.fill(o), ze = !0);
 		} else {
 			let e, n, a;
-			i == 1 && (e = D.ori == 0 ? an : on, n = Cn(e, S), o = M.idx = xl(n, t[0], lt, ut), a = ee(t[0][o], D, c, 0));
+			i == 1 && (e = D.ori == 0 ? an : on, n = Cn(e, S), o = M.idx = Sl(n, t[0], lt, ut), a = ee(t[0][o], D, c, 0));
 			let s = -10, u = -10, d = 0, f = 0, p = !0, m = "", h = "";
 			for (let e = +(i == 2); e < v.length; e++) {
 				let g = v[e], _ = ae[e], y = _ == null ? null : i == 1 ? t[e][_] : t[e][1][_], x = M.dataIdx(r, e, o, n), S = x == null ? null : i == 1 ? t[e][x] : t[e][1][x];
 				if (ze = ze || S != y || x != _, ae[e] = x, e > 0 && g.show) {
 					let n = x == null ? -10 : x == o ? a : ee(i == 1 ? t[0][x] : t[e][0][x], D, c, 0), _ = S == null ? -10 : te(S, i == 1 ? b[g.scale] : b[g.facets[1].scale], l, 0);
 					if (Ye && S != null) {
-						let t = D.ori == 1 ? an : on, n = Hl(Je.dist(r, e, x, _, t));
+						let t = D.ori == 1 ? an : on, n = Ul(Je.dist(r, e, x, _, t));
 						if (n < vn) {
 							let r = Je.bias;
 							if (r != 0) {
@@ -5781,7 +5784,7 @@ function yp(e, t, n) {
 						if (v = qe.fill(r, e), g = qe.stroke(r, e), Xe) e == yn && vn <= Je.prox && (s = c, u = l, d = a, f = o, p = y, m = v, h = g);
 						else {
 							let t = z[e];
-							t != null && (Ze[e] = c, Qe[e] = l, gl(t, a, o, y), ml(t, v, g), fl(t, Gl(c), Gl(l), P, Ee));
+							t != null && (Ze[e] = c, Qe[e] = l, _l(t, a, o, y), hl(t, v, g), pl(t, Kl(c), Kl(l), P, Ee));
 						}
 					}
 				}
@@ -5790,7 +5793,7 @@ function yp(e, t, n) {
 				let e = Je.prox;
 				if (ze || (bn == null ? vn <= e : vn > e || yn != bn)) {
 					let e = z[0];
-					e != null && (Ze[0] = s, Qe[0] = u, gl(e, d, f, p), ml(e, m, h), fl(e, Gl(s), Gl(u), P, Ee));
+					e != null && (Ze[0] = s, Qe[0] = u, _l(e, d, f, p), hl(e, m, h), pl(e, Kl(s), Kl(u), P, Ee));
 				}
 			}
 		}
@@ -5799,10 +5802,10 @@ function yp(e, t, n) {
 				let [t, n] = Zn.scales, [r, i] = Zn.match, [a, o] = e.cursor.sync.scales, s = e.cursor.drag;
 				if (ln = s._x, un = s._y, ln || un) {
 					let { left: s, top: u, width: d, height: f } = e.select, p = e.scales[a].ori, m = e.posToVal, h, g, _, v, y, x = t != null && r(t, a), S = n != null && i(n, o);
-					x && ln ? (p == 0 ? (h = s, g = d) : (h = u, g = f), _ = b[t], v = ee(m(h, a), _, c, 0), y = ee(m(h + g, a), _, c, 0), Dn(Kl(v, y), Hl(y - v))) : Dn(0, c), S && un ? (p == 1 ? (h = s, g = d) : (h = u, g = f), _ = b[n], v = te(m(h, o), _, l, 0), y = te(m(h + g, o), _, l, 0), On(Kl(v, y), Hl(y - v))) : On(0, l);
+					x && ln ? (p == 0 ? (h = s, g = d) : (h = u, g = f), _ = b[t], v = ee(m(h, a), _, c, 0), y = ee(m(h + g, a), _, c, 0), Dn(ql(v, y), Ul(y - v))) : Dn(0, c), S && un ? (p == 1 ? (h = s, g = d) : (h = u, g = f), _ = b[n], v = te(m(h, o), _, l, 0), y = te(m(h + g, o), _, l, 0), On(ql(v, y), Ul(y - v))) : On(0, l);
 				} else Ln();
 			} else {
-				let e = Hl(nn - Qt), t = Hl(rn - $t);
+				let e = Ul(nn - Qt), t = Ul(rn - $t);
 				if (D.ori == 1) {
 					let n = e;
 					e = t, t = n;
@@ -5811,7 +5814,7 @@ function yp(e, t, n) {
 				let n = cn.uni;
 				n == null ? cn.x && cn.y && (ln || un) && (ln = un = !0) : ln && un && (ln = e >= n, un = t >= n, !ln && !un && (t > e ? un = !0 : ln = !0));
 				let r, i;
-				ln && (D.ori == 0 ? (r = en, i = an) : (r = tn, i = on), Dn(Kl(r, i), Hl(i - r)), un || On(0, l)), un && (D.ori == 1 ? (r = en, i = an) : (r = tn, i = on), On(Kl(r, i), Hl(i - r)), ln || Dn(0, c)), !ln && !un && (Dn(0, 0), On(0, 0));
+				ln && (D.ori == 0 ? (r = en, i = an) : (r = tn, i = on), Dn(ql(r, i), Ul(i - r)), un || On(0, l)), un && (D.ori == 1 ? (r = en, i = an) : (r = tn, i = on), On(ql(r, i), Ul(i - r)), ln || Dn(0, c)), !ln && !un && (Dn(0, 0), On(0, 0));
 			}
 		}
 		if (cn._x = ln, cn._y = un, e == null) {
@@ -5820,7 +5823,7 @@ function yp(e, t, n) {
 					let [e, t] = Zn.scales;
 					Zn.values[0] = e == null ? null : Cn(D.ori == 0 ? an : on, e), Zn.values[1] = t == null ? null : Cn(D.ori == 1 ? an : on, t);
 				}
-				er(Hc, r, an, on, P, Ee, o);
+				er(Uc, r, an, on, P, Ee, o);
 			}
 			if (Ye) {
 				let e = a && Zn.setSeries, t = Je.prox;
@@ -5852,7 +5855,7 @@ function yp(e, t, n) {
 				n = i, i = e;
 			}
 		}
-		u && (t == null || t.cursor.event.type == Hc) && ((n <= 1 || n >= P - 1) && (n = pu(n, P)), (i <= 1 || i >= Ee - 1) && (i = pu(i, Ee))), l ? (Qt = n, $t = i, [en, tn] = M.move(r, n, i)) : (an = n, on = i);
+		u && (t == null || t.cursor.event.type == Uc) && ((n <= 1 || n >= P - 1) && (n = mu(n, P)), (i <= 1 || i >= Ee - 1) && (i = mu(i, Ee))), l ? (Qt = n, $t = i, [en, tn] = M.move(r, n, i)) : (an = n, on = i);
 	}
 	let In = {
 		width: 0,
@@ -5865,7 +5868,7 @@ function yp(e, t, n) {
 	}
 	let Rn, zn, Bn, Vn;
 	function Hn(e, t, n, i, a, o, s) {
-		sn = !0, ln = un = cn._x = cn._y = !1, Fn(e, t, n, i, a, o, s, !0, !1), e != null && (Se(Wc, el, Un, !1), er(Uc, r, en, tn, P, Ee, null));
+		sn = !0, ln = un = cn._x = cn._y = !1, Fn(e, t, n, i, a, o, s, !0, !1), e != null && (Se(Gc, tl, Un, !1), er(Wc, r, en, tn, P, Ee, null));
 		let { left: c, top: l, width: u, height: d } = dn;
 		Rn = c, zn = l, Bn = u, Vn = d;
 	}
@@ -5876,11 +5879,11 @@ function yp(e, t, n) {
 			let e = c, t = u, n = l, r = d;
 			if (D.ori == 1 && (e = l, t = d, n = c, r = u), ln && hn(S, Cn(e, S), Cn(e + t, S)), un) for (let e in b) {
 				let t = b[e];
-				e != S && t.from == null && t.min != eu && hn(e, Cn(n + r, e), Cn(n, e));
+				e != S && t.from == null && t.min != tu && hn(e, Cn(n + r, e), Cn(n, e));
 			}
 			Ln();
 		} else M.lock && (M._lock = !M._lock, Mn(t, !0, e != null));
-		e != null && (Ce(Wc, el), er(Wc, r, an, on, P, Ee, null));
+		e != null && (Ce(Gc, tl), er(Gc, r, an, on, P, Ee, null));
 	}
 	function Wn(e, t, n, r, i, a, o) {
 		if (M._lock) return;
@@ -5893,19 +5896,19 @@ function yp(e, t, n) {
 		an = -10, on = -10, ae.fill(null), Mn(null, !0, !0), s && (sn = s);
 	}
 	function Gn(e, t, n, i, a, o, s) {
-		M._lock || (Ke(e), ht(), Ln(), e != null && er(qc, r, an, on, P, Ee, null));
+		M._lock || (Ke(e), ht(), Ln(), e != null && er(Jc, r, an, on, P, Ee, null));
 	}
 	function Kn() {
-		y.forEach(vp), Be(r.width, r.height, !0);
+		y.forEach(yp), Be(r.width, r.height, !0);
 	}
-	yl(Zc, tl, Kn);
+	bl(Qc, nl, Kn);
 	let qn = {};
 	qn.mousedown = Hn, qn.mousemove = J, qn.mouseup = Un, qn.dblclick = Gn, qn.setSeries = (e, t, n, i) => {
 		let a = Zn.match[2];
 		n = a(r, t, n), n != -1 && gn(n, i, !0, !1);
-	}, se && (Se(Uc, m, Hn), Se(Hc, m, J), Se(Gc, m, (e) => {
+	}, se && (Se(Wc, m, Hn), Se(Uc, m, J), Se(Kc, m, (e) => {
 		Ke(e), Pn(!1);
-	}), Se(Kc, m, Wn), Se(qc, m, Gn), np.add(r), r.syncRect = Pn);
+	}), Se(qc, m, Wn), Se(Jc, m, Gn), rp.add(r), r.syncRect = Pn);
 	let Jn = r.hooks = e.hooks || {};
 	function Yn(e, t, n) {
 		Wt ? Gt.push([
@@ -5919,23 +5922,23 @@ function yp(e, t, n) {
 	(e.plugins || []).forEach((e) => {
 		for (let t in e.hooks) Jn[t] = (Jn[t] || []).concat(e.hooks[t]);
 	});
-	let Xn = (e, t, n) => n, Zn = Mu({
+	let Xn = (e, t, n) => n, Zn = Nu({
 		key: null,
 		setSeries: !1,
 		filters: {
-			pub: lu,
-			sub: lu
+			pub: uu,
+			sub: uu
 		},
 		scales: [S, v[1] ? v[1].scale : null],
 		match: [
-			uu,
-			uu,
+			du,
+			du,
 			Xn
 		],
 		values: [null, null]
 	}, M.sync);
 	Zn.match.length == 2 && Zn.match.push(Xn), M.sync = Zn;
-	let Qn = Zn.key, $n = Cf(Qn);
+	let Qn = Zn.key, $n = wf(Qn);
 	function er(e, t, n, r, i, a, o) {
 		Zn.filters.pub(e, t, n, r, i, a, o) && $n.pub(e, t, n, r, i, a, o);
 	}
@@ -5945,7 +5948,7 @@ function yp(e, t, n) {
 	}
 	r.pub = tr;
 	function nr() {
-		$n.unsub(r), np.delete(r), xe.clear(), bl(Zc, tl, Kn), l.remove(), le?.remove(), Yn("destroy");
+		$n.unsub(r), rp.delete(r), xe.clear(), xl(Qc, nl, Kn), l.remove(), le?.remove(), Yn("destroy");
 	}
 	r.destroy = nr;
 	function rr() {
@@ -5953,15 +5956,15 @@ function yp(e, t, n) {
 	}
 	return v.forEach(et), y.forEach(it), n ? n instanceof HTMLElement ? (n.appendChild(l), rr()) : n(r, rr) : rr(), r;
 }
-yp.assign = Mu, yp.fmtNum = zl, yp.rangeNum = Pl, yp.rangeLog = Ol, yp.rangeAsinh = kl, yp.orient = Ef, yp.pxRatio = rl, yp.join = Lu, yp.fmtDate = Xu, yp.tzDate = Qu, yp.sync = Cf;
+bp.assign = Nu, bp.fmtNum = Bl, bp.rangeNum = Fl, bp.rangeLog = kl, bp.rangeAsinh = Al, bp.orient = Df, bp.pxRatio = il, bp.join = Ru, bp.fmtDate = Zu, bp.tzDate = $u, bp.sync = wf;
 {
-	yp.addGap = jf, yp.clipGaps = Af;
-	let e = yp.paths = { points: Gf };
-	e.linear = Yf, e.stepped = Xf, e.bars = Qf, e.spline = ep;
+	bp.addGap = Mf, bp.clipGaps = jf;
+	let e = bp.paths = { points: Kf };
+	e.linear = Xf, e.stepped = Zf, e.bars = $f, e.spline = tp;
 }
 // src/lib/Chart.svelte
-var bp = /* @__PURE__ */ X("<div class=\"chart svelte-1knyfmf\" role=\"img\"></div>");
-function xp(e, t) {
+var xp = /* @__PURE__ */ X("<div class=\"chart svelte-1knyfmf\" role=\"img\"></div>");
+function Sp(e, t) {
 	tt(t, !0);
 	let n = ba(t, "time", 3, !1), r = ba(t, "xlabel", 3, ""), i = ba(t, "height", 3, 180), a = ba(t, "label", 3, ""), o = ba(t, "xaxis", 19, () => ({})), s = ba(t, "marks", 19, () => []), c, l = /* @__PURE__ */ U(0), u = (e, t) => /^#[0-9a-f]{6}$/i.test(e) ? e + Math.round(t * 255).toString(16).padStart(2, "0") : e;
 	kn(() => {
@@ -6003,11 +6006,11 @@ function xp(e, t) {
 					fill: t
 				}
 			};
-			return e.dash && (r.dash = [6, 4]), e.scale === "plug" && (r.paths = yp.paths.stepped({ align: 1 })), e.kind === "area" && (r.fill = (e) => {
+			return e.dash && (r.dash = [6, 4]), e.scale === "plug" && (r.paths = bp.paths.stepped({ align: 1 })), e.kind === "area" && (r.fill = (e) => {
 				let n = e.ctx.createLinearGradient(0, e.bbox.top, 0, e.bbox.top + e.bbox.height);
 				return n.addColorStop(0, u(t, .35)), n.addColorStop(1, u(t, .04)), n;
 			}), e.kind === "bars" && Object.assign(r, {
-				paths: yp.paths.bars({
+				paths: bp.paths.bars({
 					size: [.6, 48],
 					radius: .25
 				}),
@@ -6020,8 +6023,8 @@ function xp(e, t) {
 				let s = Math.min(n.left + n.width - r, Math.max(n.left + r, e.valToPos(Math.min(c, Math.max(o, l.x)), "x", !0)));
 				t.fillStyle = a(l.color), t.beginPath(), t.moveTo(s - r, i), t.lineTo(s + r, i), t.lineTo(s, i - 1.6 * r), t.fill();
 			}
-		}, y = Ua(), b = new yp({
-			...y && { tzDate: (e) => yp.tzDate(/* @__PURE__ */ new Date(e * 1e3), y) },
+		}, y = Ua(), b = new bp({
+			...y && { tzDate: (e) => bp.tzDate(/* @__PURE__ */ new Date(e * 1e3), y) },
 			width: c.clientWidth || 300,
 			height: i(),
 			legend: {
@@ -6064,12 +6067,12 @@ function xp(e, t) {
 			x.disconnect(), b.destroy();
 		};
 	});
-	var d = bp();
+	var d = xp();
 	ha(d, (e) => c = e, () => c), J((e) => na(d, "aria-label", e), [() => a() || `Chart: ${t.series.map((e) => e.label).join(", ")}`]), Z(e, d), nt();
 }
 // src/lib/ui/DetailPage.svelte
-var Sp = /* @__PURE__ */ X("<p class=\"d-msg\"> <a class=\"d-link\" href=\"#/activity\">Back to activity</a></p>"), Cp = /* @__PURE__ */ X("<p class=\"d-msg\" role=\"alert\"><button class=\"d-btn\">Retry</button></p>"), wp = /* @__PURE__ */ X("<p class=\"d-msg\" aria-busy=\"true\">Loading…</p>"), Tp = /* @__PURE__ */ X("<article class=\"d-stack\"><header><h1 class=\"d-title\" tabindex=\"-1\"><!></h1> <!></header> <!></article>");
-function Ep(e, t) {
+var Cp = /* @__PURE__ */ X("<p class=\"d-msg\"> <a class=\"d-link\" href=\"#/activity\">Back to activity</a></p>"), wp = /* @__PURE__ */ X("<p class=\"d-msg\" role=\"alert\"><button class=\"d-btn\">Retry</button></p>"), Tp = /* @__PURE__ */ X("<p class=\"d-msg\" aria-busy=\"true\">Loading…</p>"), Ep = /* @__PURE__ */ X("<article class=\"d-stack\"><header><h1 class=\"d-title\" tabindex=\"-1\"><!></h1> <!></header> <!></article>");
+function Dp(e, t) {
 	tt(t, !0);
 	let n = /* @__PURE__ */ U(null), r = /* @__PURE__ */ U(null), i = /* @__PURE__ */ U(void 0), a = h();
 	async function o() {
@@ -6084,7 +6087,7 @@ function Ep(e, t) {
 		}
 	}
 	xa(() => (o(), xr().then(() => Y(i)?.focus({ preventScroll: !0 })), a.reset));
-	var s = Tp(), c = G(s), l = G(c), u = G(l), d = (e) => {
+	var s = Ep(), c = G(s), l = G(c), u = G(l), d = (e) => {
 		var r = Kr();
 		xi(_n(r), () => t.title, () => Y(n)), Z(e, r);
 	}, f = (e) => {
@@ -6107,13 +6110,13 @@ function Ep(e, t) {
 		Y(n) && e(v);
 	}), R(c);
 	var y = q(c, 2), b = (e) => {
-		var n = Sp(), r = G(n);
+		var n = Cp(), r = G(n);
 		Ie(), R(n), J(() => Q(r, `This ${t.noun ?? ""} is not available. `)), Z(e, n);
 	}, x = (e) => {
-		var t = Cp();
+		var t = wp();
 		Pr("click", K(t), o), Z(e, t);
 	}, S = (e) => {
-		Z(e, wp());
+		Z(e, Tp());
 	}, C = (e) => {
 		var r = Kr();
 		xi(_n(r), () => t.body, () => Y(n), () => o), Z(e, r);
@@ -6124,13 +6127,13 @@ function Ep(e, t) {
 }
 Fr(["click"]);
 // src/lib/ui/Figure.svelte
-var Dp = /* @__PURE__ */ X(" <small class=\"svelte-12txda6\"> </small>", 1), Op = /* @__PURE__ */ X("<div><span class=\"caption\"> </span> <span class=\"value big svelte-12txda6\"> <!></span> <!></div>");
-function kp(e, t) {
+var Op = /* @__PURE__ */ X(" <small class=\"svelte-12txda6\"> </small>", 1), kp = /* @__PURE__ */ X("<div><span class=\"caption\"> </span> <span class=\"value big svelte-12txda6\"> <!></span> <!></div>");
+function Ap(e, t) {
 	let n = ba(t, "unit", 3, ""), r = ba(t, "size", 3, "normal");
-	var i = Op();
+	var i = kp();
 	let a;
 	var o = G(i), s = K(o, !0), c = q(o, 2), l = G(c, !0), u = q(l), d = (e) => {
-		var t = Dp(), r = _n(t, !0);
+		var t = Op(), r = _n(t, !0);
 		r.nodeValue = " ";
 		var i = K(q(r), !0);
 		J(() => Q(i, n())), Z(e, t);
@@ -6142,7 +6145,7 @@ function kp(e, t) {
 	}), Z(e, i);
 }
 // node_modules/leaflet/dist/leaflet.css
-var Ap = /* @__PURE__ */ c((/* @__PURE__ */ o(((e, t, n) => {
+var jp = /* @__PURE__ */ c((/* @__PURE__ */ o(((e, t, n) => {
 	(function(n, r) {
 		typeof e == "object" && t !== void 0 ? r(e) : typeof define == "function" && define.amd ? define(["exports"], r) : (n = typeof globalThis < "u" ? globalThis : n || self, r(n.leaflet = {}));
 	})(n, (function(e) {
@@ -10670,29 +10673,29 @@ var Ap = /* @__PURE__ */ c((/* @__PURE__ */ o(((e, t, n) => {
 			return window.L = oi, this;
 		}, window.L = e;
 	}));
-})))()), jp = /* @__PURE__ */ X("<div class=\"map svelte-1zqw7d\" role=\"region\"></div>");
-function Mp(e, t) {
+})))()), Mp = /* @__PURE__ */ X("<div class=\"map svelte-1zqw7d\" role=\"region\"></div>");
+function Np(e, t) {
 	tt(t, !0);
-	let n = Ap.default.TileLayer.extend({ createTile(e, t) {
+	let n = jp.default.TileLayer.extend({ createTile(e, t) {
 		let n = document.createElement("img");
-		return n.alt = "", Ap.default.DomEvent.on(n, "load", Ap.default.Util.bind(this._tileOnLoad, this, t, n)), Ap.default.DomEvent.on(n, "error", Ap.default.Util.bind(this._tileOnError, this, t, n)), $s(this.getTileUrl(e)).then((e) => n.src = e, (e) => t(e, n)), n;
+		return n.alt = "", jp.default.DomEvent.on(n, "load", jp.default.Util.bind(this._tileOnLoad, this, t, n)), jp.default.DomEvent.on(n, "error", jp.default.Util.bind(this._tileOnError, this, t, n)), ec(this.getTileUrl(e)).then((e) => n.src = e, (e) => t(e, n)), n;
 	} }), r = ba(t, "lines", 19, () => []), i = ba(t, "dots", 19, () => []), a = ba(t, "label", 3, "Map"), o = /* @__PURE__ */ U(void 0);
 	kn(() => {
-		let e = getComputedStyle(Y(o)), t = (t) => e.getPropertyValue(`--${t}`).trim(), a = matchMedia("(pointer: coarse)").matches, s = Ap.default.map(Y(o), {
+		let e = getComputedStyle(Y(o)), t = (t) => e.getPropertyValue(`--${t}`).trim(), a = matchMedia("(pointer: coarse)").matches, s = jp.default.map(Y(o), {
 			scrollWheelZoom: !1,
 			dragging: !a
 		});
-		s.attributionControl.setPrefix(!1), new n(Xs, {
+		s.attributionControl.setPrefix(!1), new n(Zs, {
 			maxZoom: 19,
 			attribution: "&copy; <a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\" rel=\"noopener\">OpenStreetMap</a> contributors"
 		}).addTo(s);
-		let c = Ap.default.latLngBounds([]), l = (e, t) => t && e.on("click", () => location.hash = t);
-		for (let { points: e, kind: n, href: i } of r()) l(Ap.default.polyline(e, {
+		let c = jp.default.latLngBounds([]), l = (e, t) => t && e.on("click", () => location.hash = t);
+		for (let { points: e, kind: n, href: i } of r()) l(jp.default.polyline(e, {
 			color: t(n),
 			weight: 4
 		}).addTo(s), i), c.extend(e);
 		for (let { lat: e, lon: n, kind: r, role: a, title: o, href: u } of i()) {
-			let i = a === "end", d = Ap.default.circleMarker([e, n], {
+			let i = a === "end", d = jp.default.circleMarker([e, n], {
 				radius: 6,
 				fillColor: t(r),
 				fillOpacity: 1,
@@ -10724,17 +10727,17 @@ function Mp(e, t) {
 			s.remove();
 		};
 	});
-	var s = jp();
+	var s = Mp();
 	let c;
 	ha(s, (e) => W(o, e), () => Y(o)), J(() => {
 		na(s, "aria-label", a()), c = Vi(s, "", c, { height: `${t.height ?? ""}px` });
 	}), Z(e, s), nt();
 }
 // src/pages/ChargeDetail.svelte
-var Np = /* @__PURE__ */ X("<span class=\"caption svelte-1d50lj3\">Cloud times</span>"), Pp = /* @__PURE__ */ X("<span class=\"caption svelte-1d50lj3\">Estimated</span>"), Fp = /* @__PURE__ */ X("<p class=\"badges svelte-1d50lj3\"><!> <!></p>"), Ip = /* @__PURE__ */ X("<p class=\"d-sub\"> </p> <!>", 1), Lp = /* @__PURE__ */ X(" <small class=\"svelte-1d50lj3\"> </small>", 1), Rp = /* @__PURE__ */ X("<p class=\"d-note\"> </p>"), zp = /* @__PURE__ */ X("<button class=\"d-btn\" type=\"button\">Clear</button>"), Bp = /* @__PURE__ */ X("<form class=\"edit svelte-1d50lj3\"><label class=\"field wide\">Location name<input required=\"\" maxlength=\"40\" class=\"svelte-1d50lj3\"/></label> <label class=\"field\">€/kWh<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" required=\"\" class=\"svelte-1d50lj3\"/></label> <label class=\"field\">Start fee<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" placeholder=\"0\" class=\"svelte-1d50lj3\"/></label> <label class=\"field\">€/min<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" placeholder=\"0\" class=\"svelte-1d50lj3\"/></label> <button class=\"d-btn\" type=\"submit\">Save location</button> <button class=\"d-btn\" type=\"button\">Cancel</button></form>"), Vp = /* @__PURE__ */ X("<div class=\"edit svelte-1d50lj3\"><button class=\"d-btn\" type=\"button\">Save as charge location</button></div>"), Hp = /* @__PURE__ */ X("<p class=\"note svelte-1d50lj3\" role=\"alert\"> </p>"), Up = /* @__PURE__ */ X("<form class=\"edit svelte-1d50lj3\"><label class=\"field\">Total paid (€)<input type=\"number\" min=\"0\" step=\"0.01\" inputmode=\"decimal\" required=\"\" class=\"svelte-1d50lj3\"/></label> <button class=\"d-btn\" type=\"submit\">Save</button> <!></form> <!> <!>", 1), Wp = /* @__PURE__ */ X("<div class=\"stats svelte-1d50lj3\"><span class=\"svelte-1d50lj3\"><span class=\"d-note\">Min</span><b class=\"svelte-1d50lj3\"> </b></span> <span class=\"svelte-1d50lj3\"><span class=\"d-note\">Average</span><b class=\"svelte-1d50lj3\"> </b></span> <span class=\"svelte-1d50lj3\"><span class=\"d-note\">Max</span><b class=\"svelte-1d50lj3\"> </b></span></div> <!> <p class=\"d-note source svelte-1d50lj3\"> </p>", 1), Gp = /* @__PURE__ */ X("<p class=\"d-msg\">Not enough readings for a speed curve</p>"), Kp = /* @__PURE__ */ X("<p class=\"d-msg\">No readings from the car during this charge</p>"), qp = /* @__PURE__ */ X("<p class=\"d-msg\">No readings from the cloud for this charge</p>"), Jp = /* @__PURE__ */ X("<section class=\"d-card hero svelte-1d50lj3\"><span class=\"d-note\">Added</span> <span class=\"big svelte-1d50lj3\"> <!></span> <!> <div class=\"levels svelte-1d50lj3\"><span class=\"svelte-1d50lj3\"><span class=\"d-note\">Start</span><b class=\"svelte-1d50lj3\"> </b></span> <span class=\"end svelte-1d50lj3\"><span class=\"d-note\">End</span><b class=\"svelte-1d50lj3\"> </b></span></div></section> <!> <div class=\"d-figs three\"></div> <section class=\"d-card\"><div class=\"d-head\"><h2>Cost</h2><b class=\"amount svelte-1d50lj3\"> </b></div> <!> <!></section> <section class=\"d-card\"><div class=\"d-head\"><h2>Charging speed</h2><span class=\"d-note\">kW against charge level</span></div> <!></section> <section class=\"d-card\"><div class=\"d-head\"><h2>Battery energy</h2><span class=\"d-note\">from the car, kWh</span></div> <!></section> <section class=\"d-card\"><div class=\"d-head\"><h2>Charge level</h2><span class=\"d-note\">from the cloud, %</span></div> <!></section> <section class=\"d-card\"><dl class=\"d-rows foot\"><div><dt>Outside temperature</dt><dd> </dd></div></dl></section>", 1);
-function Yp(e, t) {
+var Pp = /* @__PURE__ */ X("<span class=\"caption svelte-1d50lj3\">Cloud times</span>"), Fp = /* @__PURE__ */ X("<span class=\"caption svelte-1d50lj3\">Estimated</span>"), Ip = /* @__PURE__ */ X("<p class=\"badges svelte-1d50lj3\"><!> <!></p>"), Lp = /* @__PURE__ */ X("<p class=\"d-sub\"> </p> <!>", 1), Rp = /* @__PURE__ */ X(" <small class=\"svelte-1d50lj3\"> </small>", 1), zp = /* @__PURE__ */ X("<p class=\"d-note\"> </p>"), Bp = /* @__PURE__ */ X("<button class=\"d-btn\" type=\"button\">Clear</button>"), Vp = /* @__PURE__ */ X("<form class=\"edit svelte-1d50lj3\"><label class=\"field wide\">Location name<input required=\"\" maxlength=\"40\" class=\"svelte-1d50lj3\"/></label> <label class=\"field\">€/kWh<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" required=\"\" class=\"svelte-1d50lj3\"/></label> <label class=\"field\">Start fee<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" placeholder=\"0\" class=\"svelte-1d50lj3\"/></label> <label class=\"field\">€/min<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" placeholder=\"0\" class=\"svelte-1d50lj3\"/></label> <button class=\"d-btn\" type=\"submit\">Save location</button> <button class=\"d-btn\" type=\"button\">Cancel</button></form>"), Hp = /* @__PURE__ */ X("<div class=\"edit svelte-1d50lj3\"><button class=\"d-btn\" type=\"button\">Save as charge location</button></div>"), Up = /* @__PURE__ */ X("<p class=\"note svelte-1d50lj3\" role=\"alert\"> </p>"), Wp = /* @__PURE__ */ X("<form class=\"edit svelte-1d50lj3\"><label class=\"field\">Total paid (€)<input type=\"number\" min=\"0\" step=\"0.01\" inputmode=\"decimal\" required=\"\" class=\"svelte-1d50lj3\"/></label> <button class=\"d-btn\" type=\"submit\">Save</button> <!></form> <!> <!>", 1), Gp = /* @__PURE__ */ X("<div class=\"stats svelte-1d50lj3\"><span class=\"svelte-1d50lj3\"><span class=\"d-note\">Min</span><b class=\"svelte-1d50lj3\"> </b></span> <span class=\"svelte-1d50lj3\"><span class=\"d-note\">Average</span><b class=\"svelte-1d50lj3\"> </b></span> <span class=\"svelte-1d50lj3\"><span class=\"d-note\">Max</span><b class=\"svelte-1d50lj3\"> </b></span></div> <!> <p class=\"d-note source svelte-1d50lj3\"> </p>", 1), Kp = /* @__PURE__ */ X("<p class=\"d-msg\">Not enough readings for a speed curve</p>"), qp = /* @__PURE__ */ X("<p class=\"d-msg\">No readings from the car during this charge</p>"), Jp = /* @__PURE__ */ X("<p class=\"d-msg\">No readings from the cloud for this charge</p>"), Yp = /* @__PURE__ */ X("<section class=\"d-card hero svelte-1d50lj3\"><span class=\"d-note\">Added</span> <span class=\"big svelte-1d50lj3\"> <!></span> <!> <div class=\"levels svelte-1d50lj3\"><span class=\"svelte-1d50lj3\"><span class=\"d-note\">Start</span><b class=\"svelte-1d50lj3\"> </b></span> <span class=\"end svelte-1d50lj3\"><span class=\"d-note\">End</span><b class=\"svelte-1d50lj3\"> </b></span></div></section> <!> <div class=\"d-figs three\"></div> <section class=\"d-card\"><div class=\"d-head\"><h2>Cost</h2><b class=\"amount svelte-1d50lj3\"> </b></div> <!> <!></section> <section class=\"d-card\"><div class=\"d-head\"><h2>Charging speed</h2><span class=\"d-note\">kW against charge level</span></div> <!></section> <section class=\"d-card\"><div class=\"d-head\"><h2>Battery energy</h2><span class=\"d-note\">from the car, kWh</span></div> <!></section> <section class=\"d-card\"><div class=\"d-head\"><h2>Charge level</h2><span class=\"d-note\">from the cloud, %</span></div> <!></section> <section class=\"d-card\"><dl class=\"d-rows foot\"><div><dt>Outside temperature</dt><dd> </dd></div></dl></section>", 1);
+function Xp(e, t) {
 	tt(t, !0);
-	let n = ba(t, "isAdmin", 3, !1), r = /* @__PURE__ */ U(null), i = /* @__PURE__ */ U(""), a = /* @__PURE__ */ U(null), o = /* @__PURE__ */ U(""), s = /* @__PURE__ */ U(!1), c = /* @__PURE__ */ B(() => Y(r)?.charge), l = /* @__PURE__ */ B(() => Y(r)?.cost?.spot == null && Y(c)?.lat != null), u = /* @__PURE__ */ B(() => Y(c)?.energy_source === "soc_estimate"), d = /* @__PURE__ */ B(() => Y(r) ? lc(Y(r).series) : null), f = /* @__PURE__ */ B(() => Y(r) ? fc(Y(r).series, Y(r).capacity_wh) : null), m = /* @__PURE__ */ B(() => {
+	let n = ba(t, "isAdmin", 3, !1), r = /* @__PURE__ */ U(null), i = /* @__PURE__ */ U(""), a = /* @__PURE__ */ U(null), o = /* @__PURE__ */ U(""), s = /* @__PURE__ */ U(!1), c = /* @__PURE__ */ B(() => Y(r)?.charge), l = /* @__PURE__ */ B(() => Y(r)?.cost?.spot == null && Y(c)?.lat != null), u = /* @__PURE__ */ B(() => Y(c)?.energy_source === "soc_estimate"), d = /* @__PURE__ */ B(() => Y(r) ? uc(Y(r).series) : null), f = /* @__PURE__ */ B(() => Y(r) ? pc(Y(r).series, Y(r).capacity_wh) : null), m = /* @__PURE__ */ B(() => {
 		if (!Y(f)) return null;
 		let e = Y(f).x.map((e, t) => t).sort((e, t) => Y(f).x[e] - Y(f).x[t]);
 		return {
@@ -10780,15 +10783,15 @@ function Yp(e, t) {
 			var t = Gr();
 			J((e) => Q(t, e), [() => es(Y(c))]), Z(e, t);
 		}, b = (e) => {
-			var t = Ip(), n = _n(t), r = K(n, !0), i = q(n, 2), a = (e) => {
-				var t = Fp(), n = G(t), r = (e) => {
-					Z(e, Np());
+			var t = Lp(), n = _n(t), r = K(n, !0), i = q(n, 2), a = (e) => {
+				var t = Ip(), n = G(t), r = (e) => {
+					Z(e, Pp());
 				};
 				$(n, (e) => {
 					Y(c).times_source === "cloud" && e(r);
 				});
 				var i = q(n, 2), a = (e) => {
-					Z(e, Pp());
+					Z(e, Fp());
 				};
 				$(i, (e) => {
 					Y(u) && e(a);
@@ -10798,8 +10801,8 @@ function Yp(e, t) {
 				(Y(c).times_source === "cloud" || Y(u)) && e(a);
 			}), J((e) => Q(r, e), [() => Qo(Y(c).start, Y(c).end)]), Z(e, t);
 		}, C = (e, t = O, u = O) => {
-			var p = Jp(), y = _n(p), b = q(G(y), 2), C = G(b, !0), w = q(C), T = (e) => {
-				var t = Lp(), n = _n(t, !0);
+			var p = Yp(), y = _n(p), b = q(G(y), 2), C = G(b, !0), w = q(C), T = (e) => {
+				var t = Rp(), n = _n(t, !0);
 				n.nodeValue = " ";
 				var r = K(q(n), !0);
 				J(() => Q(r, Y(h)[1])), Z(e, t);
@@ -10808,7 +10811,7 @@ function Yp(e, t) {
 				Y(h)[1] && e(T);
 			}), R(b);
 			var E = q(b, 2);
-			ws(E, {
+			Ts(E, {
 				get from() {
 					return Y(c).start_pct;
 				},
@@ -10828,7 +10831,7 @@ function Yp(e, t) {
 						lon: Y(c).lon,
 						kind: "charge"
 					}]);
-					Mp(e, {
+					Np(e, {
 						get dots() {
 							return Y(t);
 						},
@@ -10841,22 +10844,22 @@ function Yp(e, t) {
 			});
 			var re = q(ne, 2);
 			mi(re, 21, () => Y(g), (e) => e.label, (e, t) => {
-				kp(e, ya(() => Y(t), { size: "small" }));
+				Ap(e, ya(() => Y(t), { size: "small" }));
 			}), R(re);
 			var ie = q(re, 2), ae = G(ie), oe = K(q(G(ae)), !0);
 			R(ae);
 			var M = q(ae, 2), N = (e) => {
-				var t = Rp(), n = K(t, !0);
-				J((e) => Q(n, e), [() => fs(Y(r).cost)]), Z(e, t);
+				var t = zp(), n = K(t, !0);
+				J((e) => Q(n, e), [() => ps(Y(r).cost)]), Z(e, t);
 			};
 			$(M, (e) => {
 				(Y(c).end != null || Y(r).cost.amount != null) && e(N);
 			});
 			var se = q(M, 2), ce = (e) => {
-				var t = Up(), n = _n(t), c = G(n), d = q(G(c));
+				var t = Wp(), n = _n(t), c = G(n), d = q(G(c));
 				$i(d), R(c);
 				var f = q(c, 2), p = q(f, 2), m = (e) => {
-					var t = zp();
+					var t = Bp();
 					J(() => t.disabled = Y(s)), Pr("click", t, () => x(null, u())), Z(e, t);
 				};
 				$(p, (e) => {
@@ -10864,7 +10867,7 @@ function Yp(e, t) {
 				}), R(n);
 				var h = q(n, 2), g = (e) => {
 					var t = Kr(), n = _n(t), r = (e) => {
-						var t = Bp(), n = G(t), r = q(G(n));
+						var t = Vp(), n = G(t), r = q(G(n));
 						$i(r), R(n);
 						var i = q(n, 2), o = q(G(i));
 						$i(o), R(i);
@@ -10875,7 +10878,7 @@ function Yp(e, t) {
 						var p = q(d, 2), m = q(p, 2);
 						R(t), J(() => p.disabled = Y(s)), Nr("submit", t, (e) => S(e, u())), oa(r, () => Y(a).name, (e) => Y(a).name = e), oa(o, () => Y(a).per_kwh, (e) => Y(a).per_kwh = e), oa(l, () => Y(a).start_fee, (e) => Y(a).start_fee = e), oa(f, () => Y(a).per_min, (e) => Y(a).per_min = e), Pr("click", m, () => W(a, null)), Z(e, t);
 					}, i = (e) => {
-						var t = Vp();
+						var t = Hp();
 						Pr("click", K(t), () => W(a, {
 							name: "",
 							per_kwh: "",
@@ -10891,7 +10894,7 @@ function Yp(e, t) {
 					Y(l) && e(g);
 				});
 				var _ = q(h, 2), v = (e) => {
-					var t = Hp(), n = K(t, !0);
+					var t = Up(), n = K(t, !0);
 					J(() => Q(n, Y(o))), Z(e, t);
 				};
 				$(_, (e) => {
@@ -10904,7 +10907,7 @@ function Yp(e, t) {
 				n() && e(ce);
 			}), R(ie);
 			var le = q(ie, 2), ue = q(G(le), 2), de = (e) => {
-				var t = Wp(), n = _n(t), r = G(n), i = K(q(G(r)), !0);
+				var t = Gp(), n = _n(t), r = G(n), i = K(q(G(r)), !0);
 				R(r);
 				var a = q(r, 2), o = K(q(G(a)), !0);
 				R(a);
@@ -10918,7 +10921,7 @@ function Yp(e, t) {
 						kind: "area",
 						color: "--charge"
 					}]);
-					xp(u, {
+					Sp(u, {
 						get x() {
 							return Y(m).x;
 						},
@@ -10940,7 +10943,7 @@ function Yp(e, t) {
 					() => Yo(Y(f).max)
 				]), Z(e, t);
 			}, fe = (e) => {
-				Z(e, Gp());
+				Z(e, Kp());
 			};
 			$(ue, (e) => {
 				Y(m) ? e(de) : e(fe, -1);
@@ -10951,7 +10954,7 @@ function Yp(e, t) {
 						...e,
 						color: "--energy"
 					})));
-					xp(e, {
+					Sp(e, {
 						get x() {
 							return Y(d).car.x;
 						},
@@ -10966,7 +10969,7 @@ function Yp(e, t) {
 					});
 				}
 			}, ge = (e) => {
-				Z(e, Kp());
+				Z(e, qp());
 			};
 			$(me, (e) => {
 				Y(d)?.car ? e(he) : e(ge, -1);
@@ -10977,7 +10980,7 @@ function Yp(e, t) {
 						...e,
 						color: t ? "--muted" : "--charge"
 					})));
-					xp(e, {
+					Sp(e, {
 						get x() {
 							return Y(d).cloud.x;
 						},
@@ -10992,7 +10995,7 @@ function Yp(e, t) {
 					});
 				}
 			}, be = (e) => {
-				Z(e, qp());
+				Z(e, Jp());
 			};
 			$(ve, (e) => {
 				Y(d)?.cloud ? e(ye) : e(be, -1);
@@ -11003,11 +11006,11 @@ function Yp(e, t) {
 			}, [
 				() => _(Y(c).start_wh, Y(c).start_pct),
 				() => _(Y(c).end_wh, Y(c).end_pct),
-				() => ds(Y(r).cost),
+				() => fs(Y(r).cost),
 				() => is(Y(r).outside_temp_c)
 			]), Z(e, p);
 		}, w = /* @__PURE__ */ B(() => `charges/${encodeURIComponent(t.vid)}/${t.start}`);
-		Ep(e, {
+		Dp(e, {
 			get url() {
 				return Y(w);
 			},
@@ -11028,8 +11031,8 @@ function Yp(e, t) {
 }
 Fr(["click"]);
 // src/pages/TripDetail.svelte
-var Xp = /* @__PURE__ */ X("<p class=\"d-sub\"> </p>"), Zp = /* @__PURE__ */ X("<span class=\"d-note\"> </span>"), Qp = /* @__PURE__ */ X("<p class=\"d-note\">From your car's cloud data, approximate</p>"), $p = /* @__PURE__ */ X("<div class=\"big\"> <small>/ 100</small></div>"), em = /* @__PURE__ */ X("<div><dt> </dt><dd> </dd></div>"), tm = /* @__PURE__ */ X("<i></i>"), nm = /* @__PURE__ */ X("<li class=\"svelte-5xbjqg\"><i class=\"swatch svelte-5xbjqg\"></i><span class=\"n svelte-5xbjqg\"> </span><span> </span><span class=\"pc svelte-5xbjqg\"> </span></li>"), rm = /* @__PURE__ */ X("<dl class=\"d-rows\"><div><dt>Standing</dt><dd> </dd></div></dl>"), im = /* @__PURE__ */ X("<section class=\"d-card\"><div class=\"d-head\"><h2>Driving style</h2><span class=\"d-note\"> </span></div> <!> <dl class=\"d-rows\"></dl> <div class=\"d-head bandhead\"><h2>Speed bands</h2><span class=\"d-note\">km/h · kWh/100 km · share</span></div> <div class=\"share-bar\" role=\"img\"></div> <ul class=\"bands svelte-5xbjqg\"></ul> <!></section>"), am = /* @__PURE__ */ X("<p class=\"d-msg\">No consumption data</p>"), om = /* @__PURE__ */ X("<p class=\"d-msg\">No speed data</p>"), sm = /* @__PURE__ */ X("<section class=\"d-card\"><div class=\"d-head\"><h2>Consumption</h2><span class=\"d-note\">kWh per 0.5 km</span></div> <!> <dl class=\"d-rows\"><div><dt>Battery</dt><dd> </dd></div> <div><dt>Net</dt><dd> </dd></div> <div><dt>Gross</dt><dd> </dd></div> <div><dt>Recuperated</dt><dd> </dd></div></dl></section> <section class=\"d-card\"><div class=\"d-head\"><h2>Speed</h2><span class=\"d-note\"> </span></div> <!></section>", 1), cm = /* @__PURE__ */ X("<div class=\"cmp svelte-5xbjqg\"><div class=\"line svelte-5xbjqg\"><span> </span> <b> </b></div> <div class=\"track svelte-5xbjqg\" aria-hidden=\"true\"><i class=\"usual svelte-5xbjqg\"></i><i class=\"dot svelte-5xbjqg\"></i></div> <span class=\"d-note\"> </span></div>"), lm = /* @__PURE__ */ X("<section class=\"d-card\"><h2>Compared with your usual route</h2> <p class=\"d-note\"> </p> <!></section>"), um = /* @__PURE__ */ X("<!> <div class=\"d-figs\"><!> <!></div> <!> <!> <!> <!> <section class=\"d-card\"><dl class=\"d-rows foot\"><div><dt>Battery</dt><dd> </dd></div> <div><dt>Outside temperature</dt><dd> </dd></div> <div><dt>Odometer</dt><dd> </dd></div></dl></section>", 1);
-function dm(e, t) {
+var Zp = /* @__PURE__ */ X("<p class=\"d-sub\"> </p>"), Qp = /* @__PURE__ */ X("<span class=\"d-note\"> </span>"), $p = /* @__PURE__ */ X("<p class=\"d-note\">From your car's cloud data, approximate</p>"), em = /* @__PURE__ */ X("<div class=\"big\"> <small>/ 100</small></div>"), tm = /* @__PURE__ */ X("<div><dt> </dt><dd> </dd></div>"), nm = /* @__PURE__ */ X("<i></i>"), rm = /* @__PURE__ */ X("<li class=\"svelte-5xbjqg\"><i class=\"swatch svelte-5xbjqg\"></i><span class=\"n svelte-5xbjqg\"> </span><span> </span><span class=\"pc svelte-5xbjqg\"> </span></li>"), im = /* @__PURE__ */ X("<dl class=\"d-rows\"><div><dt>Standing</dt><dd> </dd></div></dl>"), am = /* @__PURE__ */ X("<section class=\"d-card\"><div class=\"d-head\"><h2>Driving style</h2><span class=\"d-note\"> </span></div> <!> <dl class=\"d-rows\"></dl> <div class=\"d-head bandhead\"><h2>Speed bands</h2><span class=\"d-note\">km/h · kWh/100 km · share</span></div> <div class=\"share-bar\" role=\"img\"></div> <ul class=\"bands svelte-5xbjqg\"></ul> <!></section>"), om = /* @__PURE__ */ X("<p class=\"d-msg\">No consumption data</p>"), sm = /* @__PURE__ */ X("<p class=\"d-msg\">No speed data</p>"), cm = /* @__PURE__ */ X("<section class=\"d-card\"><div class=\"d-head\"><h2>Consumption</h2><span class=\"d-note\">kWh per 0.5 km</span></div> <!> <dl class=\"d-rows\"><div><dt>Battery</dt><dd> </dd></div> <div><dt>Net</dt><dd> </dd></div> <div><dt>Gross</dt><dd> </dd></div> <div><dt>Recuperated</dt><dd> </dd></div></dl></section> <section class=\"d-card\"><div class=\"d-head\"><h2>Speed</h2><span class=\"d-note\"> </span></div> <!></section>", 1), lm = /* @__PURE__ */ X("<div class=\"cmp svelte-5xbjqg\"><div class=\"line svelte-5xbjqg\"><span> </span> <b> </b></div> <div class=\"track svelte-5xbjqg\" aria-hidden=\"true\"><i class=\"usual svelte-5xbjqg\"></i><i class=\"dot svelte-5xbjqg\"></i></div> <span class=\"d-note\"> </span></div>"), um = /* @__PURE__ */ X("<section class=\"d-card\"><h2>Compared with your usual route</h2> <p class=\"d-note\"> </p> <!></section>"), dm = /* @__PURE__ */ X("<!> <div class=\"d-figs\"><!> <!></div> <!> <!> <!> <!> <section class=\"d-card\"><dl class=\"d-rows foot\"><div><dt>Battery</dt><dd> </dd></div> <div><dt>Outside temperature</dt><dd> </dd></div> <div><dt>Odometer</dt><dd> </dd></div></dl></section>", 1);
+function fm(e, t) {
 	tt(t, !0);
 	let n = (e) => e == null ? null : (e / 1e3).toFixed(2), r = (e) => e == null ? null : e.toFixed(0), i = (e) => e == null ? "–" : `${Math.round(e)} km/h`, a = {
 		accel: "--trip",
@@ -11050,10 +11053,10 @@ function dm(e, t) {
 			J((e) => Q(r, e), [() => ns(n())]), Z(e, r);
 		}, c = (e, t) => {
 			let n = () => (t?.()).trip;
-			var r = Xp(), i = K(r, !0);
+			var r = Zp(), i = K(r, !0);
 			J((e) => Q(i, e), [() => Qo(n().start, n().end)]), Z(e, r);
 		}, l = (e, t = O) => {
-			let s = /* @__PURE__ */ B(() => t().trip), c = /* @__PURE__ */ B(() => uc(t().series, .5)), l = /* @__PURE__ */ B(() => sc(t().series)?.speed), u = /* @__PURE__ */ B(() => (t().series?.events ?? []).map(([e, t]) => ({
+			let s = /* @__PURE__ */ B(() => t().trip), c = /* @__PURE__ */ B(() => dc(t().series, .5)), l = /* @__PURE__ */ B(() => cc(t().series)?.speed), u = /* @__PURE__ */ B(() => (t().series?.events ?? []).map(([e, t]) => ({
 				x: e,
 				color: a[t]
 			}))), d = /* @__PURE__ */ B(() => Y(s).style), f = /* @__PURE__ */ B(() => Y(d) ? ls(Y(d).bands, .5) : []), p = /* @__PURE__ */ B(() => Y(s).avg_speed_mps == null ? null : Y(s).avg_speed_mps * 3.6), m = /* @__PURE__ */ B(() => Y(s).max_speed_mps == null ? null : Y(s).max_speed_mps * 3.6), h = /* @__PURE__ */ B(() => Na(Y(s).wh_per_100km)), g = /* @__PURE__ */ B(() => Ko(Y(s), t().similar)), _ = /* @__PURE__ */ B(() => [
@@ -11076,7 +11079,7 @@ function dm(e, t) {
 				digits: 1,
 				text: (e) => `${e.toFixed(1)} kWh/100 km`
 			}].filter((e) => e.m) : []);
-			var y = um(), b = _n(y), x = (e) => {
+			var y = dm(), b = _n(y), x = (e) => {
 				let n = /* @__PURE__ */ B(() => {
 					let [e, n] = [t().route[0], t().route.at(-1)];
 					return {
@@ -11099,7 +11102,7 @@ function dm(e, t) {
 						kind: "trip",
 						role: "end"
 					}]), a = /* @__PURE__ */ B(() => rs(Y(s)));
-					Mp(e, {
+					Np(e, {
 						get lines() {
 							return Y(r);
 						},
@@ -11118,21 +11121,21 @@ function dm(e, t) {
 			});
 			var S = q(b, 2), C = G(S);
 			mi(C, 17, () => Y(_), (e) => e.label, (e, t) => {
-				kp(e, ya(() => Y(t)));
+				Ap(e, ya(() => Y(t)));
 			});
 			var w = q(C, 2);
 			{
-				let e = /* @__PURE__ */ B(() => us(t().cost.total));
-				kp(w, {
+				let e = /* @__PURE__ */ B(() => ds(t().cost.total));
+				Ap(w, {
 					label: "Cost",
 					get value() {
 						return Y(e);
 					},
 					children: (e, n) => {
 						var r = Kr(), i = _n(r), a = (e) => {
-							var n = Zp(), r = K(n, !0);
-							J((e) => Q(r, e), [() => ps(t().cost)]), Z(e, n);
-						}, o = /* @__PURE__ */ B(() => ps(t().cost));
+							var n = Qp(), r = K(n, !0);
+							J((e) => Q(r, e), [() => ms(t().cost)]), Z(e, n);
+						}, o = /* @__PURE__ */ B(() => ms(t().cost));
 						$(i, (e) => {
 							Y(o) && e(a);
 						}), Z(e, r);
@@ -11142,16 +11145,16 @@ function dm(e, t) {
 			}
 			R(S);
 			var T = q(S, 2), E = (e) => {
-				Z(e, Qp());
+				Z(e, $p());
 			};
 			$(T, (e) => {
 				Y(s).approx && e(E);
 			});
 			var D = q(T, 2), ee = (e) => {
-				var t = im(), n = G(t), r = K(q(G(n)), !0);
+				var t = am(), n = G(t), r = K(q(G(n)), !0);
 				R(n);
 				var i = q(n, 2), a = (e) => {
-					var t = $p(), n = G(t, !0);
+					var t = em(), n = G(t, !0);
 					Ie(), R(t), J(() => Q(n, Y(d).score)), Z(e, t);
 				};
 				$(i, (e) => {
@@ -11161,7 +11164,7 @@ function dm(e, t) {
 				mi(c, 21, () => os, ([e, t]) => e, (e, t) => {
 					var n = /* @__PURE__ */ B(() => A(Y(t), 2));
 					let r = () => Y(n)[0], i = () => Y(n)[1];
-					var a = em(), o = G(a), c = K(o, !0), l = K(q(o));
+					var a = tm(), o = G(a), c = K(o, !0), l = K(q(o));
 					R(a), J((e) => {
 						Q(c, i()), Q(l, `${Y(d)[r()][0] ?? ""} · ${e ?? ""}`);
 					}, [() => cs(Y(d)[r()][0], Y(s).distance_m / 1e3)]), Z(e, a);
@@ -11169,7 +11172,7 @@ function dm(e, t) {
 				var l = q(c, 4);
 				mi(l, 23, () => Y(f), (e) => e.name, (e, t, n) => {
 					var r = Kr(), i = _n(r), a = (e) => {
-						var r = tm();
+						var r = nm();
 						let i;
 						J(() => i = Vi(r, "", i, {
 							flex: `${Y(t).share ?? ""} 1 0`,
@@ -11183,7 +11186,7 @@ function dm(e, t) {
 				}), R(l);
 				var u = q(l, 2);
 				mi(u, 23, () => Y(f), (e) => e.name, (e, t, n) => {
-					var r = nm(), i = G(r);
+					var r = rm(), i = G(r);
 					let a;
 					var s = q(i), c = K(s, !0), l = q(s), u = K(l, !0), d = K(q(l));
 					R(r), J((e, r) => {
@@ -11191,7 +11194,7 @@ function dm(e, t) {
 					}, [() => Y(t).kwhPer100 == null ? "–" : Y(t).kwhPer100.toFixed(1), () => Math.round(Y(t).share * 100)]), Z(e, r);
 				}), R(u);
 				var p = q(u, 2), m = (e) => {
-					var t = rm(), n = G(t), r = K(q(G(n)), !0);
+					var t = im(), n = G(t), r = K(q(G(n)), !0);
 					R(n), R(t), J((e) => Q(r, e), [() => Oa(Y(d).standing)]), Z(e, t);
 				};
 				$(p, (e) => {
@@ -11204,7 +11207,7 @@ function dm(e, t) {
 				Y(d) && e(ee);
 			});
 			var te = q(D, 2), k = (e) => {
-				var t = sm(), r = _n(t), a = q(G(r), 2), o = (e) => {
+				var t = cm(), r = _n(t), a = q(G(r), 2), o = (e) => {
 					{
 						let t = /* @__PURE__ */ B(() => Oa(Y(s).net_wh)), n = /* @__PURE__ */ B(() => Oa(Y(s).gross_wh)), r = /* @__PURE__ */ B(() => Oa(Y(s).recup_wh)), i = /* @__PURE__ */ B(() => [
 							{
@@ -11224,7 +11227,7 @@ function dm(e, t) {
 								dash: !0
 							}
 						]);
-						xp(e, {
+						Sp(e, {
 							get x() {
 								return Y(c).x;
 							},
@@ -11238,7 +11241,7 @@ function dm(e, t) {
 						});
 					}
 				}, d = (e) => {
-					Z(e, am());
+					Z(e, om());
 				};
 				$(a, (e) => {
 					Y(c) ? e(o) : e(d, -1);
@@ -11260,7 +11263,7 @@ function dm(e, t) {
 							kind: "area",
 							color: "--trip"
 						})));
-						xp(e, {
+						Sp(e, {
 							get x() {
 								return Y(l).x;
 							},
@@ -11277,7 +11280,7 @@ function dm(e, t) {
 						});
 					}
 				}, O = (e) => {
-					Z(e, om());
+					Z(e, sm());
 				};
 				$(E, (e) => {
 					Y(l) ? e(D) : e(O, -1);
@@ -11296,10 +11299,10 @@ function dm(e, t) {
 				Y(s).approx || e(k);
 			});
 			var ne = q(te, 2), j = (e) => {
-				var n = lm(), r = q(G(n), 2), i = K(r);
+				var n = um(), r = q(G(n), 2), i = K(r);
 				mi(q(r, 2), 17, () => Y(v), (e) => e.name, (e, t) => {
 					let n = /* @__PURE__ */ B(() => Jo(Y(t).m.delta, Y(t).unit, Y(t).digits));
-					var r = cm(), i = G(r), a = G(i), o = K(a, !0), s = q(a, 2);
+					var r = lm(), i = G(r), a = G(i), o = K(a, !0), s = q(a, 2);
 					let c;
 					var l = K(s, !0);
 					R(i);
@@ -11335,7 +11338,7 @@ function dm(e, t) {
 				() => Xo(r(Y(s).odometer_start_km), r(Y(s).odometer_end_km), "km")
 			]), Z(e, y);
 		}, u = /* @__PURE__ */ B(() => `trips/${encodeURIComponent(t.vid)}/${t.start}`);
-		Ep(e, {
+		Dp(e, {
 			get url() {
 				return Y(u);
 			},
@@ -11354,8 +11357,8 @@ function dm(e, t) {
 	nt();
 }
 // src/pages/Activity.svelte
-var fm = !1, pm = /* @__PURE__ */ X("<span class=\"svelte-hc7ao7\"> </span>"), mm = /* @__PURE__ */ X("<li class=\"svelte-hc7ao7\"><!></li>"), hm = /* @__PURE__ */ X("<section><h2 class=\"chrome svelte-hc7ao7\"> <!></h2> <ul class=\"svelte-hc7ao7\"></ul></section>"), gm = /* @__PURE__ */ X("<p class=\"msg\"> </p>"), _m = /* @__PURE__ */ X("<div class=\"msg\" role=\"alert\"><p>Couldn't load your activity.</p> <button class=\"btn\">Retry</button></div>"), vm = /* @__PURE__ */ X("<p class=\"msg\" aria-busy=\"true\">Loading…</p>"), ym = /* @__PURE__ */ X("<div aria-hidden=\"true\"></div>"), bm = /* @__PURE__ */ X("<div><div><h1 class=\"page-title\">Activity</h1> <!> <div class=\"filter svelte-hc7ao7\"><!></div> <div><!> <!></div> <!></div> <!></div>");
-function xm(e, t) {
+var pm = !1, mm = /* @__PURE__ */ X("<span class=\"svelte-hc7ao7\"> </span>"), hm = /* @__PURE__ */ X("<li class=\"svelte-hc7ao7\"><!></li>"), gm = /* @__PURE__ */ X("<section><h2 class=\"chrome svelte-hc7ao7\"> <!></h2> <ul class=\"svelte-hc7ao7\"></ul></section>"), _m = /* @__PURE__ */ X("<p class=\"msg\"> </p>"), vm = /* @__PURE__ */ X("<div class=\"msg\" role=\"alert\"><p>Couldn't load your activity.</p> <button class=\"btn\">Retry</button></div>"), ym = /* @__PURE__ */ X("<p class=\"msg\" aria-busy=\"true\">Loading…</p>"), bm = /* @__PURE__ */ X("<div aria-hidden=\"true\"></div>"), xm = /* @__PURE__ */ X("<div><div><h1 class=\"page-title\">Activity</h1> <!> <div class=\"filter svelte-hc7ao7\"><!></div> <div><!> <!></div> <!></div> <!></div>");
+function Sm(e, t) {
 	tt(t, !0);
 	let n = ba(t, "detail", 3, null), r = ba(t, "isAdmin", 3, !1), i = [
 		{
@@ -11382,15 +11385,15 @@ function xm(e, t) {
 		prev: null,
 		next: null
 	}), g = (e) => n()?.kind === e.kind && n().vid === e.vehicle_id && n().start === e.start, _ = (e) => {
-		e.button !== 0 || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || (Fo({ detailOpen: !!n() }) === "replace" ? (e.preventDefault(), location.replace(e.currentTarget.getAttribute("href"))) : fm = !0);
-	}, v = () => fm ? history.back() : location.replace("#/activity");
+		e.button !== 0 || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || (Fo({ detailOpen: !!n() }) === "replace" ? (e.preventDefault(), location.replace(e.currentTarget.getAttribute("href"))) : pm = !0);
+	}, v = () => pm ? history.back() : location.replace("#/activity");
 	kn(() => {
 		Y(f) && ro.split && u?.querySelector("[aria-current=page]")?.closest("li").scrollIntoView({ block: "nearest" });
 	});
 	let y = "";
 	kn(() => {
 		if (Y(f)) return void (y = Y(f));
-		fm = !1, y && u && ([...u.querySelectorAll("a")].find((e) => e.getAttribute("href") === y)?.focus({ preventScroll: !0 }), y = "");
+		pm = !1, y && u && ([...u.querySelectorAll("a")].find((e) => e.getAttribute("href") === y)?.focus({ preventScroll: !0 }), y = "");
 	});
 	let b = h();
 	async function x() {
@@ -11418,16 +11421,16 @@ function xm(e, t) {
 		let e = new IntersectionObserver(([e]) => e.isIntersecting && Vo(), { rootMargin: "400px" });
 		return e.observe(Y(s)), () => e.disconnect();
 	});
-	var S = bm();
+	var S = xm();
 	let C;
 	var w = G(S);
 	let T;
 	var E = q(G(w), 2);
-	Ns(E, { get vehicles() {
+	Ps(E, { get vehicles() {
 		return Y(o);
 	} });
 	var D = q(E, 2);
-	Ls(G(D), {
+	Rs(G(D), {
 		get options() {
 			return i;
 		},
@@ -11444,8 +11447,8 @@ function xm(e, t) {
 	var te = G(O);
 	mi(te, 17, () => Y(d), (e) => e.date, (e, t) => {
 		let n = /* @__PURE__ */ B(() => Ma(Y(t).summary));
-		var r = hm(), i = G(r), a = G(i, !0), o = q(a), s = (e) => {
-			var t = pm(), r = K(t);
+		var r = gm(), i = G(r), a = G(i, !0), o = q(a), s = (e) => {
+			var t = mm(), r = K(t);
 			J(() => Q(r, ` · ${Y(n) ?? ""}`)), Z(e, t);
 		};
 		$(o, (e) => {
@@ -11453,10 +11456,10 @@ function xm(e, t) {
 		}), R(i);
 		var c = q(i, 2);
 		mi(c, 21, () => Y(t).items, (e) => `${e.kind}/${e.vehicle_id}/${e.start}`, (e, t) => {
-			var n = mm(), r = G(n), i = (e) => {
+			var n = hm(), r = G(n), i = (e) => {
 				{
 					let n = /* @__PURE__ */ B(() => g(Y(t)));
-					ac(e, {
+					oc(e, {
 						get item() {
 							return Y(t);
 						},
@@ -11469,7 +11472,7 @@ function xm(e, t) {
 			}, a = (e) => {
 				{
 					let n = /* @__PURE__ */ B(() => g(Y(t)));
-					ks(e, {
+					As(e, {
 						get item() {
 							return Y(t);
 						},
@@ -11486,26 +11489,26 @@ function xm(e, t) {
 		}), R(c), R(r), J((e) => Q(a, e), [() => Qa(Y(t).date, Io.today)]), Z(e, r);
 	});
 	var k = q(te, 2), A = (e) => {
-		var t = gm(), n = K(t, !0);
+		var t = _m(), n = K(t, !0);
 		J(() => Q(n, a[Y(c)])), Z(e, t);
 	};
 	$(k, (e) => {
 		Y(d).length || Io.loading || Io.error || Io.next != null || e(A);
 	}), R(O), ha(O, (e) => u = e, () => u);
 	var ne = q(O, 2), j = (e) => {
-		var n = _m(), r = q(G(n), 2);
+		var n = vm(), r = q(G(n), 2);
 		R(n), Pr("click", r, () => Io.days.length ? Vo() : Bo(t.view)), Z(e, n);
 	}, re = (e) => {
-		Z(e, vm());
+		Z(e, ym());
 	}, ie = (e) => {
-		var t = ym();
+		var t = bm();
 		ha(t, (e) => W(s, e), () => Y(s)), Z(e, t);
 	};
 	$(ne, (e) => {
 		Io.error ? e(j) : Io.loading ? e(re, 1) : Io.next != null && e(ie, 2);
 	}), R(w);
 	var ae = q(w, 2), oe = (e) => {
-		Ks(e, {
+		qs(e, {
 			get id() {
 				return Y(f);
 			},
@@ -11518,7 +11521,7 @@ function xm(e, t) {
 			},
 			children: (e, t) => {
 				var i = Kr(), a = _n(i), o = (e) => {
-					dm(e, {
+					fm(e, {
 						get vid() {
 							return n().vid;
 						},
@@ -11527,7 +11530,7 @@ function xm(e, t) {
 						}
 					});
 				}, s = (e) => {
-					Yp(e, {
+					Xp(e, {
 						get vid() {
 							return n().vid;
 						},
@@ -11554,8 +11557,8 @@ function xm(e, t) {
 }
 Fr(["click"]);
 // src/pages/settings/FixedCosts.svelte
-var Sm = /* @__PURE__ */ X("<div class=\"row split\"><span> <br/><span class=\"muted\"> </span></span> <button type=\"button\" class=\"danger press\">Delete</button></div> <form class=\"row split\"><label class=\"grow inline\">End date <input name=\"end\" type=\"date\"/></label> <button class=\"press\" type=\"submit\">Save</button></form>", 1), Cm = /* @__PURE__ */ X("<p class=\"row muted\">No fixed costs.</p>"), wm = /* @__PURE__ */ X("<option> </option>"), Tm = /* @__PURE__ */ X("<form class=\"row fields\"><label class=\"field wide\">Name<input required=\"\" maxlength=\"40\"/></label> <label class=\"field\">Amount (€)<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" required=\"\"/></label> <label class=\"field\">Period<select></select></label> <label class=\"field\">Start<input type=\"date\" required=\"\"/></label> <label class=\"field\">End (optional)<input type=\"date\"/></label> <button class=\"press\" type=\"submit\">Add</button> <button class=\"press\" type=\"button\">Cancel</button></form>"), Em = /* @__PURE__ */ X("<div class=\"row\"><button class=\"press\" type=\"button\">Add fixed cost</button></div>"), Dm = /* @__PURE__ */ X("<h3> </h3> <div class=\"list card\"><!> <!></div>", 1), Om = /* @__PURE__ */ X("<h2>Fixed costs</h2> <p class=\"note caption\">Monthly card fees, insurance and the like. Empty the end date to run a cost on.</p> <!>", 1);
-function km(e, t) {
+var Cm = /* @__PURE__ */ X("<div class=\"row split\"><span> <br/><span class=\"muted\"> </span></span> <button type=\"button\" class=\"danger press\">Delete</button></div> <form class=\"row split\"><label class=\"grow inline\">End date <input name=\"end\" type=\"date\"/></label> <button class=\"press\" type=\"submit\">Save</button></form>", 1), wm = /* @__PURE__ */ X("<p class=\"row muted\">No fixed costs.</p>"), Tm = /* @__PURE__ */ X("<option> </option>"), Em = /* @__PURE__ */ X("<form class=\"row fields\"><label class=\"field wide\">Name<input required=\"\" maxlength=\"40\"/></label> <label class=\"field\">Amount (€)<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" required=\"\"/></label> <label class=\"field\">Period<select></select></label> <label class=\"field\">Start<input type=\"date\" required=\"\"/></label> <label class=\"field\">End (optional)<input type=\"date\"/></label> <button class=\"press\" type=\"submit\">Add</button> <button class=\"press\" type=\"button\">Cancel</button></form>"), Dm = /* @__PURE__ */ X("<div class=\"row\"><button class=\"press\" type=\"button\">Add fixed cost</button></div>"), Om = /* @__PURE__ */ X("<h3> </h3> <div class=\"list card\"><!> <!></div>", 1), km = /* @__PURE__ */ X("<h2>Fixed costs</h2> <p class=\"note caption\">Monthly card fees, insurance and the like. Empty the end date to run a cost on.</p> <!>", 1);
+function Am(e, t) {
 	tt(t, !0);
 	let n = [
 		"month",
@@ -11589,11 +11592,11 @@ function km(e, t) {
 		r.value !== (n.end ?? "") && (await t.change(() => p("PUT", `fixed_costs/${n.id}`, { end: r.value || null })) || (r.value = n.end ?? ""));
 	}
 	let d = (e) => confirm(`Delete "${e.name}"?`) && t.change(() => p("DELETE", `fixed_costs/${e.id}`)), f = (e) => e.focus();
-	var m = Om();
+	var m = km();
 	mi(q(_n(m), 4), 17, () => t.data.vehicles, (e) => e.id, (e, t) => {
-		var r = Dm(), p = _n(r), m = K(p, !0), h = q(p, 2), g = G(h);
+		var r = Om(), p = _n(r), m = K(p, !0), h = q(p, 2), g = G(h);
 		mi(g, 17, () => s(Y(t).id), (e) => e.id, (e, t) => {
-			var n = Sm(), r = _n(n), i = G(r), a = G(i, !0), o = K(q(a, 2));
+			var n = Cm(), r = _n(n), i = G(r), a = G(i, !0), o = K(q(a, 2));
 			R(i);
 			var s = q(i, 2);
 			R(r);
@@ -11602,18 +11605,18 @@ function km(e, t) {
 			var p = q(l, 2);
 			R(c), J((e) => {
 				Q(a, Y(t).name), Q(o, `${e ?? ""} · ${Y(t).period ?? ""} · from ${Y(t).start ?? ""}${Y(t).end ? ` to ${Y(t).end}` : ""}`), na(s, "aria-label", `Delete ${Y(t).name}`), na(f, "aria-label", `End date of ${Y(t).name}`), na(f, "min", Y(t).start), ea(f, Y(t).end ?? ""), na(p, "aria-label", `Save end date of ${Y(t).name}`);
-			}, [() => us(Y(t).amount)]), Pr("click", s, () => d(Y(t))), Nr("submit", c, (e) => u(e, Y(t))), Z(e, n);
+			}, [() => ds(Y(t).amount)]), Pr("click", s, () => d(Y(t))), Nr("submit", c, (e) => u(e, Y(t))), Z(e, n);
 		}, (e) => {
-			Z(e, Cm());
+			Z(e, wm());
 		});
 		var _ = q(g, 2), v = (e) => {
-			var t = Tm(), r = G(t), s = q(G(r));
+			var t = Em(), r = G(t), s = q(G(r));
 			$i(s), Ni(s, () => f), R(r);
 			var c = q(r, 2), u = q(G(c));
 			$i(u), R(c);
 			var d = q(c, 2), p = q(G(d));
 			mi(p, 21, () => n, ui, (e, t) => {
-				var n = wm(), r = K(n, !0), i = {};
+				var n = Tm(), r = K(n, !0), i = {};
 				J(() => {
 					Q(r, Y(t)), i !== (i = Y(t)) && (n.value = (n.__value = i) ?? "");
 				}), Z(e, n);
@@ -11627,7 +11630,7 @@ function km(e, t) {
 				na(_, "min", Y(a).start), v.disabled = Y(o);
 			}), Nr("submit", t, l), oa(s, () => Y(a).name, (e) => Y(a).name = e), oa(u, () => Y(a).amount, (e) => Y(a).amount = e), Ki(p, () => Y(a).period, (e) => Y(a).period = e), oa(h, () => Y(a).start, (e) => Y(a).start = e), oa(_, () => Y(a).end, (e) => Y(a).end = e), Pr("click", y, () => W(i, null)), Z(e, t);
 		}, y = (e) => {
-			var n = Em();
+			var n = Dm();
 			Pr("click", K(n), () => c(Y(t).id)), Z(e, n);
 		};
 		$(_, (e) => {
@@ -11637,12 +11640,12 @@ function km(e, t) {
 }
 Fr(["click"]);
 // src/pages/settings/Prices.svelte
-var Am = /* @__PURE__ */ X("<form class=\"row fields\"><label class=\"field\">€/kWh<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" required=\"\"/></label> <label class=\"field\">Start fee<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" placeholder=\"0\"/></label> <label class=\"field\">€/min<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" placeholder=\"0\"/></label> <label class=\"field\">Valid from<input type=\"date\" required=\"\"/></label> <button class=\"press\" type=\"submit\">Save</button> <button class=\"press\" type=\"button\">Cancel</button></form>"), jm = /* @__PURE__ */ X("<div class=\"row split\"><span> <br/><span class=\"muted\"> </span></span> <button class=\"press\" type=\"button\">Change</button></div> <!>", 1), Mm = /* @__PURE__ */ X("<form class=\"row\"><label class=\"grow\"><span class=\"sr\">Location name</span><input required=\"\" maxlength=\"40\"/></label> <button class=\"press\" type=\"submit\">Rename</button> <button type=\"button\" class=\"danger press\">Delete</button></form> <div class=\"row split\"><span class=\"muted\"> </span> <button class=\"press\" type=\"button\">Change</button></div> <!>", 1), Nm = /* @__PURE__ */ X("<h3>Charge locations</h3> <div class=\"list card\"></div>", 1), Pm = /* @__PURE__ */ X("<h2>Prices</h2> <p class=\"note caption\">A new price counts from its date.</p> <div class=\"list card\"></div> <!>", 1);
-function Fm(e, t) {
+var jm = /* @__PURE__ */ X("<form class=\"row fields\"><label class=\"field\">€/kWh<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" required=\"\"/></label> <label class=\"field\">Start fee<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" placeholder=\"0\"/></label> <label class=\"field\">€/min<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" placeholder=\"0\"/></label> <label class=\"field\">Valid from<input type=\"date\" required=\"\"/></label> <button class=\"press\" type=\"submit\">Save</button> <button class=\"press\" type=\"button\">Cancel</button></form>"), Mm = /* @__PURE__ */ X("<div class=\"row split\"><span> <br/><span class=\"muted\"> </span></span> <button class=\"press\" type=\"button\">Change</button></div> <!>", 1), Nm = /* @__PURE__ */ X("<form class=\"row\"><label class=\"grow\"><span class=\"sr\">Location name</span><input required=\"\" maxlength=\"40\"/></label> <button class=\"press\" type=\"submit\">Rename</button> <button type=\"button\" class=\"danger press\">Delete</button></form> <div class=\"row split\"><span class=\"muted\"> </span> <button class=\"press\" type=\"button\">Change</button></div> <!>", 1), Pm = /* @__PURE__ */ X("<h3>Charge locations</h3> <div class=\"list card\"></div>", 1), Fm = /* @__PURE__ */ X("<h2>Prices</h2> <p class=\"note caption\">A new price counts from its date.</p> <div class=\"list card\"></div> <!>", 1);
+function Im(e, t) {
 	tt(t, !0);
 	let n = (e, t = O) => {
 		var n = Kr(), a = _n(n), s = (e) => {
-			var t = Am(), n = G(t), a = q(G(n));
+			var t = jm(), n = G(t), a = q(G(n));
 			$i(a), Ni(a, () => g), R(n);
 			var s = q(n, 2), c = q(G(s));
 			$i(c), R(s);
@@ -11666,9 +11669,9 @@ function Fm(e, t) {
 		W(s, Object.fromEntries(t.data.prices.spots.map((e) => [e.id, e.name])), !0);
 	});
 	let c = () => Date.now(), l = (e) => e ? [
-		`${us(e.per_kwh)}/kWh`,
-		e.start_fee && `start fee ${us(e.start_fee)}`,
-		e.per_min && `${us(e.per_min)}/min`
+		`${ds(e.per_kwh)}/kWh`,
+		e.start_fee && `start fee ${ds(e.start_fee)}`,
+		e.per_min && `${ds(e.per_min)}/min`
 	].filter(Boolean).join(" · ") : "Not set", u = /* @__PURE__ */ B(() => [["ac", "Default AC price"], ["dc", "Default DC price"]].map(([e, n]) => ({
 		id: e,
 		label: n,
@@ -11676,7 +11679,7 @@ function Fm(e, t) {
 	})));
 	function d(e, t) {
 		a = t;
-		let n = _s(a, c());
+		let n = vs(a, c());
 		W(o, {
 			per_kwh: n?.per_kwh ?? "",
 			start_fee: n?.start_fee ?? "",
@@ -11687,7 +11690,7 @@ function Fm(e, t) {
 	async function f(e) {
 		e.preventDefault();
 		let n = {
-			valid_from: hs(a, Y(o).from),
+			valid_from: gs(a, Y(o).from),
 			per_kwh: Number(Y(o).per_kwh),
 			start_fee: Number(Y(o).start_fee),
 			per_min: Number(Y(o).per_min)
@@ -11695,21 +11698,21 @@ function Fm(e, t) {
 		W(r, !0), await t.change(() => p("PUT", `prices/${Y(i)}`, n)) && W(i, null), W(r, !1);
 	}
 	let m = (e) => t.change(() => p("PUT", `spots/${e.id}`, { name: Y(s)[e.id] })), h = (e) => confirm(`Delete "${e.name}"? Its charges go back to the default price.`) && t.change(() => p("DELETE", `spots/${e.id}`)), g = (e) => e.focus();
-	var _ = Pm(), v = q(_n(_), 4);
+	var _ = Fm(), v = q(_n(_), 4);
 	mi(v, 21, () => Y(u), (e) => e.id, (e, t) => {
-		var r = jm(), i = _n(r), a = G(i), o = G(a, !0), s = K(q(o, 2), !0);
+		var r = Mm(), i = _n(r), a = G(i), o = G(a, !0), s = K(q(o, 2), !0);
 		R(a);
 		var u = q(a, 2);
 		R(i);
 		var f = q(i, 2);
 		n(f, () => Y(t).id), J((e) => {
 			Q(o, Y(t).label), Q(s, e), na(u, "aria-label", `Change ${Y(t).label}`);
-		}, [() => l(_s(Y(t).list, c()))]), Pr("click", u, () => d(Y(t).id, Y(t).list)), Z(e, r);
+		}, [() => l(vs(Y(t).list, c()))]), Pr("click", u, () => d(Y(t).id, Y(t).list)), Z(e, r);
 	}), R(v);
 	var y = q(v, 2), b = (e) => {
-		var r = Nm(), i = q(_n(r), 2);
+		var r = Pm(), i = q(_n(r), 2);
 		mi(i, 21, () => t.data.prices.spots, (e) => e.id, (e, t) => {
-			var r = Mm(), i = _n(r), a = G(i), o = q(G(a));
+			var r = Nm(), i = _n(r), a = G(i), o = q(G(a));
 			$i(o), R(a);
 			var u = q(a, 2), f = q(u, 2);
 			R(i);
@@ -11718,7 +11721,7 @@ function Fm(e, t) {
 			var y = q(p, 2);
 			n(y, () => Y(t).id), J((e) => {
 				na(u, "aria-label", `Rename ${Y(t).name}`), na(f, "aria-label", `Delete ${Y(t).name}`), Q(_, e), na(v, "aria-label", `Change price of ${Y(t).name}`);
-			}, [() => l(_s(Y(t).tariffs, c()))]), Nr("submit", i, (e) => {
+			}, [() => l(vs(Y(t).tariffs, c()))]), Nr("submit", i, (e) => {
 				e.preventDefault(), m(Y(t));
 			}), oa(o, () => Y(s)[Y(t).id], (e) => Y(s)[Y(t).id] = e), Pr("click", f, () => h(Y(t))), Pr("click", v, () => d(Y(t).id, Y(t).tariffs)), Z(e, r);
 		}), R(i), Z(e, r);
@@ -11729,8 +11732,8 @@ function Fm(e, t) {
 }
 Fr(["click"]);
 // src/pages/Settings.svelte
-var Im = /* @__PURE__ */ X("<p class=\"err svelte-1ozf5k3\" role=\"alert\"> </p>"), Lm = /* @__PURE__ */ X("<form class=\"row\"><label class=\"grow\"><span class=\"sr\">Group name</span><input required=\"\" maxlength=\"40\"/></label> <button class=\"press\" type=\"submit\">Rename</button> <button type=\"button\" class=\"danger press\">Delete</button></form>"), Rm = /* @__PURE__ */ X("<p class=\"row muted\">No groups yet.</p>"), zm = /* @__PURE__ */ X("<option> </option>"), Bm = /* @__PURE__ */ X("<label class=\"row split\"> <input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\"/></label>"), Vm = /* @__PURE__ */ X("<label class=\"row split\"><span> <span class=\"muted\"> </span></span> <input type=\"checkbox\"/></label>"), Hm = /* @__PURE__ */ X("<p class=\"row muted\">No users yet.</p>"), Um = /* @__PURE__ */ X("<section><h3> </h3> <div class=\"list card\"><label class=\"row split\">Cost group <select><option>No group</option><!></select></label> <!></div> <fieldset><legend>Viewers</legend> <div class=\"list card\"></div></fieldset></section>"), Wm = /* @__PURE__ */ X("<h2>Cost groups</h2> <div class=\"list card\"><!> <form class=\"row\"><label class=\"grow\"><span class=\"sr\">New group</span><input required=\"\" maxlength=\"40\" placeholder=\"New group\"/></label> <button class=\"press\" type=\"submit\">Add group</button></form></div> <!> <h2>Vehicles</h2> <p class=\"note caption\">Users appear here after they open this page once. Administrators always see every vehicle.</p> <!> <!>", 1), Gm = /* @__PURE__ */ X("<p class=\"msg\">Loading…</p>"), Km = /* @__PURE__ */ X("<div class=\"page settings svelte-1ozf5k3\"><h1 class=\"page-title\">Settings</h1> <!> <!></div>");
-function qm(e, t) {
+var Lm = /* @__PURE__ */ X("<p class=\"err svelte-1ozf5k3\" role=\"alert\"> </p>"), Rm = /* @__PURE__ */ X("<form class=\"row\"><label class=\"grow\"><span class=\"sr\">Group name</span><input required=\"\" maxlength=\"40\"/></label> <button class=\"press\" type=\"submit\">Rename</button> <button type=\"button\" class=\"danger press\">Delete</button></form>"), zm = /* @__PURE__ */ X("<p class=\"row muted\">No groups yet.</p>"), Bm = /* @__PURE__ */ X("<option> </option>"), Vm = /* @__PURE__ */ X("<label class=\"row split\"> <input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\"/></label>"), Hm = /* @__PURE__ */ X("<label class=\"row split\"><span> <span class=\"muted\"> </span></span> <input type=\"checkbox\"/></label>"), Um = /* @__PURE__ */ X("<p class=\"row muted\">No users yet.</p>"), Wm = /* @__PURE__ */ X("<section><h3> </h3> <div class=\"list card\"><label class=\"row split\">Cost group <select><option>No group</option><!></select></label> <!></div> <fieldset><legend>Viewers</legend> <div class=\"list card\"></div></fieldset></section>"), Gm = /* @__PURE__ */ X("<h2>Cost groups</h2> <div class=\"list card\"><!> <form class=\"row\"><label class=\"grow\"><span class=\"sr\">New group</span><input required=\"\" maxlength=\"40\" placeholder=\"New group\"/></label> <button class=\"press\" type=\"submit\">Add group</button></form></div> <!> <h2>Vehicles</h2> <p class=\"note caption\">Users appear here after they open this page once. Administrators always see every vehicle.</p> <!> <!>", 1), Km = /* @__PURE__ */ X("<p class=\"msg\">Loading…</p>"), qm = /* @__PURE__ */ X("<div class=\"page settings svelte-1ozf5k3\"><h1 class=\"page-title\">Settings</h1> <!> <!></div>");
+function Jm(e, t) {
 	tt(t, !0);
 	let n = /* @__PURE__ */ U(null), r = /* @__PURE__ */ U(""), i = /* @__PURE__ */ U(""), a = /* @__PURE__ */ U(on({})), o = /* @__PURE__ */ U(0), s = /* @__PURE__ */ B(() => Y(o) > 0), c = h(), l = (e) => W(r, e.detail || `Could not save (${e.message})`, !0);
 	async function u() {
@@ -11768,17 +11771,17 @@ function qm(e, t) {
 		viewers: n
 	}), x = (e, t) => () => p("PUT", `vehicles/${e.id}/card`, t);
 	u();
-	var S = Km(), C = q(G(S), 2), w = (e) => {
-		var t = Im(), n = K(t, !0);
+	var S = qm(), C = q(G(S), 2), w = (e) => {
+		var t = Lm(), n = K(t, !0);
 		J(() => Q(n, Y(r))), Z(e, t);
 	};
 	$(C, (e) => {
 		Y(r) && e(w);
 	});
 	var T = q(C, 2), E = (e) => {
-		var t = Wm(), r = q(_n(t), 2), o = G(r);
+		var t = Gm(), r = q(_n(t), 2), o = G(r);
 		mi(o, 17, () => Y(n).groups, (e) => e.id, (e, t) => {
-			var n = Lm(), r = G(n), i = q(G(r));
+			var n = Rm(), r = G(n), i = q(G(r));
 			$i(i), R(r);
 			var o = q(r, 2), c = q(o, 2);
 			R(n), J(() => {
@@ -11787,14 +11790,14 @@ function qm(e, t) {
 				e.preventDefault(), v(Y(t));
 			}), oa(i, () => Y(a)[Y(t).id], (e) => Y(a)[Y(t).id] = e), Pr("click", c, () => y(Y(t))), Z(e, n);
 		}, (e) => {
-			Z(e, Rm());
+			Z(e, zm());
 		});
 		var c = q(o, 2), l = G(c), u = q(G(l));
 		$i(u), R(l);
 		var p = q(l, 2);
 		R(c), R(r);
 		var m = q(r, 2);
-		Fm(m, {
+		Im(m, {
 			get data() {
 				return Y(n);
 			},
@@ -11802,9 +11805,9 @@ function qm(e, t) {
 		});
 		var h = q(m, 6);
 		mi(h, 17, () => Y(n).vehicles, (e) => e.id, (e, t) => {
-			var r = Um(), i = G(r), a = K(i, !0), o = q(i, 2), c = G(o), l = q(G(c)), u = G(l);
+			var r = Wm(), i = G(r), a = K(i, !0), o = q(i, 2), c = G(o), l = q(G(c)), u = G(l);
 			u.value = u.__value = "", mi(q(u), 17, () => Y(n).groups, ui, (e, t) => {
-				var n = zm(), r = K(n, !0), i = {};
+				var n = Bm(), r = K(n, !0), i = {};
 				J(() => {
 					Q(r, Y(t).name), i !== (i = Y(t).id) && (n.value = (n.__value = i) ?? "");
 				}), Z(e, n);
@@ -11816,7 +11819,7 @@ function qm(e, t) {
 					markup_pct: 0,
 					start_fee: 0
 				});
-				var l = Bm(), u = G(l), d = q(u);
+				var l = Vm(), u = G(l), d = q(u);
 				$i(d), R(l), J(() => {
 					Q(u, `${o() ?? ""} `), d.disabled = Y(s), ea(d, Y(c)[a()]);
 				}), Pr("change", d, (e) => f(e, x(Y(t), {
@@ -11826,7 +11829,7 @@ function qm(e, t) {
 			}), R(o);
 			var p = q(o, 2), m = q(G(p), 2);
 			mi(m, 21, () => Y(n).users, (e) => e.id, (e, n) => {
-				var r = Vm(), i = G(r), a = G(i), o = K(q(a));
+				var r = Hm(), i = G(r), a = G(i), o = K(q(a));
 				R(i);
 				var c = q(i, 2);
 				$i(c), R(r), J((e, t) => {
@@ -11836,11 +11839,11 @@ function qm(e, t) {
 					f(e, b(Y(t), Y(t).group_id, r ? [...Y(t).viewers, Y(n).id] : Y(t).viewers.filter((e) => e !== Y(n).id)), (e) => e.checked = !r);
 				}), Z(e, r);
 			}, (e) => {
-				Z(e, Hm());
+				Z(e, Um());
 			}), R(m), R(p), R(r), J(() => {
 				Q(a, Y(t).name), l.disabled = Y(s), d !== (d = Y(t).group_id ?? "") && (l.value = (l.__value = d) ?? "", Wi(l, d));
 			}), Pr("change", l, (e) => f(e, b(Y(t), e.currentTarget.value || null, Y(t).viewers), (e) => e.value = Y(t).group_id ?? "")), Z(e, r);
-		}), km(q(h, 2), {
+		}), Am(q(h, 2), {
 			get data() {
 				return Y(n);
 			},
@@ -11849,7 +11852,7 @@ function qm(e, t) {
 			e.preventDefault(), _();
 		}), oa(u, () => Y(i), (e) => W(i, e)), Z(e, t);
 	}, D = (e) => {
-		Z(e, Gm());
+		Z(e, Km());
 	};
 	$(T, (e) => {
 		Y(n) ? e(E) : Y(r) || e(D, 1);
@@ -11857,7 +11860,7 @@ function qm(e, t) {
 }
 Fr(["click", "change"]);
 // src/lib/stats.js
-var Jm = [
+var Ym = [
 	"January",
 	"February",
 	"March",
@@ -11870,8 +11873,8 @@ var Jm = [
 	"October",
 	"November",
 	"December"
-], Ym = (e) => (t, n, r) => `${e}?view=${encodeURIComponent(t)}&period=${n}${r ? `&at=${r}` : ""}`, Xm = Ym("stats"), Zm = Ym("map"), Qm = (e, t) => e == null || !t ? null : (e - t) / t, $m = (e) => Jm[e - 1].slice(0, 3);
-function eh(e) {
+], Xm = (e) => (t, n, r) => `${e}?view=${encodeURIComponent(t)}&period=${n}${r ? `&at=${r}` : ""}`, Zm = Xm("stats"), Qm = Xm("map"), $m = (e, t) => e == null || !t ? null : (e - t) / t, eh = (e) => Ym[e - 1].slice(0, 3);
+function th(e) {
 	let [t, n, r] = Ka(e), i = new Date(Date.UTC(t, n - 1, r - 1));
 	return [
 		i.getUTCFullYear(),
@@ -11879,18 +11882,18 @@ function eh(e) {
 		i.getUTCDate()
 	];
 }
-function th(e, t, n) {
+function nh(e, t, n) {
 	let [r, i, a] = Ka(t);
 	if (e === "year") return String(r);
-	if (e === "month") return `${Jm[i - 1]} ${r}`;
-	let [o, s, c] = eh(n);
-	return o === r ? i === s ? `${a} – ${c} ${$m(i)}` : `${a} ${$m(i)} – ${c} ${$m(s)}` : `${a} ${$m(i)} ${r} – ${c} ${$m(s)} ${o}`;
+	if (e === "month") return `${Ym[i - 1]} ${r}`;
+	let [o, s, c] = th(n);
+	return o === r ? i === s ? `${a} – ${c} ${eh(i)}` : `${a} ${eh(i)} – ${c} ${eh(s)}` : `${a} ${eh(i)} ${r} – ${c} ${eh(s)} ${o}`;
 }
-function nh(e, t) {
+function rh(e, t) {
 	let [, n, r] = Ka(t);
-	return e === "year" ? $m(n) : String(r);
+	return e === "year" ? eh(n) : String(r);
 }
-function rh(e, t = 5) {
+function ih(e, t = 5) {
 	let n = e.filter((e) => e.place != null && e.wh > 0).sort((e, t) => t.wh - e.wh), r = n.slice(t).reduce((e, t) => e + t.wh, 0) + e.filter((e) => e.place == null).reduce((e, t) => e + t.wh, 0), i = n.slice(0, t).map((e) => ({
 		name: e.place,
 		wh: e.wh,
@@ -11907,7 +11910,7 @@ function rh(e, t = 5) {
 		share: e.wh / a
 	}));
 }
-function ih(e, t) {
+function ah(e, t) {
 	let n = t?.km > 0 ? t : null, r = (e, t) => e.km > 0 ? e[t] / e.km * 10 : null, i = Object.values(e.bands).map((e) => e.kwh_per_100km), a = Math.max(0, ...i.filter((e) => e != null));
 	return {
 		points: e.score != null && n?.score != null ? e.score - n.score : null,
@@ -11916,7 +11919,7 @@ function ih(e, t) {
 			return {
 				k: t,
 				name: i,
-				change: n ? Qm(a, r(n, t)) : null
+				change: n ? $m(a, r(n, t)) : null
 			};
 		}),
 		bands: Object.entries(e.bands).map(([e, t]) => ({
@@ -11926,12 +11929,12 @@ function ih(e, t) {
 		}))
 	};
 }
-var ah = (e) => e == null ? null : {
+var oh = (e) => e == null ? null : {
 	dir: Math.sign(e),
 	text: e ? String(Math.abs(e)) : "same",
 	hint: !1
-}, oh = /* @__PURE__ */ X("<div class=\"msg\" role=\"alert\"><p>Couldn't load the map.</p> <button class=\"d-btn\">Retry</button></div>"), sh = /* @__PURE__ */ X("<p class=\"d-msg\"> </p>"), ch = /* @__PURE__ */ X("<section class=\"d-card\"><div class=\"d-head\"><h2>Map</h2></div> <!></section>");
-function lh(e, t) {
+}, sh = /* @__PURE__ */ X("<div class=\"msg\" role=\"alert\"><p>Couldn't load the map.</p> <button class=\"d-btn\">Retry</button></div>"), ch = /* @__PURE__ */ X("<p class=\"d-msg\"> </p>"), lh = /* @__PURE__ */ X("<section class=\"d-card\"><div class=\"d-head\"><h2>Map</h2></div> <!></section>");
+function uh(e, t) {
 	tt(t, !0);
 	let n = /* @__PURE__ */ U(void 0), r = /* @__PURE__ */ U(!1), i = /* @__PURE__ */ U(null), a = /* @__PURE__ */ U(!1), o = h();
 	kn(() => {
@@ -11942,7 +11945,7 @@ function lh(e, t) {
 		let e = o.next();
 		W(a, !1);
 		try {
-			let n = await m(Zm(t.view, t.period, t.at));
+			let n = await m(Qm(t.view, t.period, t.at));
 			if (!e.current) return;
 			W(i, {
 				lines: n.trips.map((e) => ({
@@ -11973,19 +11976,19 @@ function lh(e, t) {
 	kn(() => {
 		if (Y(r)) return s(), o.reset;
 	});
-	var c = ch(), l = q(G(c), 2), u = (e) => {
-		var t = oh(), n = q(G(t), 2);
+	var c = lh(), l = q(G(c), 2), u = (e) => {
+		var t = sh(), n = q(G(t), 2);
 		R(t), Pr("click", n, s), Z(e, t);
 	}, d = (e) => {
-		var t = sh(), n = K(t, !0);
+		var t = ch(), n = K(t, !0);
 		J(() => {
 			na(t, "aria-busy", Y(r)), Q(n, Y(r) ? "Loading…" : "");
 		}), Z(e, t);
 	}, f = (e) => {
-		var n = sh(), r = K(n);
+		var n = ch(), r = K(n);
 		J(() => Q(r, `Nothing to map this ${t.period ?? ""}`)), Z(e, n);
 	}, p = (e) => {
-		Mp(e, {
+		Np(e, {
 			get lines() {
 				return Y(i).lines;
 			},
@@ -12001,11 +12004,11 @@ function lh(e, t) {
 }
 Fr(["click"]);
 // src/pages/Stats.svelte
-var uh = (e, t = O) => {
-	var n = fh();
+var dh = (e, t = O) => {
+	var n = ph();
 	let r;
 	var i = G(n), a = (e) => {
-		var n = dh(), r = _n(n), i = K(r, !0), a = K(q(r), !0);
+		var n = fh(), r = _n(n), i = K(r, !0), a = K(q(r), !0);
 		J(() => {
 			Q(i, t().dir > 0 ? "▲" : "▼"), Q(a, t().dir > 0 ? "up" : "down");
 		}), Z(e, n);
@@ -12020,8 +12023,8 @@ var uh = (e, t = O) => {
 			down: t().hint && t().dir < 0
 		}), Q(o, ` ${t().text ?? ""}`);
 	}), Z(e, n);
-}, dh = /* @__PURE__ */ X("<span aria-hidden=\"true\"> </span><span class=\"sr\"> </span>", 1), fh = /* @__PURE__ */ X("<span><!> </span>"), ph = /* @__PURE__ */ X("<div class=\"msg svelte-qardfz\" role=\"alert\"><p>Couldn't load your statistics.</p> <button class=\"d-btn\">Retry</button></div>"), mh = /* @__PURE__ */ X("<p class=\"msg svelte-qardfz\" aria-busy=\"true\">Loading…</p>"), hh = /* @__PURE__ */ X("<span> </span>"), gh = /* @__PURE__ */ X("<span class=\"sub caption svelte-qardfz\"><!> <!></span>"), _h = /* @__PURE__ */ X("<p class=\"d-note\"> </p>"), vh = /* @__PURE__ */ X("<li class=\"svelte-qardfz\"><b> </b> <span class=\"d-note facts svelte-qardfz\"><span class=\"svelte-qardfz\"> </span><span class=\"svelte-qardfz\"> </span><span class=\"svelte-qardfz\"> </span><span class=\"svelte-qardfz\"> </span><span class=\"svelte-qardfz\"> </span></span></li>"), yh = /* @__PURE__ */ X("<section class=\"d-card pv svelte-qardfz\"><h2>By car</h2> <ul class=\"svelte-qardfz\"></ul></section>"), bh = /* @__PURE__ */ X("<a class=\"press svelte-qardfz\"><span class=\"k svelte-qardfz\">Longest trip</span><span class=\"v svelte-qardfz\"> </span> <span class=\"d-note svelte-qardfz\"> </span></a>"), xh = /* @__PURE__ */ X("<div class=\"svelte-qardfz\"><span class=\"k svelte-qardfz\">Longest trip</span><span class=\"v svelte-qardfz\"> </span></div>"), Sh = /* @__PURE__ */ X("<a class=\"press svelte-qardfz\"><span class=\"k svelte-qardfz\">Most efficient trip</span><span class=\"v svelte-qardfz\"> </span> <span class=\"d-note svelte-qardfz\"> </span></a>"), Ch = /* @__PURE__ */ X("<div class=\"svelte-qardfz\"><span class=\"k svelte-qardfz\">Most efficient trip</span><span class=\"v svelte-qardfz\"> </span><span class=\"d-note svelte-qardfz\">Trips of at least 5 km</span></div>"), wh = /* @__PURE__ */ X("<span class=\"d-note svelte-qardfz\"> </span>"), Th = /* @__PURE__ */ X("<span class=\"d-note\"> </span>"), Eh = /* @__PURE__ */ X("<span class=\"d-note pts svelte-qardfz\"><!></span>"), Dh = /* @__PURE__ */ X("<div class=\"big\"> <small>/ 100</small><!></div>"), Oh = /* @__PURE__ */ X(" <!>", 1), kh = /* @__PURE__ */ X("<div><dt> </dt><dd> <!></dd></div>"), Ah = /* @__PURE__ */ X("<li class=\"svelte-qardfz\"><span class=\"bn svelte-qardfz\"> </span><span class=\"track svelte-qardfz\"><i class=\"meter svelte-qardfz\"></i></span><span class=\"bv svelte-qardfz\"> </span></li>"), jh = /* @__PURE__ */ X("<dl class=\"d-rows\"><div><dt>Standing</dt><dd> </dd></div></dl>"), Mh = /* @__PURE__ */ X("<!> <dl class=\"d-rows\"></dl> <div class=\"d-head bandhead\"><h2>Consumption by speed</h2><span class=\"d-note\">km/h · kWh/100 km</span></div> <ul class=\"bands svelte-qardfz\"></ul> <!>", 1), Nh = /* @__PURE__ */ X("<p class=\"d-msg\"> </p>"), Ph = /* @__PURE__ */ X("<i></i>"), Fh = /* @__PURE__ */ X("<li class=\"svelte-qardfz\"><i class=\"dot svelte-qardfz\"></i><span class=\"n svelte-qardfz\"> </span><span> </span><span class=\"pc svelte-qardfz\"> </span></li>"), Ih = /* @__PURE__ */ X("<div class=\"share-bar\" role=\"img\"></div> <ul class=\"svelte-qardfz\"></ul>", 1), Lh = /* @__PURE__ */ X("<div><div class=\"col svelte-qardfz\"><div class=\"tiles svelte-qardfz\"><div class=\"d-figs svelte-qardfz\"></div> <!></div> <!> <section class=\"d-card hl svelte-qardfz\"><h2>Highlights</h2> <ul class=\"svelte-qardfz\"><li class=\"svelte-qardfz\"><!></li> <li class=\"svelte-qardfz\"><!></li> <li class=\"svelte-qardfz\"><div class=\"svelte-qardfz\"><span class=\"k svelte-qardfz\">Recuperated</span><span class=\"v svelte-qardfz\"> </span> <!></div></li> <li class=\"svelte-qardfz\"><div class=\"svelte-qardfz\"><span class=\"k svelte-qardfz\">Cost</span><span class=\"v svelte-qardfz\"> </span> <span class=\"d-note cost svelte-qardfz\"> <!><!> <!></span></div></li></ul></section> <section class=\"d-card sty svelte-qardfz\"><div class=\"d-head\"><h2>Driving style</h2><!></div> <!></section></div> <div class=\"col svelte-qardfz\"><section class=\"d-card chartcard svelte-qardfz\"><div class=\"d-head\"><h2>Distance</h2><span class=\"d-note\"> </span></div> <!></section> <section class=\"d-card places svelte-qardfz\"><div class=\"d-head\"><h2>Charged by place</h2><span class=\"d-note\"> </span></div> <!></section></div></div> <div class=\"mapcard svelte-qardfz\"><!></div>", 1), Rh = /* @__PURE__ */ X("<div class=\"page svelte-qardfz\"><h1 class=\"page-title\">Statistics</h1> <div class=\"seg svelte-qardfz\"><!></div> <div class=\"nav svelte-qardfz\"><button class=\"press svelte-qardfz\"><svg class=\"icon svelte-qardfz\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M15 5l-7 7 7 7\"></path></svg></button> <h2 aria-live=\"polite\" class=\"svelte-qardfz\"> </h2> <button class=\"press svelte-qardfz\"><svg class=\"icon svelte-qardfz\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M9 5l7 7-7 7\"></path></svg></button></div> <!></div>");
-function zh(e, t) {
+}, fh = /* @__PURE__ */ X("<span aria-hidden=\"true\"> </span><span class=\"sr\"> </span>", 1), ph = /* @__PURE__ */ X("<span><!> </span>"), mh = /* @__PURE__ */ X("<div class=\"msg svelte-qardfz\" role=\"alert\"><p>Couldn't load your statistics.</p> <button class=\"d-btn\">Retry</button></div>"), hh = /* @__PURE__ */ X("<p class=\"msg svelte-qardfz\" aria-busy=\"true\">Loading…</p>"), gh = /* @__PURE__ */ X("<span> </span>"), _h = /* @__PURE__ */ X("<span class=\"sub caption svelte-qardfz\"><!> <!></span>"), vh = /* @__PURE__ */ X("<p class=\"d-note\"> </p>"), yh = /* @__PURE__ */ X("<li class=\"svelte-qardfz\"><b> </b> <span class=\"d-note facts svelte-qardfz\"><span class=\"svelte-qardfz\"> </span><span class=\"svelte-qardfz\"> </span><span class=\"svelte-qardfz\"> </span><span class=\"svelte-qardfz\"> </span><span class=\"svelte-qardfz\"> </span></span></li>"), bh = /* @__PURE__ */ X("<section class=\"d-card pv svelte-qardfz\"><h2>By car</h2> <ul class=\"svelte-qardfz\"></ul></section>"), xh = /* @__PURE__ */ X("<a class=\"press svelte-qardfz\"><span class=\"k svelte-qardfz\">Longest trip</span><span class=\"v svelte-qardfz\"> </span> <span class=\"d-note svelte-qardfz\"> </span></a>"), Sh = /* @__PURE__ */ X("<div class=\"svelte-qardfz\"><span class=\"k svelte-qardfz\">Longest trip</span><span class=\"v svelte-qardfz\"> </span></div>"), Ch = /* @__PURE__ */ X("<a class=\"press svelte-qardfz\"><span class=\"k svelte-qardfz\">Most efficient trip</span><span class=\"v svelte-qardfz\"> </span> <span class=\"d-note svelte-qardfz\"> </span></a>"), wh = /* @__PURE__ */ X("<div class=\"svelte-qardfz\"><span class=\"k svelte-qardfz\">Most efficient trip</span><span class=\"v svelte-qardfz\"> </span><span class=\"d-note svelte-qardfz\">Trips of at least 5 km</span></div>"), Th = /* @__PURE__ */ X("<span class=\"d-note svelte-qardfz\"> </span>"), Eh = /* @__PURE__ */ X("<span class=\"d-note\"> </span>"), Dh = /* @__PURE__ */ X("<span class=\"d-note pts svelte-qardfz\"><!></span>"), Oh = /* @__PURE__ */ X("<div class=\"big\"> <small>/ 100</small><!></div>"), kh = /* @__PURE__ */ X(" <!>", 1), Ah = /* @__PURE__ */ X("<div><dt> </dt><dd> <!></dd></div>"), jh = /* @__PURE__ */ X("<li class=\"svelte-qardfz\"><span class=\"bn svelte-qardfz\"> </span><span class=\"track svelte-qardfz\"><i class=\"meter svelte-qardfz\"></i></span><span class=\"bv svelte-qardfz\"> </span></li>"), Mh = /* @__PURE__ */ X("<dl class=\"d-rows\"><div><dt>Standing</dt><dd> </dd></div></dl>"), Nh = /* @__PURE__ */ X("<!> <dl class=\"d-rows\"></dl> <div class=\"d-head bandhead\"><h2>Consumption by speed</h2><span class=\"d-note\">km/h · kWh/100 km</span></div> <ul class=\"bands svelte-qardfz\"></ul> <!>", 1), Ph = /* @__PURE__ */ X("<p class=\"d-msg\"> </p>"), Fh = /* @__PURE__ */ X("<i></i>"), Ih = /* @__PURE__ */ X("<li class=\"svelte-qardfz\"><i class=\"dot svelte-qardfz\"></i><span class=\"n svelte-qardfz\"> </span><span> </span><span class=\"pc svelte-qardfz\"> </span></li>"), Lh = /* @__PURE__ */ X("<div class=\"share-bar\" role=\"img\"></div> <ul class=\"svelte-qardfz\"></ul>", 1), Rh = /* @__PURE__ */ X("<div><div class=\"col svelte-qardfz\"><div class=\"tiles svelte-qardfz\"><div class=\"d-figs svelte-qardfz\"></div> <!></div> <!> <section class=\"d-card hl svelte-qardfz\"><h2>Highlights</h2> <ul class=\"svelte-qardfz\"><li class=\"svelte-qardfz\"><!></li> <li class=\"svelte-qardfz\"><!></li> <li class=\"svelte-qardfz\"><div class=\"svelte-qardfz\"><span class=\"k svelte-qardfz\">Recuperated</span><span class=\"v svelte-qardfz\"> </span> <!></div></li> <li class=\"svelte-qardfz\"><div class=\"svelte-qardfz\"><span class=\"k svelte-qardfz\">Cost</span><span class=\"v svelte-qardfz\"> </span> <span class=\"d-note cost svelte-qardfz\"> <!><!> <!></span></div></li></ul></section> <section class=\"d-card sty svelte-qardfz\"><div class=\"d-head\"><h2>Driving style</h2><!></div> <!></section></div> <div class=\"col svelte-qardfz\"><section class=\"d-card chartcard svelte-qardfz\"><div class=\"d-head\"><h2>Distance</h2><span class=\"d-note\"> </span></div> <!></section> <section class=\"d-card places svelte-qardfz\"><div class=\"d-head\"><h2>Charged by place</h2><span class=\"d-note\"> </span></div> <!></section></div></div> <div class=\"mapcard svelte-qardfz\"><!></div>", 1), zh = /* @__PURE__ */ X("<div class=\"page svelte-qardfz\"><h1 class=\"page-title\">Statistics</h1> <div class=\"seg svelte-qardfz\"><!></div> <div class=\"nav svelte-qardfz\"><button class=\"press svelte-qardfz\"><svg class=\"icon svelte-qardfz\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M15 5l-7 7 7 7\"></path></svg></button> <h2 aria-live=\"polite\" class=\"svelte-qardfz\"> </h2> <button class=\"press svelte-qardfz\"><svg class=\"icon svelte-qardfz\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M9 5l7 7-7 7\"></path></svg></button></div> <!></div>");
+function Bh(e, t) {
 	tt(t, !0);
 	let n = [
 		{
@@ -12047,7 +12050,7 @@ function zh(e, t) {
 		let e = l.next();
 		W(c, !0), W(s, !1);
 		try {
-			let n = await m(Xm(t.view, Y(i), Y(a)));
+			let n = await m(Zm(t.view, Y(i), Y(a)));
 			e.current && W(o, n, !0);
 		} catch {
 			e.current && W(s, !0);
@@ -12064,7 +12067,7 @@ function zh(e, t) {
 			text: `${Math.abs(n)} %`,
 			hint: t
 		};
-	}, p = (e, t, n = !1) => f(Qm(e, t), n), g = (e) => Na(e.wh_per_100km), _ = /* @__PURE__ */ B(() => Y(o)?.totals), v = /* @__PURE__ */ B(() => {
+	}, p = (e, t, n = !1) => f($m(e, t), n), g = (e) => Na(e.wh_per_100km), _ = /* @__PURE__ */ B(() => Y(o)?.totals), v = /* @__PURE__ */ B(() => {
 		if (!Y(_)) return [];
 		let e = Y(o).previous, [t, n] = [g(Y(_)), e.trips ? g(e) : null], r = t != null && n ? Number((t - n).toFixed(1)) : null;
 		return [
@@ -12095,7 +12098,7 @@ function zh(e, t) {
 				trend: p(Y(_).charged_wh, e.charged_wh)
 			}
 		];
-	}), y = /* @__PURE__ */ B(() => Y(o)?.buckets ?? []), b = /* @__PURE__ */ B(() => Y(y).map((e) => nh(Y(i), e.start))), x = /* @__PURE__ */ B(() => Y(y).map((e) => Na(e.wh_per_100km))), S = /* @__PURE__ */ B(() => ({
+	}), y = /* @__PURE__ */ B(() => Y(o)?.buckets ?? []), b = /* @__PURE__ */ B(() => Y(y).map((e) => rh(Y(i), e.start))), x = /* @__PURE__ */ B(() => Y(y).map((e) => Na(e.wh_per_100km))), S = /* @__PURE__ */ B(() => ({
 		splits: Y(b).map((e, t) => t).filter((e) => Y(i) !== "month" || Y(b)[e] === "1" || Number(Y(b)[e]) % 5 == 0),
 		values: (e, t) => t.map((e) => Y(b)[e])
 	})), C = /* @__PURE__ */ B(() => [{
@@ -12108,13 +12111,13 @@ function zh(e, t) {
 		values: Y(x),
 		scale: "y2",
 		color: "--energy"
-	}] : []]), w = /* @__PURE__ */ B(() => Y(i) === "year" ? "month" : "day"), T = /* @__PURE__ */ B(() => Y(_) ? `Distance per ${Y(w)}: ${Da(Y(_).distance_m)} in total, average ${Pa(Y(_).wh_per_100km)}` : ""), E = /* @__PURE__ */ B(() => Y(o) ? rh(Y(o).by_place) : []), D = (e, t) => e.other ? "--muted" : r[t % r.length], O = /* @__PURE__ */ B(() => Y(_) ? p(Y(_).cost.total, Y(o).previous.cost.total, !0) : null), ee = /* @__PURE__ */ B(() => Y(o)?.highlights), te = /* @__PURE__ */ B(() => Y(ee)?.gross_wh > 0 ? Math.round(Y(ee).recup_wh / Y(ee).gross_wh * 100) : null), k = /* @__PURE__ */ B(() => Y(o)?.style), A = /* @__PURE__ */ B(() => Y(k)?.km > 0 ? ih(Y(k), Y(o).previous_style) : null), ne = /* @__PURE__ */ B(() => ah(Y(A)?.points)), j = (e) => Qa(qa(e), Ja()), re = (e) => jo({
+	}] : []]), w = /* @__PURE__ */ B(() => Y(i) === "year" ? "month" : "day"), T = /* @__PURE__ */ B(() => Y(_) ? `Distance per ${Y(w)}: ${Da(Y(_).distance_m)} in total, average ${Pa(Y(_).wh_per_100km)}` : ""), E = /* @__PURE__ */ B(() => Y(o) ? ih(Y(o).by_place) : []), D = (e, t) => e.other ? "--muted" : r[t % r.length], O = /* @__PURE__ */ B(() => Y(_) ? p(Y(_).cost.total, Y(o).previous.cost.total, !0) : null), ee = /* @__PURE__ */ B(() => Y(o)?.highlights), te = /* @__PURE__ */ B(() => Y(ee)?.gross_wh > 0 ? Math.round(Y(ee).recup_wh / Y(ee).gross_wh * 100) : null), k = /* @__PURE__ */ B(() => Y(o)?.style), A = /* @__PURE__ */ B(() => Y(k)?.km > 0 ? ah(Y(k), Y(o).previous_style) : null), ne = /* @__PURE__ */ B(() => oh(Y(A)?.points)), j = (e) => Qa(qa(e), Ja()), re = (e) => jo({
 		kind: "trip",
 		vehicle_id: e.vehicle_id,
 		start: e.start
 	});
-	var ie = Rh(), ae = q(G(ie), 2), oe = G(ae), M = () => Y(i), N = u;
-	Ls(oe, {
+	var ie = zh(), ae = q(G(ie), 2), oe = G(ae), M = () => Y(i), N = u;
+	Rs(oe, {
 		get options() {
 			return n;
 		},
@@ -12129,16 +12132,16 @@ function zh(e, t) {
 	var se = q(ae, 2), ce = G(se), le = q(ce, 2), ue = K(le, !0), de = q(le, 2);
 	R(se);
 	var fe = q(se, 2), pe = (e) => {
-		var t = ph(), n = q(G(t), 2);
+		var t = mh(), n = q(G(t), 2);
 		R(t), Pr("click", n, d), Z(e, t);
 	}, me = (e) => {
-		Z(e, mh());
+		Z(e, hh());
 	}, he = (e) => {
-		var n = Lh(), r = _n(n);
+		var n = Rh(), r = _n(n);
 		let s;
 		var l = G(r), u = G(l), d = G(u);
 		mi(d, 21, () => Y(v), (e) => e.label, (e, t) => {
-			kp(e, {
+			Ap(e, {
 				get label() {
 					return Y(t).label;
 				},
@@ -12150,15 +12153,15 @@ function zh(e, t) {
 				},
 				children: (e, n) => {
 					var r = Kr(), i = _n(r), a = (e) => {
-						var n = gh(), r = G(n), i = (e) => {
-							var n = hh(), r = K(n, !0);
+						var n = _h(), r = G(n), i = (e) => {
+							var n = gh(), r = K(n, !0);
 							J(() => Q(r, Y(t).count)), Z(e, n);
 						};
 						$(r, (e) => {
 							Y(t).count && e(i);
 						});
 						var a = q(r, 2), o = (e) => {
-							uh(e, () => Y(t).trend);
+							dh(e, () => Y(t).trend);
 						};
 						$(a, (e) => {
 							Y(t).trend && e(o);
@@ -12172,16 +12175,16 @@ function zh(e, t) {
 			});
 		}), R(d);
 		var p = q(d, 2), m = (e) => {
-			var t = _h(), n = K(t);
+			var t = vh(), n = K(t);
 			J(() => Q(n, `Change against the previous ${Y(i) ?? ""}`)), Z(e, t);
 		}, h = /* @__PURE__ */ B(() => Y(v).some((e) => e.trend));
 		$(p, (e) => {
 			Y(h) && e(m);
 		}), R(u);
 		var g = q(u, 2), b = (e) => {
-			var t = yh(), n = q(G(t), 2);
+			var t = bh(), n = q(G(t), 2);
 			mi(n, 21, () => Y(o).per_vehicle, (e) => e.id, (e, t) => {
-				var n = vh(), r = G(n), i = K(r, !0), a = q(r, 2), o = G(a), s = K(o, !0), c = q(o), l = K(c, !0), u = q(c), d = K(u), f = q(u), p = K(f), m = K(q(f));
+				var n = yh(), r = G(n), i = K(r, !0), a = q(r, 2), o = G(a), s = K(o, !0), c = q(o), l = K(c, !0), u = q(c), d = K(u), f = q(u), p = K(f), m = K(q(f));
 				R(a), R(n), J((e, n, r, a, o) => {
 					Q(i, Y(t).name), Q(s, e), Q(l, n), Q(d, `${r ?? ""} used`), Q(p, `${a ?? ""} charged`), Q(m, `${o ?? ""} cost`);
 				}, [
@@ -12189,7 +12192,7 @@ function zh(e, t) {
 					() => Pa(Y(t).totals.wh_per_100km),
 					() => Oa(Y(t).totals.net_wh),
 					() => Oa(Y(t).totals.charged_wh),
-					() => us(Y(t).totals.cost.total)
+					() => ds(Y(t).totals.cost.total)
 				]), Z(e, n);
 			}), R(n), R(t), Z(e, t);
 		};
@@ -12197,7 +12200,7 @@ function zh(e, t) {
 			Y(o).per_vehicle && e(b);
 		});
 		var x = q(g, 2), ie = q(G(x), 2), ae = G(ie), oe = G(ae), M = (e) => {
-			var t = bh(), n = q(G(t)), r = K(n, !0), i = K(q(n, 2));
+			var t = xh(), n = q(G(t)), r = K(n, !0), i = K(q(n, 2));
 			R(t), J((e, n, a, o) => {
 				na(t, "href", e), Q(r, n), Q(i, `${a ?? ""} · ${o ?? ""}`);
 			}, [
@@ -12207,14 +12210,14 @@ function zh(e, t) {
 				() => j(Y(ee).longest.start)
 			]), Z(e, t);
 		}, N = (e) => {
-			var t = xh(), n = K(q(G(t)), !0);
+			var t = Sh(), n = K(q(G(t)), !0);
 			R(t), J(() => Q(n, "–")), Z(e, t);
 		};
 		$(oe, (e) => {
 			Y(ee).longest ? e(M) : e(N, -1);
 		}), R(ae);
 		var se = q(ae, 2), ce = G(se), le = (e) => {
-			var t = Sh(), n = q(G(t)), r = K(n), i = K(q(n, 2));
+			var t = Ch(), n = q(G(t)), r = K(n), i = K(q(n, 2));
 			R(t), J((e, n, a) => {
 				na(t, "href", e), Q(r, `${n ?? ""} kWh/100 km`), Q(i, `${a ?? ""} · trips of at least 5 km`);
 			}, [
@@ -12223,14 +12226,14 @@ function zh(e, t) {
 				() => j(Y(ee).most_efficient.start)
 			]), Z(e, t);
 		}, ue = (e) => {
-			var t = Ch(), n = K(q(G(t)), !0);
+			var t = wh(), n = K(q(G(t)), !0);
 			Ie(), R(t), J(() => Q(n, "–")), Z(e, t);
 		};
 		$(ce, (e) => {
 			Y(ee).most_efficient ? e(le) : e(ue, -1);
 		}), R(se);
 		var de = q(se, 2), fe = G(de), pe = q(G(fe)), me = K(pe, !0), he = q(pe, 2), ge = (e) => {
-			var t = wh(), n = K(t);
+			var t = Th(), n = K(t);
 			J((e) => Q(n, `${Y(te) ?? ""} % of the ${e ?? ""} used before recuperation`), [() => Oa(Y(ee).gross_wh)]), Z(e, t);
 		};
 		$(he, (e) => {
@@ -12238,36 +12241,36 @@ function zh(e, t) {
 		}), R(fe), R(de);
 		var _e = q(de, 2), ve = G(_e), ye = q(G(ve)), be = K(ye, !0), xe = q(ye, 2), Se = G(xe), Ce = q(Se), we = (e) => {
 			var t = Gr();
-			J((e) => Q(t, `· ${e ?? ""}`), [() => ms(Y(_).cost.total, Y(_).distance_m)]), Z(e, t);
+			J((e) => Q(t, `· ${e ?? ""}`), [() => hs(Y(_).cost.total, Y(_).distance_m)]), Z(e, t);
 		};
 		$(Ce, (e) => {
 			Y(_).distance_m && e(we);
 		});
 		var Te = q(Ce), P = (e) => {
 			var t = Gr();
-			J((e) => Q(t, `· ${e ?? ""}`), [() => gs(Y(_).cost.uncosted)]), Z(e, t);
+			J((e) => Q(t, `· ${e ?? ""}`), [() => _s(Y(_).cost.uncosted)]), Z(e, t);
 		};
 		$(Te, (e) => {
 			Y(_).cost.uncosted > 0 && e(P);
 		});
 		var Ee = q(Te, 2), De = (e) => {
-			uh(e, () => Y(O));
+			dh(e, () => Y(O));
 		};
 		$(Ee, (e) => {
 			Y(O) && e(De);
 		}), R(xe), R(ve), R(_e), R(ie), R(x);
 		var Oe = q(x, 2), ke = G(Oe), Ae = q(G(ke)), je = (e) => {
-			var t = Th(), n = K(t, !0);
+			var t = Eh(), n = K(t, !0);
 			J((e) => Q(n, e), [() => Y(k).score == null ? "No trips of 2 km or more" : ss(Y(k).score)]), Z(e, t);
 		};
 		$(Ae, (e) => {
 			Y(A) && e(je);
 		}), R(ke);
 		var Me = q(ke, 2), F = (e) => {
-			var t = Mh(), n = _n(t), r = (e) => {
-				var t = Dh(), n = G(t, !0), r = q(n, 2), i = (e) => {
-					var t = Eh();
-					uh(G(t), () => Y(ne)), R(t), Z(e, t);
+			var t = Nh(), n = _n(t), r = (e) => {
+				var t = Oh(), n = G(t, !0), r = q(n, 2), i = (e) => {
+					var t = Dh();
+					dh(G(t), () => Y(ne)), R(t), Z(e, t);
 				};
 				$(r, (e) => {
 					Y(ne) && e(i);
@@ -12279,9 +12282,9 @@ function zh(e, t) {
 			var i = q(n, 2);
 			mi(i, 21, () => Y(A).events, (e) => e.k, (e, t) => {
 				let n = /* @__PURE__ */ B(() => f(Y(t).change, !0));
-				var r = kh(), i = G(r), a = K(i, !0), o = q(i), s = G(o, !0), c = q(s), l = (e) => {
-					var t = Oh(), r = _n(t, !0);
-					r.nodeValue = " ", uh(q(r), () => Y(n)), Z(e, t);
+				var r = Ah(), i = G(r), a = K(i, !0), o = q(i), s = G(o, !0), c = q(s), l = (e) => {
+					var t = kh(), r = _n(t, !0);
+					r.nodeValue = " ", dh(q(r), () => Y(n)), Z(e, t);
 				};
 				$(c, (e) => {
 					Y(n) && e(l);
@@ -12291,7 +12294,7 @@ function zh(e, t) {
 			}), R(i);
 			var a = q(i, 4);
 			mi(a, 21, () => Y(A).bands, (e) => e.name, (e, t) => {
-				var n = Ah(), r = G(n), i = K(r, !0), a = q(r), o = G(a);
+				var n = jh(), r = G(n), i = K(r, !0), a = q(r), o = G(a);
 				let s;
 				R(a);
 				var c = K(q(a), !0);
@@ -12300,14 +12303,14 @@ function zh(e, t) {
 				}, [() => Y(t).value == null ? "–" : Y(t).value.toFixed(1)]), Z(e, n);
 			}), R(a);
 			var o = q(a, 2), s = (e) => {
-				var t = jh(), n = G(t), r = K(q(G(n)), !0);
+				var t = Mh(), n = G(t), r = K(q(G(n)), !0);
 				R(n), R(t), J((e) => Q(r, e), [() => Oa(Y(k).standing_kwh * 1e3)]), Z(e, t);
 			};
 			$(o, (e) => {
 				Y(k).standing_kwh != null && e(s);
 			}), Z(e, t);
 		}, Ne = (e) => {
-			var t = Nh(), n = K(t);
+			var t = Ph(), n = K(t);
 			J(() => Q(n, `No trips in this ${Y(i) ?? ""}.`)), Z(e, t);
 		};
 		$(Me, (e) => {
@@ -12318,7 +12321,7 @@ function zh(e, t) {
 		var Re = q(Fe, 2), ze = (e) => {
 			{
 				let t = /* @__PURE__ */ B(() => Y(y).map((e, t) => t));
-				xp(e, {
+				Sp(e, {
 					get x() {
 						return Y(t);
 					},
@@ -12335,7 +12338,7 @@ function zh(e, t) {
 				});
 			}
 		}, Be = (e) => {
-			var t = Nh(), n = K(t);
+			var t = Ph(), n = K(t);
 			J(() => Q(n, `No trips in this ${Y(i) ?? ""}.`)), Z(e, t);
 		};
 		$(Re, (e) => {
@@ -12344,9 +12347,9 @@ function zh(e, t) {
 		var Ve = q(Pe, 2), He = G(Ve), Ue = K(q(G(He)), !0);
 		R(He);
 		var We = q(He, 2), Ge = (e) => {
-			var t = Ih(), n = _n(t);
+			var t = Lh(), n = _n(t);
 			mi(n, 23, () => Y(E), (e) => e.name, (e, t, n) => {
-				var r = Ph();
+				var r = Fh();
 				let i;
 				J((e) => i = Vi(r, "", i, {
 					flex: `${Y(t).wh ?? ""} 1 0`,
@@ -12355,7 +12358,7 @@ function zh(e, t) {
 			}), R(n);
 			var r = q(n, 2);
 			mi(r, 23, () => Y(E), (e) => e.name, (e, t, n) => {
-				var r = Fh(), i = G(r);
+				var r = Ih(), i = G(r);
 				let a;
 				var o = q(i), s = K(o, !0), c = q(o), l = K(c, !0), u = K(q(c));
 				R(r), J((e, n, r) => {
@@ -12367,14 +12370,14 @@ function zh(e, t) {
 				]), Z(e, r);
 			}), R(r), J((e) => na(n, "aria-label", `Charged by place: ${e ?? ""}`), [() => Y(E).map((e) => `${e.name} ${Oa(e.wh)}`).join(", ")]), Z(e, t);
 		}, Ke = (e) => {
-			var t = Nh(), n = K(t);
+			var t = Ph(), n = K(t);
 			J(() => Q(n, `No charging in this ${Y(i) ?? ""}.`)), Z(e, t);
 		};
 		$(We, (e) => {
 			Y(E).length ? e(Ge) : e(Ke, -1);
 		}), R(Ve), R(I), R(r);
 		var qe = q(r, 2);
-		lh(G(qe), {
+		uh(G(qe), {
 			get view() {
 				return t.view;
 			},
@@ -12388,9 +12391,9 @@ function zh(e, t) {
 			s = zi(r, 1, "grid svelte-qardfz", null, s, { busy: Y(c) }), na(r, "aria-busy", Y(c)), Q(me, e), Q(be, t), Q(Se, `${n ?? ""} charging · ${i ?? ""} fixed`), Q(Le, `per ${Y(w) ?? ""}`), Q(Ue, a);
 		}, [
 			() => Oa(Y(ee).recup_wh),
-			() => us(Y(_).cost.total),
-			() => us(Y(_).cost.energy),
-			() => us(Y(_).cost.fixed),
+			() => ds(Y(_).cost.total),
+			() => ds(Y(_).cost.energy),
+			() => ds(Y(_).cost.fixed),
 			() => Oa(Y(_).charged_wh)
 		]), Z(e, n);
 	};
@@ -12398,12 +12401,12 @@ function zh(e, t) {
 		Y(s) ? e(pe) : Y(o) ? e(he, -1) : e(me, 1);
 	}), R(ie), J((e) => {
 		ce.disabled = !Y(o) || Y(c), na(ce, "aria-label", `Previous ${Y(i) ?? ""}`), Q(ue, e), de.disabled = Y(c) || !Y(o)?.period.next_at, na(de, "aria-label", `Next ${Y(i) ?? ""}`);
-	}, [() => Y(o) ? th(Y(i), Y(o).period.start, Y(o).period.end) : ""]), Pr("click", ce, () => W(a, Y(o).period.prev_at, !0)), Pr("click", de, () => W(a, Y(o).period.next_at, !0)), Z(e, ie), nt();
+	}, [() => Y(o) ? nh(Y(i), Y(o).period.start, Y(o).period.end) : ""]), Pr("click", ce, () => W(a, Y(o).period.prev_at, !0)), Pr("click", de, () => W(a, Y(o).period.next_at, !0)), Z(e, ie), nt();
 }
 Fr(["click"]);
 // src/App.svelte
-var Bh = /* @__PURE__ */ X("<p class=\"msg svelte-1n46o8q\"> </p>"), Vh = /* @__PURE__ */ X("<p class=\"msg svelte-1n46o8q\">Loading…</p>"), Hh = /* @__PURE__ */ X("<p class=\"msg svelte-1n46o8q\">No vehicles available to you.</p>");
-function Uh(e, t) {
+var Vh = /* @__PURE__ */ X("<p class=\"msg svelte-1n46o8q\"> </p>"), Hh = /* @__PURE__ */ X("<p class=\"msg svelte-1n46o8q\">Loading…</p>"), Uh = /* @__PURE__ */ X("<p class=\"msg svelte-1n46o8q\">No vehicles available to you.</p>");
+function Wh(e, t) {
 	tt(t, !0);
 	let n = /* @__PURE__ */ U(null), r = /* @__PURE__ */ U(on({
 		vehicles: [],
@@ -12455,10 +12458,10 @@ function Uh(e, t) {
 		}
 	})();
 	var g = Kr(), _ = _n(g), v = (e) => {
-		var t = Bh(), n = K(t, !0);
+		var t = Vh(), n = K(t, !0);
 		J(() => Q(n, Y(s))), Z(e, t);
 	}, y = (e) => {
-		Z(e, Vh());
+		Z(e, Hh());
 	}, b = (e) => {
 		ko(e, {
 			get page() {
@@ -12478,20 +12481,20 @@ function Uh(e, t) {
 			},
 			children: (e, t) => {
 				var r = Kr(), a = _n(r), s = (e) => {
-					qm(e, {});
+					Jm(e, {});
 				}, c = (e) => {
-					Z(e, Hh());
+					Z(e, Uh());
 				}, l = (e) => {
 					var t = Kr();
 					li(_n(t), () => Y(i), (e) => {
-						zh(e, { get view() {
+						Bh(e, { get view() {
 							return Y(i);
 						} });
 					}), Z(e, t);
 				}, u = (e) => {
 					var t = Kr();
 					li(_n(t), () => Y(i), (e) => {
-						xm(e, {
+						Sm(e, {
 							get view() {
 								return Y(i);
 							},
@@ -12516,7 +12519,7 @@ function Uh(e, t) {
 	}), Z(e, g), nt();
 }
 // src/main.js
-var Wh = (e) => $r(Uh, { target: e }), Gh = () => new Promise((e) => {
+var Gh = (e) => $r(Wh, { target: e }), Kh = () => new Promise((e) => {
 	let t = new URL(
 		/* @vite-ignore */
 		"panel.css",
@@ -12532,9 +12535,9 @@ var Wh = (e) => $r(Uh, { target: e }), Gh = () => new Promise((e) => {
 customElements.define("car-insights-panel", class extends HTMLElement {
 	#e = !1;
 	set hass(e) {
-		d(e), !this.#e && (this.#e = !0, this.style.display = "block", this.style.height = "100%", Gh().then(() => {
+		d(e), !this.#e && (this.#e = !0, this.style.display = "block", this.style.height = "100%", Kh().then(() => {
 			let e = this.appendChild(document.createElement("div"));
-			e.id = "app", Wh(e);
+			e.id = "app", Gh(e);
 		}));
 	}
 });

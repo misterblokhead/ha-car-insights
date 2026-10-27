@@ -155,5 +155,5 @@ test("bandRows gives each band its share of distance and consumption", () => {
 });
 
 test("noDataLine formats the last update", () => {
-  assert.equal(noDataLine(Date.UTC(2026, 9, 1, 10)), "No data since Thu 1 Oct");
+  assert.equal(noDataLine(Date.UTC(2026, 9, 1, 10), Date.UTC(2026, 9, 27)), "No data since Thu 1 Oct");
 });
