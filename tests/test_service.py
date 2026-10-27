@@ -163,20 +163,26 @@ async def test_language(hass):
     assert ha_adapters.language(hass) == "en"
 
 
+CLOUD = {"preset": "renault", "device_id": None, "entities": {"charge_level": "reg1", "odometer": "reg2"}, "source_id": "ha_entities-1a2b3c4d"}
+
+
 async def test_poller_confs_from_entry_options(hass):
-    MockConfigEntry(domain=DOMAIN, data={"vehicle_id": "car1"}, options={"cloud": {"mapping": "renault", "entity_stem": "invented_zoe"}}).add_to_hass(hass)
-    MockConfigEntry(domain=DOMAIN, data={"vehicle_id": "car2"}, options={}).add_to_hass(hass)  # no cloud source
     svc = await Service.acquire(hass)
-    assert svc.confs == [SourceConf("car1", "renault", "invented_zoe")]
-    assert svc.poller._confs == svc.confs
+    await svc.configure(MockConfigEntry(domain=DOMAIN, title="Car 1", data={"vehicle_id": "car1", "webhook_id": "w"}, options={"cloud": CLOUD}))
+    await svc.configure(MockConfigEntry(domain=DOMAIN, title="Car 2", data={"vehicle_id": "car2"}, options={"cloud": CLOUD}))
+    await svc.configure(MockConfigEntry(domain=DOMAIN, title="Car 3", data={"vehicle_id": "car3"}, options={}))  # no cloud source
+    assert svc.poller._confs == {"car1": SourceConf("car1", "ha_entities-1a2b3c4d", CLOUD["entities"], True),
+                                 "car2": SourceConf("car2", "ha_entities-1a2b3c4d", CLOUD["entities"], False)}  # no webhook: no car app
+    await svc.unconfigure("car1")
+    assert list(svc.poller._confs) == ["car2"]
     await Service.release(hass)
 
 
 async def test_poller_skips_entry_with_bad_cloud_options(hass, caplog):
-    MockConfigEntry(domain=DOMAIN, title="Broken car", data={"vehicle_id": "car1"}, options={"cloud": {"bogus": 1}}).add_to_hass(hass)
-    MockConfigEntry(domain=DOMAIN, title="Good car", data={"vehicle_id": "car2"}, options={"cloud": {"mapping": "renault", "entity_stem": "invented_zoe"}}).add_to_hass(hass)
     svc = await Service.acquire(hass)
-    assert svc.confs == [SourceConf("car2", "renault", "invented_zoe")]
+    await svc.configure(MockConfigEntry(domain=DOMAIN, title="Broken car", data={"vehicle_id": "car1"}, options={"cloud": {"bogus": 1}}))
+    await svc.configure(MockConfigEntry(domain=DOMAIN, title="Good car", data={"vehicle_id": "car2"}, options={"cloud": CLOUD}))
+    assert list(svc.poller._confs) == ["car2"]
     assert "Broken car" in caplog.text
     await Service.release(hass)
 

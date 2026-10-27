@@ -3,8 +3,9 @@ from bisect import bisect_left, bisect_right
 from dataclasses import asdict
 from typing import Callable
 
-from . import db, route, series, store, style
+from . import coarse, db, route, series, store, style
 from .charges import KEYS as CHARGE_KEYS, Charge, find_charges
+from .coarse import find_cloud_trips
 from .kinds import CHARGE, KINDS, TRIP
 from .odometer import chain
 from .protocol import FUTURE_SLACK_MS, Sample
@@ -14,7 +15,7 @@ from .zones import Zones
 log = logging.getLogger(__name__)
 ALGO = 11  # 11: the charge series drops battery_wh flicker (no more kW spikes in the charging speed); 10: tuned style thresholds, band energy split by distance, standing energy; 9: every trip carries its driving style (events, score, energy and distance per speed band) and its series the events; 8: battery_wh flicker (readings replaced within 1 s) is no gross or recuperation; bump when trip/charge derivation changes: stored rows of the old version are dropped and rebuilt
 ESTIMATE_HOLD_MS = 7 * 86_400_000  # a SoC-estimated charge this recent is re-derived on every update: the car's value may still arrive
-KEYS = tuple(sorted({*TRIP_KEYS, *CHARGE_KEYS, *series.KEYS}))  # the only sample keys derivation loads
+KEYS = tuple(sorted({*TRIP_KEYS, *CHARGE_KEYS, *series.KEYS, *coarse.KEYS}))  # the only sample keys derivation loads
 
 
 def _trip_wire(t: Trip, zones: Zones, odo: tuple[float | None, float | None]) -> dict:
@@ -34,6 +35,11 @@ def _trip_parts(t: Trip, span: list[Sample], zones: Zones, odo: tuple[float | No
     return {**r, "style": style.measure(span, r["start_wh"], r["start"], r["distance_m"], found)}, series.trip(span, r["start_wh"], r["start"], found)
 
 
+def _cloud_trip_parts(t: Trip, span: list[Sample], zones: Zones, odo: tuple[float | None, float | None]) -> tuple[dict, None]:
+    """an approximate trip's row: no driving style and no series, the readings are minutes apart"""
+    return {**_trip_wire(t, zones, odo), "style": None, "approx": True}, None
+
+
 def _held(c: dict, received_ms: int) -> bool:
     """A recent SoC-estimated charge is re-derived until the car's own value replaces it; one with no car reading before its start
     (start_wh null) can never be refined, so it holds nothing."""
@@ -50,10 +56,14 @@ def _charge_parts(c: Charge, span: list[Sample], zones: Zones, spots: Zones) -> 
 
 
 class Deriver:
-    def __init__(self, conn, zones: Zones, capacity: Callable[[str], float] = lambda vid: 60_000.0, spots: Zones = lambda lat, lon: None):
+    def __init__(self, conn, zones: Zones, capacity: Callable[[str], float] = lambda vid: 60_000.0, spots: Zones = lambda lat, lon: None,
+                 cloud_only: Callable[[str], bool] = lambda vid: False):
         self._conn, self._zones, self._capacity, self._spots = conn, zones, capacity, spots
+        self.cloud_only = cloud_only  # a vehicle without the car app: its trips are approximate, found from its cloud readings
+        self.horizon: dict[str, int] = {}  # vehicle -> the time up to which its cloud source has been read (set by set_horizon)
         self._idle: dict[str, int] = {}  # vehicle -> newest sample t read while nothing was open: the next window starts there
         self._ignition: set[str] = set()  # vehicles known to send an ignition signal (it never goes away)
+        self._ignition_conf: dict[str, bool] = {}  # cloud-only vehicle -> whether its source reads an ignition entity now (see set_ignition)
         self._cloud: set[str] = set()  # vehicles with a cloud source (charging_state samples)
         # vehicle -> start of its trip closed by the quiet rule alone: once the car is back its backlog may extend that trip;
         # a rejoined trip fires a second ended event (same start) at its real close
@@ -64,8 +74,41 @@ class Deriver:
         """Delete the rows of every vehicle with a row of another derivation version, so it is derived whole again."""
         with db.tx(self._conn):
             for vid in store.stale_vehicles(self._conn, ALGO):
-                for kind in KINDS:
-                    store.purge(self._conn, kind, vid)
+                self.purge(vid)
+
+    def purge(self, vid: str) -> None:
+        """Delete the rows of a vehicle of every kind and forget it, so it is derived whole again. In the caller's transaction."""
+        for kind in KINDS:
+            store.purge(self._conn, kind, vid)
+        self.forget(vid)
+
+    def set_horizon(self, vid: str, t: int) -> None:
+        """The time up to which a vehicle's cloud source has been read (after each poll)."""
+        self.horizon[vid] = t
+
+    def forget(self, vid: str) -> None:
+        """Drop what is remembered of a vehicle (its rows were purged, or it changed kind): the next update starts from scratch."""
+        for memo in (self._idle, self._quiet):
+            memo.pop(vid, None)
+        self._ignition.discard(vid)
+        self._cloud.discard(vid)
+        self.horizon.pop(vid, None)  # the next poll sets a new one; until then the stored samples are the evidence
+
+    def has_ignition(self, vid: str) -> bool:
+        """Whether to find trips by ignition. A cloud-only vehicle follows what its source reads now (set_ignition; its history may hold
+        samples of an entity that was dropped); a car-app one, and a cloud-only one not configured yet, what its history has sent."""
+        if self.cloud_only(vid) and vid in self._ignition_conf:
+            return self._ignition_conf[vid]
+        if vid not in self._ignition and db.has_key(self._conn, vid, "ignition"):
+            self._ignition.add(vid)
+        return vid in self._ignition
+
+    def set_ignition(self, vid: str, on: bool) -> None:
+        """A cloud-only vehicle's source reads an ignition entity (or not). A change derives the vehicle again from its newest closed end."""
+        changed = self.has_ignition(vid) != on
+        self._ignition_conf[vid] = on
+        if changed:
+            self.forget(vid)
 
     def _is_quiet(self, vid: str, received_ms: int) -> bool:
         """The car's own senders have delivered nothing for QUIET_MS, so no backlog is draining."""
@@ -109,8 +152,7 @@ class Deriver:
             old = {k: store.rows_after(conn, k, vid, w) for k in KINDS}
             for k in KINDS:  # the series and routes go with their rows
                 store.drop_after(conn, k, vid, w)
-            if vid not in self._ignition and db.has_key(conn, vid, "ignition"):
-                self._ignition.add(vid)
+            ignition = self.has_ignition(vid)
             if vid not in self._cloud and db.has_key(conn, vid, "charging_state"):
                 self._cloud.add(vid)
             # samples stamped far in the future (a bad clock) are no data yet
@@ -136,15 +178,27 @@ class Deriver:
                     elif last_charge_end > plug_t:
                         seed[k] = False
                         seed["plugged_held"] = vid in self._cloud
-            # a cloud report is no proof the car slept: find_trips sees only its own keys
-            raw_trips = find_trips([x for x in samples if x.k in TRIP_KEYS], seed, vid in self._ignition, quiet)
+            approx = self.cloud_only(vid)
+            if approx:
+                # the finder opens an ignition trip only at its ignition-on sample, so the window must reach it: an open row straddles
+                # the window start (_window_start), which pulls the window back to that sample.
+                # The cloud data is complete up to the poll's horizon and up to the newest stored sample (a rebuild has no horizon yet),
+                # whichever is later; a window never reads past received + FUTURE_SLACK_MS, so that caps it.
+                known = [h for h in (self.horizon.get(vid), samples[-1].t if samples else None) if h is not None]
+                raw_trips = find_cloud_trips([x for x in samples if x.k in coarse.KEYS], seed, ignition, self._capacity(vid),
+                                             min(max(known), received_ms + FUTURE_SLACK_MS) if known else None)
+            else:
+                # a cloud report is no proof the car slept: find_trips sees only its own keys
+                raw_trips = find_trips([x for x in samples if x.k in TRIP_KEYS], seed, ignition, quiet)
+            parts = _cloud_trip_parts if approx else _trip_parts
+            trip_parts = lambda t, span: parts(t, span, self._zones, chain(conn, vid, t.start, t.distance_m))
             for trip in raw_trips:
                 if trip.quiet_closed:
                     self._quiet[vid] = trip.start
             raw_charges = find_charges(samples, seed, vid in self._cloud, self._capacity(vid))
             # what differs per kind: what was found and how it and its samples become a row and a series (a trip in start order:
             # earlier closed trips are already stored, so chain sees them)
-            per_kind = ((TRIP, raw_trips, lambda t, span: _trip_parts(t, span, self._zones, chain(conn, vid, t.start, t.distance_m))),
+            per_kind = ((TRIP, raw_trips, trip_parts),
                         (CHARGE, raw_charges, lambda c, span: _charge_parts(c, span, self._zones, self._spots)))
             stored: dict = {k: [] for k in KINDS}
             new: dict[str, list[dict]] = {k.table: [] for k in KINDS}

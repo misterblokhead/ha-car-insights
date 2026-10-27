@@ -10,6 +10,7 @@ from custom_components.car_insights.core import access, costs, db, prices, store
 from custom_components.car_insights.core.derive import ESTIMATE_HOLD_MS, Deriver
 from custom_components.car_insights.core.kinds import CHARGE, TRIP
 from custom_components.car_insights.core import pipeline, summary
+from custom_components.car_insights.core.publisher import Publisher
 from custom_components.car_insights.core.pipeline import REBUILD_STEP_MS, App, close_quiet, ingested, rebuild, reply, republish
 from custom_components.car_insights.core.trips import QUIET_MS
 from custom_components.car_insights.core.zones import Zone, ZoneCache
@@ -516,3 +517,131 @@ def test_upgrade_keeps_receipt_and_spot(tmp_path):
     [charge] = store.closed(conn, CHARGE, "car1")
     assert charge["place"] == "Plaza" and charge["zone"] is None
     assert costs.charge_cost(prices.book(conn, "car1"), charge)["basis"] == "receipt"
+
+
+# --- cloud-only vehicles ---
+CLOUD = "ha_entities-0000abcd"
+T0 = 1_700_000_000_000  # invented
+MIN = 60_000
+
+
+def cloud_app(env):
+    conn, mqtt, _, sensors, totals = env
+    deriver = Deriver(conn, lambda la, lo: "Home", CAP, cloud_only=lambda vid: db.is_cloud_only(conn, vid))
+    return make_app(env, deriver), Publisher(conn, mqtt, CAP)
+
+
+def poll(app, pub, vid, samples, received, known_until):
+    """what the poller does: store the samples, then report the poll"""
+    db.ingest(app.conn, vid, CLOUD, samples, received)
+    pipeline.polled(app, pub, vid, samples, received, known_until)
+
+
+def test_polled_closes_an_open_cloud_trip_without_new_samples_and_fires_one_event(env):
+    conn, mqtt, *_ = env
+    app, pub = cloud_app(env)
+    db.set_vehicle(conn, "car9", "Invented", True)
+    poll(app, pub, "car9", [s(T0 + i * MIN, "odometer_km", v) for i, v in enumerate([1000.0, 1001.0, 1003.0, 1006.0])], T0 + 5 * MIN, T0 + 4 * MIN)
+    assert store.current_trip(conn, "car9")["end"] is None and mqtt.on("car_insights/car9/trip_event") == []
+    pipeline.polled(app, pub, "car9", [], T0 + 10 * MIN, T0 + 9 * MIN)  # nothing new, not yet ten quiet minutes
+    assert store.current_trip(conn, "car9")["end"] is None
+    pipeline.polled(app, pub, "car9", [], T0 + 16 * MIN, T0 + 15 * MIN)
+    assert store.current_trip(conn, "car9") is None and app.deriver.horizon["car9"] == T0 + 15 * MIN
+    assert [e["event_type"] for e, _ in mqtt.on("car_insights/car9/trip_event")] == ["ended"]
+    pipeline.polled(app, pub, "car9", [], T0 + 17 * MIN, T0 + 16 * MIN)  # nothing open: no work, no second event
+    assert len(mqtt.on("car_insights/car9/trip_event")) == 1 and len(mqtt.on("car_insights/car9/last_trip")) == 1
+
+
+def test_polled_without_samples_derives_nothing_for_a_car_app_vehicle_or_an_idle_one(env, monkeypatch):
+    conn, *_ = env
+    app, pub = cloud_app(env)
+    db.set_vehicle(conn, "car9", "Invented", True)
+    db.set_vehicle(conn, "car1", "Meg", False)
+    seen = []
+    monkeypatch.setattr(pipeline, "ingested", lambda *a: seen.append(a))
+    pipeline.polled(app, pub, "car9", [], T0, T0)  # a cloud-only vehicle with no open trip
+    conn.execute("INSERT INTO trips(vehicle_id, start, end, algo, json) VALUES('car1', 1, NULL, 11, '{}')")
+    pipeline.polled(app, pub, "car1", [], T0, T0)  # a car-app vehicle: its own senders drive its derivation
+    assert seen == []
+
+
+def test_polled_publishes_live_state_for_cloud_samples(env, monkeypatch):
+    conn, mqtt, *_ = env
+    app, pub = cloud_app(env)
+    db.set_vehicle(conn, "car9", "Invented", True)
+    seen = []
+    real = pipeline.ingested
+    monkeypatch.setattr(pipeline, "ingested", lambda app, vid, min_t, received: seen.append((vid, min_t, received)) or real(app, vid, min_t, received))
+    poll(app, pub, "car9", [s(T0 + MIN, "battery_wh", 31_000.0), s(T0, "battery_wh", 30_000.0)], T0 + 2 * MIN, T0 + MIN)
+    assert seen == [("car9", T0, T0 + 2 * MIN)]  # from the oldest sample
+    assert mqtt.on("car_insights/car9/state")[-1][0]["battery_kwh"] == 31.0
+    assert any(t.startswith("homeassistant/") and "car9" in t for t in mqtt.topics)
+    assert pub._device["car9"][0] == "Invented"  # the device carries the stored name
+
+
+def test_rebuild_of_one_vehicle_after_a_kind_switch_replaces_its_trips(env):
+    conn, mqtt, *_ = env
+    app, pub = cloud_app(env)
+    now = 10_000_000
+    for vid in ("car1", "car2"):  # both are car-app vehicles at first, with an odometer reading around the drive
+        db.set_vehicle(conn, vid, vid, False)
+        db.ingest(conn, vid, SRC, [*trip_samples(now - 400_000), s(now - 401_000, "odometer_km", 100.0), s(now - 200_000, "odometer_km", 101.0),
+                                   s(now + 700_000, "odometer_km", 101.0)], now)  # the last one proves ten quiet minutes: a rebuild has no horizon
+        ingested(app, vid, None, now)
+    before = {vid: store.closed(conn, TRIP, vid) for vid in ("car1", "car2")}
+    assert "approx" not in before["car1"][0] and before["car1"][0]["style"] is not None and len(before["car2"]) == 1
+    db.set_vehicle(conn, "car1", "car1", True)  # the owner switched it to a cloud source
+    app.deriver.horizon["car1"] = now  # a horizon of its earlier life must not survive
+    rebuild(app, now, ["car1"])
+    assert "car1" not in app.deriver.horizon
+    (trip,) = store.closed(conn, TRIP, "car1")
+    assert trip["approx"] is True and trip["style"] is None and trip["distance_m"] == pytest.approx(1000)
+    assert store.series(conn, TRIP, "car1", trip["start"]) is None
+    assert store.closed(conn, TRIP, "car2") == before["car2"] and store.series(conn, TRIP, "car2", before["car2"][0]["start"]) is not None
+    assert mqtt.on("car_insights/car1/last_trip")[-1][0]["distance_km"] == 1.0  # republished
+    assert len(mqtt.on("car_insights/car1/trip_event")) == 1  # the original close only
+
+
+def test_rebuild_of_named_vehicles_leaves_the_others_stale_rows_alone(env):
+    conn, *_ = env
+    app, _ = cloud_app(env)
+    now = 10_000_000
+    for vid in ("car1", "car2"):
+        db.ingest(conn, vid, SRC, trip_samples(now - 200_000), now)
+        ingested(app, vid, None, now)
+    conn.execute("UPDATE trips SET algo=algo-1")
+    rebuild(app, now, ["car1"])
+    assert [r[0] for r in conn.execute("SELECT vehicle_id FROM trips WHERE algo=(SELECT MAX(algo) FROM trips)")] == ["car1"]
+    assert conn.execute("SELECT COUNT(*) FROM trips WHERE vehicle_id='car2'").fetchone()[0] == 1  # not purged for nothing
+
+
+def test_polled_derives_from_the_late_window_only_but_always_publishes(env, monkeypatch):
+    conn, mqtt, *_ = env
+    app, pub = cloud_app(env)
+    db.set_vehicle(conn, "car9", "Invented", True)
+    seen = []
+    monkeypatch.setattr(pipeline, "ingested", lambda app, vid, min_t, received: seen.append(min_t))
+    now = T0 + 100 * DAY
+    poll(app, pub, "car9", [s(now - 40 * DAY, "battery_wh", 30_000.0)], now, now)  # older than the late window
+    poll(app, pub, "car9", [s(now + 2 * DAY, "battery_wh", 30_000.0)], now, now)  # stamped in the future
+    assert seen == [] and len(mqtt.on("car_insights/car9/state")) == 1  # the old sample is published; a future one is no live state
+    poll(app, pub, "car9", [s(now - 2 * DAY, "battery_wh", 31_000.0), s(now - 40 * DAY, "battery_wh", 1.0), s(now + 2 * DAY, "battery_wh", 1.0)], now, now)
+    assert seen == [now - 2 * DAY]  # the oldest sample inside the window
+
+
+def test_rebuild_without_a_horizon_derives_every_cloud_trip(env):
+    conn, *_ = env
+    app, _ = cloud_app(env)
+    db.set_vehicle(conn, "car9", "Invented", True)
+    drive = lambda on, lo, hi: [s(on - MIN, "odometer_km", lo), s(on, "ignition", 4), s(on + 20 * MIN, "ignition", 2), s(on + 21 * MIN, "odometer_km", hi)]
+    db.ingest(conn, "car9", CLOUD, [*drive(T0, 1000.0, 1010.0), *drive(T0 + 3_600_000, 1010.0, 1020.0), s(T0 + 5_500_000, "odometer_km", 1020.0)], T0 + 6_000_000)
+    rebuild(app, T0 + 6_000_000, ["car9"])
+    assert [t["start"] for t in store.closed(conn, TRIP, "car9")] == [T0 + 3_600_000, T0] and store.current_trip(conn, "car9") is None
+
+
+def test_polled_publishes_no_live_state_for_a_car_app_vehicle(env):
+    conn, mqtt, *_ = env
+    app, pub = cloud_app(env)
+    db.set_vehicle(conn, "car1", "Meg", False)  # a car app delivers the live state: a cloud report must not move last_seen
+    poll(app, pub, "car1", [s(T0, "soc_percent", 50.0)], T0 + MIN, T0 + MIN)
+    assert pub._states == {} and mqtt.on("car_insights/car1/state") == []

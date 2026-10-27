@@ -2,25 +2,117 @@
   "config": {
     "step": {
       "user": {
-        "title": "Add a vehicle",
+        "title": "Add a car",
         "data": {
-          "vehicle_id": "Vehicle ID (letters, digits, - and _)",
-          "vehicle_name": "Vehicle name"
+          "vehicle_name": "Car name",
+          "source": "How does Car Insights get this car's data?"
+        },
+        "sections": {
+          "advanced": {
+            "name": "Advanced",
+            "data": {
+              "vehicle_id": "Car ID (letters, digits, - and _)"
+            },
+            "data_description": {
+              "vehicle_id": "Leave empty to use the car's name as its ID."
+            }
+          }
+        }
+      },
+      "cloud_device": {
+        "title": "Pick the car's device",
+        "description": "Pick the device of your car's Home Assistant integration."
+      },
+      "cloud_entities": {
+        "title": "Match the car's entities",
+        "description": "Preset: {preset}. A preset fills in the entities it knows for your car's integration: check them and pick the rest yourself. Charge level and Odometer are required, the other readings are optional. The capacity is the car's usable battery capacity.",
+        "data": {
+          "charge_level": "Charge level",
+          "odometer": "Odometer",
+          "range": "Range",
+          "location": "Location",
+          "charging": "Charging",
+          "plugged": "Plugged in",
+          "battery_energy": "Battery energy",
+          "speed": "Speed",
+          "ignition": "Driving / ignition",
+          "report_time": "Report time",
+          "capacity_kwh": "Battery capacity (kWh)"
         }
       }
     },
     "error": {
       "invalid_vehicle_id": "Use 1-64 letters, digits, - or _.",
-      "invalid_vehicle_name": "The name must be a single line."
+      "invalid_vehicle_name": "The name must be a single line.",
+      "vehicle_id_taken": "Another car already uses this ID.",
+      "vehicle_name_taken": "Another car already has this name. Change the name, or set a different ID under Advanced.",
+      "vehicle_name_unusable": "This name cannot be turned into an ID; set one under Advanced.",
+      "entity_not_in_registry": "This entity has no unique ID, so Car Insights cannot follow it. Pick an entity that can be managed in the UI."
     },
     "abort": {
       "already_configured": "This vehicle is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Car Insights",
+        "menu_options": {
+          "cloud_device": "Change the car's integration entities",
+          "remove_cloud": "Stop reading the car's integration"
+        }
+      },
+      "cloud_device": {
+        "title": "Change the car's integration entities",
+        "description": "Pick the device of your car's Home Assistant integration."
+      },
+      "cloud_add": {
+        "title": "Add your car's integration",
+        "description": "Pick the device of your car's Home Assistant integration."
+      },
+      "cloud_entities": {
+        "title": "Match the car's entities",
+        "description": "Preset: {preset}. A preset fills in the entities it knows for your car's integration: check them and pick the rest yourself. Charge level and Odometer are required, the other readings are optional. The capacity is the car's usable battery capacity.",
+        "data": {
+          "charge_level": "Charge level",
+          "odometer": "Odometer",
+          "range": "Range",
+          "location": "Location",
+          "charging": "Charging",
+          "plugged": "Plugged in",
+          "battery_energy": "Battery energy",
+          "speed": "Speed",
+          "ignition": "Driving / ignition",
+          "report_time": "Report time",
+          "capacity_kwh": "Battery capacity (kWh)"
+        }
+      }
+    },
+    "error": {
+      "entity_not_in_registry": "This entity has no unique ID, so Car Insights cannot follow it. Pick an entity that can be managed in the UI."
+    }
+  },
+  "selector": {
+    "source": {
+      "options": {
+        "car_app": "Car app (Android Automotive)",
+        "cloud": "My car's Home Assistant integration",
+        "both": "Both"
+      }
     }
   },
   "issues": {
     "import_failed": {
       "title": "The add-on's export could not be imported",
       "description": "Car Insights could not import the export of the Car Insights add-on, so it started with an empty database. The error was: {error}\n\nThe export file (/share/car_insights/export.db) is untouched. Fix the cause and restart Home Assistant to try again. The retry adds the export to the database: the car data received meanwhile is kept, but settings made in the meantime (prices, groups, viewers, costs) are not carried over."
+    },
+    "cloud_entity_missing": {
+      "title": "{vehicle}: some car data is missing",
+      "description": "Car Insights can no longer find these entities of {vehicle}: {readings}. They were probably removed or their integration was. Pick them again in Settings > Devices & services > Car Insights > Configure."
+    },
+    "cloud_entity_missing_required": {
+      "title": "{vehicle}: Car Insights paused its cloud data",
+      "description": "Car Insights can no longer find these entities of {vehicle}: {readings}. Without them it has paused reading this car's cloud data; nothing is lost, it catches up on up to 10 days once you pick them again in Settings > Devices & services > Car Insights > Configure."
     }
   }
 }

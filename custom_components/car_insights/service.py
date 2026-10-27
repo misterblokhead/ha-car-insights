@@ -2,21 +2,25 @@
 import asyncio
 import logging
 import time
+from contextlib import suppress
 from functools import partial
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.loader import async_get_integration
 
 from . import bridge, ha_adapters, importer
+from .cloud_setup import convert_legacy, has_car_app, source_conf
 from .const import DOMAIN
 from .core import capacity as capacity_learning, costs, db, geocode, pipeline, prices
 from .core.access import Viewer
 from .core.derive import Deriver
+from .core.ha_entities import READINGS, REQUIRED
 from .core.ha_mqtt import Sink
 from .core.ingest import handle_batch
 from .core.poller import Poller, SourceConf
@@ -43,7 +47,7 @@ class Service:
         self.hass, self.refs = hass, 0
         self.worker = Worker("car-insights")
         self.imported = importer.ImportResult()
-        self.confs: list[SourceConf] = []  # read when the service starts: an entry added later is polled after the next start
+        self._live: dict[str, str] = {}  # vehicle id -> entry title, of the entries configured now (the issues' names; on HA's loop)
         self._ready: asyncio.Future | None = None
         self.paused = False  # between a backup's start and its end
         self._unhold: asyncio.TimerHandle | None = None
@@ -87,13 +91,6 @@ class Service:
         directory = Path(hass.config.path("car_insights"))
         await hass.async_add_executor_job(partial(directory.mkdir, exist_ok=True))
         await self._import_export()
-        self.confs = []
-        for e in hass.config_entries.async_entries(DOMAIN):
-            if "cloud" in e.options:
-                try:
-                    self.confs.append(SourceConf(vehicle_id=e.data["vehicle_id"], **e.options["cloud"]))
-                except (TypeError, KeyError):
-                    log.warning("Skipping the cloud source of %s: its options do not fit", e.title)
         sink = bridge.async_get(hass)  # made here, on HA's loop: the worker thread only publishes to it
         version = (await async_get_integration(hass, DOMAIN)).version
         self.worker.start()
@@ -121,6 +118,11 @@ class Service:
             if entry is None:
                 log.warning("Not applying the imported cloud source: its entry was removed meanwhile")
                 continue
+            try:
+                cloud = convert_legacy(hass, entry.data["vehicle_id"], cloud)
+            except ValueError as err:
+                log.warning("Not applying the imported cloud source of %s: %s", entry.title, err)
+                continue
             hass.config_entries.async_update_entry(entry, options={**entry.options, "cloud": cloud})
 
     async def _stop(self) -> None:
@@ -147,14 +149,16 @@ class Service:
             return db.capacity_wh(conn, vid, db.default_capacity_kwh(conn) * 1000)
 
         zones = self.zones = ZoneCache(lambda: ha_adapters.zones(hass))
-        deriver = Deriver(conn, zones, capacity, spots=lambda lat, lon: prices.spot_name_at(conn, lat, lon))
+        deriver = Deriver(conn, zones, capacity, spots=lambda lat, lon: prices.spot_name_at(conn, lat, lon),
+                          cloud_only=lambda vid: db.is_cloud_only(conn, vid))
         sensors = TripSensors(conn, sink, capacity,
                               trip_cost=lambda vid, row: costs.trip_cost(conn, vid, row, tz)["total"],
                               charge_cost=lambda vid, row: costs.charge_cost(prices.book(conn, vid), row)["amount"])
         app = self.app = pipeline.App(conn, deriver, sensors, TotalsSensors(conn, sink, tz), tz, capacity, zones, lambda: zones.loaded)
         zones.on_change = partial(pipeline.relabel, app)  # the cache and the app need each other: only now can a fetch rename places
-        self.poller = Poller(conn, self.confs, lambda ids, a, b: ha_adapters.history(hass, ids, a, b), partial(pipeline.ingested, app))
         self.publisher = Publisher(conn, sink, capacity)
+        self.poller = Poller(conn, lambda ids, a, b, attrs: ha_adapters.history(hass, ids, a, b, attrs), lambda rids: ha_adapters.resolve(hass, rids),
+                             partial(pipeline.polled, app, self.publisher), self._on_missing)
         self.ui_api = UiApi(conn, zones, tz, capacity, on_settings=app.totals.publish_groups, on_costs=partial(pipeline.republish, app),
                             relabel=partial(pipeline.relabel, app))
         # before the first ingest and run_daily's first publish: an ALGO bump emptied the rows
@@ -170,6 +174,48 @@ class Service:
                     partial(geocode.run, conn, partial(geocode.fetch, language=language, version=version), _now_ms, lambda: zones.loaded,
                             lambda lat, lon: zones.covers(lat, lon) or prices.spot_name_at(conn, lat, lon) is not None)):
             self.worker.spawn(job)
+
+    async def configure(self, entry: ConfigEntry) -> None:
+        """Take an entry's vehicle and its cloud source into the running service (the entry's setup and reload call it)."""
+        await asyncio.shield(self._ready)
+        vid, capacity = entry.data["vehicle_id"], (entry.options.get("cloud") or {}).get("capacity_kwh")
+        self._live[vid] = entry.title
+        await asyncio.wrap_future(self.worker.call(self._configure, vid, entry.title, not has_car_app(entry), capacity, source_conf(entry)))
+
+    def _configure(self, vid: str, title: str, cloud_only: bool, capacity_kwh: float | None, conf: SourceConf | None) -> None:
+        """On the worker. A vehicle that changed kind loses its derived rows and gets them again from its samples."""
+        if cloud_only:  # its trips follow what its source reads now, before any rebuild below
+            self.app.deriver.set_ignition(vid, conf is not None and "ignition" in conf.entities)
+        if db.set_vehicle(self.conn, vid, title, cloud_only):
+            pipeline.rebuild(self.app, _now_ms(), [vid])
+            pipeline.publish_totals(self.app, vid)  # rebuild republishes the last trip and charge only
+        if cloud_only and capacity_kwh is not None:  # a car with the car app keeps the capacity it learned
+            try:
+                db.apply_capacity_option(self.conn, vid, capacity_kwh)
+            except (TypeError, ValueError):
+                log.warning("Ignoring the capacity of %s: %r is not a positive number of kWh", title, capacity_kwh)
+        self.poller.set_conf(vid, conf)
+
+    async def unconfigure(self, vehicle_id: str) -> None:
+        """Stop reading a vehicle's cloud source and drop its repair; its samples stay."""
+        self._live.pop(vehicle_id, None)
+        ir.async_delete_issue(self.hass, DOMAIN, f"cloud_entity_missing_{vehicle_id}")
+        with suppress(RuntimeError):  # a stopped worker polls nothing
+            await asyncio.wrap_future(self.worker.call(self.poller.set_conf, vehicle_id, None))
+
+    def _on_missing(self, vid: str, readings: list[str]) -> None:
+        """On the worker, when the readings a vehicle's source cannot find change: raise or clear its repair on HA's loop."""
+        self.hass.loop.call_soon_threadsafe(self._set_issue, vid, readings)
+
+    def _set_issue(self, vid: str, readings: list[str]) -> None:
+        issue_id = f"cloud_entity_missing_{vid}"
+        if vid not in self._live or not readings:  # an entry unloaded meanwhile leaves no repair behind
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+            return
+        required = any(r in REQUIRED for r in readings)
+        ir.async_create_issue(self.hass, DOMAIN, issue_id, is_fixable=False, severity=ir.IssueSeverity.ERROR if required else ir.IssueSeverity.WARNING,
+                              translation_key="cloud_entity_missing_required" if required else "cloud_entity_missing",
+                              translation_placeholders={"vehicle": self._live[vid], "readings": ", ".join(READINGS[r].name for r in readings)})
 
     async def pause(self) -> None:
         """Before a backup: fold the WAL into the database file and make later calls wait for `resume` (a batch that waits is sent again)."""

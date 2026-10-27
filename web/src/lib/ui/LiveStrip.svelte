@@ -1,10 +1,11 @@
 <script>
   import { km, pct, NA } from "../format.js";
+  import { noDataLine } from "../detail.js";
 
   let { vehicles } = $props();
 
-  const STATE = { driving: "Driving", charging: "Charging", parked: "Parked" };
-  const COLOR = { driving: "var(--trip)", charging: "var(--charge)", parked: "var(--muted)" };
+  const STATE = { driving: "Driving", charging: "Charging", parked: "Parked", no_data: "No data" };
+  const COLOR = { driving: "var(--trip)", charging: "var(--charge)", parked: "var(--muted)", no_data: "var(--muted)" };
 </script>
 
 {#if vehicles.length}
@@ -12,7 +13,7 @@
     {#each vehicles as v (v.id)}
       <li>
         <i style:background={COLOR[v.status] ?? COLOR.parked}></i>
-        <span class="where"><b>{v.name}</b> · {STATE[v.status] ?? v.status} · {v.position?.place || NA}</span>
+        <span class="where"><b>{v.name}</b> · {v.status === "no_data" ? noDataLine(v.updated) : `${STATE[v.status] ?? v.status} · ${v.position?.place || NA}`}</span>
         <span class="vals">
           {pct(v.soc_percent)} · {km(v.range_m)}
           {#if v.status === "charging"}

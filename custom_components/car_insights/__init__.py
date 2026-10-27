@@ -12,6 +12,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.network import NoURLAvailableError
 
 from .bridge import PLATFORMS
+from .cloud_setup import convert_legacy, has_car_app
 from .const import DOMAIN, MAX_BODY
 from .receiver import body_vehicle_matches, config_file_text, is_https_url, read_limited, verify_signature, write_conf
 from .panel import async_register_http, async_register_panel, remove_panel
@@ -52,8 +53,8 @@ async def _release(hass: HomeAssistant) -> None:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     vehicle_id = entry.data["vehicle_id"]
-    secret = entry.data["secret"]
-    webhook_id = entry.data["webhook_id"]
+    secret = entry.data.get("secret")
+    webhook_id = entry.data.get("webhook_id")
 
     async def handler(hass: HomeAssistant, webhook_id: str, request: web.Request) -> web.Response:
         # cloud-relayed (MockRequest) requests have no content_length; chunked uploads have none either
@@ -85,32 +86,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             return web.Response(status=500)
         return web.json_response(reply, status=status)
 
-    try:
-        url = await _webhook_url(hass, webhook_id)
-    except NoURLAvailableError as err:
-        persistent_notification.async_create(
-            hass,
-            "Car Insights needs an external URL for Home Assistant (Nabu Casa or your own domain) "
-            "so the car can reach the webhook. Configure one; setup will retry.",
-            title="Car Insights",
-            notification_id=f"{DOMAIN}_{vehicle_id}_nourl",
-        )
-        raise ConfigEntryNotReady("No external URL available") from err
-    if not is_https_url(url):
-        persistent_notification.async_create(
-            hass,
-            f"Car Insights needs an https external URL for Home Assistant (Nabu Casa, or your own domain with TLS); "
-            "the car rejects http. Fix it in Settings > System > Network; setup will retry.",
-            title="Car Insights",
-            notification_id=f"{DOMAIN}_{vehicle_id}_nohttps",
-        )
-        raise ConfigEntryNotReady("External URL is not https")
+    written = None
+    if has_car_app(entry):  # a cloud-only entry has no car to reach it: no URL, no .conf, no webhook
+        try:
+            url = await _webhook_url(hass, webhook_id)
+        except NoURLAvailableError as err:
+            persistent_notification.async_create(
+                hass,
+                "Car Insights needs an external URL for Home Assistant (Nabu Casa or your own domain) "
+                "so the car can reach the webhook. Configure one; setup will retry.",
+                title="Car Insights",
+                notification_id=f"{DOMAIN}_{vehicle_id}_nourl",
+            )
+            raise ConfigEntryNotReady("No external URL available") from err
+        if not is_https_url(url):
+            persistent_notification.async_create(
+                hass,
+                f"Car Insights needs an https external URL for Home Assistant (Nabu Casa, or your own domain with TLS); "
+                "the car rejects http. Fix it in Settings > System > Network; setup will retry.",
+                title="Car Insights",
+                notification_id=f"{DOMAIN}_{vehicle_id}_nohttps",
+            )
+            raise ConfigEntryNotReady("External URL is not https")
 
-    conf_path = Path(hass.config.path("car_insights", f"{vehicle_id}.conf"))
-    text = config_file_text(url, secret, vehicle_id, entry.data["vehicle_name"])
-    written = await hass.async_add_executor_job(write_conf, conf_path, text, url)
+        conf_path = Path(hass.config.path("car_insights", f"{vehicle_id}.conf"))
+        text = config_file_text(url, secret, vehicle_id, entry.data["vehicle_name"])
+        written = await hass.async_add_executor_job(write_conf, conf_path, text, url)
 
-    await Service.acquire(hass)
+    service = await Service.acquire(hass)
     forwarded = False
     try:  # a failed setup is never unloaded, so it would not release
         await async_register_http(hass)
@@ -118,6 +121,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # after the service started: the bridge already holds its discovery, so the entities are made here
         forwarded = True
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        await service.configure(entry)
         if written:
             # the add-on's file is still there on an upgrade: the entry kept its URL and secret, so the car needs nothing
             moved = written == "created" and await hass.async_add_executor_job(Path(service_module.SHARE_DIR, "car_insights", f"{vehicle_id}.conf").exists)
@@ -132,31 +136,59 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             persistent_notification.async_create(
                 hass, what, title="Car Insights", notification_id=f"{DOMAIN}_{vehicle_id}",
             )
-        webhook.async_register(  # last: a failed setup is not unloaded, so nothing after this may fail
-            hass, DOMAIN, f"Car Insights {vehicle_id}", webhook_id, handler,
-            local_only=False, allowed_methods=("POST",),
-        )
+        if has_car_app(entry):
+            webhook.async_register(  # last: a failed setup is not unloaded, so nothing after this may fail
+                hass, DOMAIN, f"Car Insights {vehicle_id}", webhook_id, handler,
+                local_only=False, allowed_methods=("POST",),
+            )
     except BaseException:
+        await service.unconfigure(vehicle_id)  # a source that was configured before the failure must not go on polling
         if forwarded:
             await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
         await _release(hass)
         raise
+    entry.async_on_unload(entry.add_update_listener(_reload))  # after acquire: the importer's update of the options during it reloads nothing
     return True
+
+
+async def _reload(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Changed options or data (the cloud source, a car app added or dropped): set the entry up again."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False
-    webhook.async_unregister(hass, entry.data["webhook_id"])
+    if has_car_app(entry):  # before the release, as in 1.0.0: no upload may reach a released service (a second unregister is harmless)
+        webhook.async_unregister(hass, entry.data["webhook_id"])
+    if (service := hass.data.get(DOMAIN)) is not None:
+        await service.unconfigure(entry.data["vehicle_id"])
     await _release(hass)
     return True
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """1 -> 2: the cloud options of 1.0.0 ({"mapping", "entity_stem"}) name a device and registry ids now."""
+    if entry.version > 2:
+        return False  # made by a newer Car Insights
+    if entry.version == 1:
+        options = dict(entry.options)
+        old = options.get("cloud")
+        if isinstance(old, dict) and "mapping" in old:
+            try:
+                options["cloud"] = convert_legacy(hass, entry.data["vehicle_id"], old)
+            except ValueError as err:
+                _LOGGER.warning("Could not convert the cloud source of %s, so it is dropped: %s", entry.title, err)
+                del options["cloud"]  # nothing in it names an entity: the owner picks the car's device again
+        hass.config_entries.async_update_entry(entry, options=options, version=2)
+    return True
+
+
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    # a re-added vehicle gets a new secret, so the stale .conf must go
+    # a re-added vehicle gets a new secret, so the stale .conf must go (also one left by an entry that has no car app any more)
     path = Path(hass.config.path("car_insights", f"{entry.data['vehicle_id']}.conf"))
     await hass.async_add_executor_job(lambda: path.unlink(missing_ok=True))
-    if _uses_cloud(hass):
+    if has_car_app(entry) and _uses_cloud(hass):
         try:
             await cloud.async_delete_cloudhook(hass, entry.data["webhook_id"])
         except (cloud.CloudNotAvailable, ValueError):

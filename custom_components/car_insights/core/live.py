@@ -6,7 +6,7 @@ from typing import Any, Iterable
 
 from .figures import pct
 from .ha_mqtt import device, discovery, sensor, topic
-from .protocol import FUTURE_SLACK_MS, PARK_GEAR, Sample, num
+from .protocol import FUTURE_SLACK_MS, IGNITION_ON, PARK_GEAR, Sample, num
 
 MODES = ("driving", "charging", "parked")
 
@@ -57,27 +57,35 @@ def snapshot(state: LiveState, capacity_wh: float) -> dict:
     gear, range_m, temp = _num(state, "gear"), _num(state, "range_m"), _num(state, "outside_temp")
     plugged = state.values.get("plugged", (0, None))[1]
     plugged = plugged if isinstance(plugged, bool) else None
+    soc_pct, ignition = _num(state, "soc_percent"), _num(state, "ignition")
+    plug_state, charging_state = (state.values.get(k, (0, None))[1] for k in ("plug_state", "charging_state"))
     mode_t, mode = state.values.get("mode", (0, None))
     newest_input = max((state.values[k][0] for k in ("gear", "plugged") if k in state.values), default=0)
     if mode in MODES and mode_t >= newest_input:  # the car's mode tracker wins unless gear/plugged (the on-change inputs; speed is high-rate) is newer, i.e. an out-of-order start-up mode
         snap["status"] = mode
-    elif gear is not None or speed is not None or plugged is not None:
+    elif gear is not None or plugged is not None:
         if (gear is not None and gear != PARK_GEAR) or (speed is not None and abs(speed) > 0.3):
             snap["status"] = "driving"
         elif plugged and power is not None and power > 500:
             snap["status"] = "charging"
         else:
             snap["status"] = "parked"
+    elif any(x is not None for x in (ignition, speed, charging_state, plug_state)):  # a cloud-only car: no gear, plugged or mode
+        snap["status"] = "driving" if ignition == IGNITION_ON or (speed is not None and abs(speed) > 0.3) else "charging" if charging_state is True else "parked"
     if speed is not None:
         snap["speed_kmh"] = round(abs(speed) * 3.6, 1)
     if wh is not None:
         snap["battery_kwh"] = round(wh / 1000, 2)
         if math.isfinite(capacity_wh) and capacity_wh > 0:
             snap["soc"] = pct(wh, capacity_wh)
+    elif soc_pct is not None:
+        snap["soc"] = pct(soc_pct, 100)
     if range_m is not None:
         snap["range_km"] = round(range_m / 1000, 1)
     if power is not None:
         snap["power_kw"] = round(power / 1000, 2)
+    if plugged is None and isinstance(plug_state, bool):
+        plugged = plug_state
     if plugged is not None:
         snap["plugged"] = "ON" if plugged else "OFF"
     if temp is not None:

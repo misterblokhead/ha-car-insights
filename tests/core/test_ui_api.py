@@ -583,3 +583,25 @@ async def test_map_leaves_out_a_charge_without_a_position_and_an_open_trip(conn)
 async def test_map_of_a_hidden_vehicle_is_404(conn):
     c, _ = client(conn)
     assert (await c.get("/map", view="v:car3", period="week")).status_code == 404
+
+
+async def test_vehicle_card_soc_from_soc_percent_and_no_data_after_seven_days(conn):
+    db.set_vehicle(conn, "car1", "Car One", True)
+    db.ingest(conn, "car1", "src", [s(NOW - 8 * 86_400_000, "soc_percent", 64.0)], NOW)
+    c, _ = client(conn)
+    v = (await c.get("/overview", view="v:car1")).json()["vehicles"][0]
+    assert (v["soc_percent"], v["status"], v["battery_wh"]) == (64.0, "no_data", None)
+    db.ingest(conn, "car1", "src", [s(NOW - 6 * 86_400_000, "soc_percent", 63.0)], NOW)
+    assert (await c.get("/overview", view="v:car1")).json()["vehicles"][0]["status"] == "parked"
+
+
+async def test_cloud_only_car_without_samples_is_not_no_data(conn):
+    db.set_vehicle(conn, "car1", "Car One", True)
+    c, _ = client(conn)
+    assert (await c.get("/overview", view="v:car1")).json()["vehicles"][0]["status"] == "parked"
+
+
+async def test_car_app_vehicle_is_never_no_data(conn):
+    db.ingest(conn, "car1", "src", [s(NOW - 8 * 86_400_000, "battery_wh", 30_000)], NOW)
+    c, _ = client(conn)
+    assert (await c.get("/overview", view="v:car1")).json()["vehicles"][0]["status"] == "parked"

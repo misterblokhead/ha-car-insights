@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { split, durationParts, compare, markerAt, deltaText, kwLabel, arrow, rangeLine, place, chargedAt, estimate, routeLabel, tripTitle, span, temp, fig, scoreWord, per10, bandRows } from "./detail.js";
+import { split, durationParts, compare, markerAt, deltaText, kwLabel, arrow, rangeLine, place, chargedAt, estimate, routeLabel, tripTitle, span, temp, fig, scoreWord, per10, bandRows, noDataLine } from "./detail.js";
 import { clock, setZone } from "./time.js";
 
 setZone("Europe/Amsterdam");
@@ -152,4 +152,8 @@ test("bandRows gives each band its share of distance and consumption", () => {
   assert.equal(bandRows({ "0-50": [500, 100] }, 0.5)[0].kwhPer100, 20); // exactly the minimum counts
   assert.equal(bandRows({ "0-50": [0, 0] }, 0.5)[0].share, 0); // no distance at all: no division by zero
   assert.equal(bandRows({ "0-50": [6000, null] }, 0.5)[0].kwhPer100, null); // no energy readings: not 0.0
+});
+
+test("noDataLine formats the last update", () => {
+  assert.equal(noDataLine(Date.UTC(2026, 9, 1, 10), Date.UTC(2026, 9, 27)), "No data since Thu 1 Oct");
 });

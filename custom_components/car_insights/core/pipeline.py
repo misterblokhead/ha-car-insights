@@ -10,6 +10,7 @@ from . import db, periods, prices, route, store, summary
 from .derive import ESTIMATE_HOLD_MS, Deriver
 from .kinds import CHARGE, KINDS, TRIP
 from .protocol import FUTURE_SLACK_MS, Sample
+from .publisher import Publisher
 from .totals_sensors import TotalsSensors
 from .trip_sensors import TripSensors
 from .trips import QUIET_MS
@@ -46,6 +47,13 @@ def _publish_last(app: App, vid: str, fresh: tuple[bool, bool] = (True, True), r
     app.sensors.publish(vid, *last, *recent)
 
 
+def publish_totals(app: App, vid: str) -> None:
+    """The month and year totals of a vehicle, and its group's when it is in one."""
+    app.totals.publish_vehicle(vid)
+    if app.totals.in_group(vid):
+        app.totals.publish_groups()
+
+
 def ingested(app: App, vid: str, min_t: int | None, received: int) -> None:
     """After an ingest: re-derive and publish what closed."""
     trips, charges, refined = app.deriver.update(vid, min_t, received)
@@ -54,9 +62,20 @@ def ingested(app: App, vid: str, min_t: int | None, received: int) -> None:
               for kind, closed in ((TRIP, trips), (CHARGE, charges))]
     _publish_last(app, vid, (bool(trips), bool(charges)), recent)
     if trips or charges or refined:  # the month and year totals follow every close and every refinement
-        app.totals.publish_vehicle(vid)
-        if app.totals.in_group(vid):
-            app.totals.publish_groups()
+        publish_totals(app, vid)
+
+
+def polled(app: App, publisher: Publisher, vid: str, samples: list[Sample], received: int, known_until: int) -> None:
+    """After a poll of a vehicle's cloud source (stored already): derive and publish what it brought. A poll with nothing new still moves the
+    horizon, which can close an open approximate trip."""
+    app.deriver.set_horizon(vid, known_until)
+    if samples:
+        if (min_t := late_min_t(samples, received)) is not None:  # a backfill older than the late window, or a future stamp, derives nothing
+            ingested(app, vid, min_t, received)
+        if app.deriver.cloud_only(vid):  # a car app delivers the live state: a cloud report would move its last_seen
+            publisher.on_ingested(vid, samples, received)
+    elif app.deriver.cloud_only(vid) and store.has_open(app.conn, TRIP, vid):
+        ingested(app, vid, None, received)
 
 
 def reply(app: App, vid: str, received: int) -> tuple[dict | None, dict]:
@@ -79,13 +98,20 @@ def relabel(app: App) -> None:
         republish(app, None)
 
 
-def rebuild(app: App, now_ms: int) -> None:
+def rebuild(app: App, now_ms: int, vids: list[str] | None = None) -> None:
     """At start-up, before the first totals publish: derive every vehicle again, so rows dropped by an ALGO bump are back before its
-    next ingest, then republish its last trip and charge states (a rebuild may have closed one). No events."""
+    next ingest, then republish its last trip and charge states (a rebuild may have closed one). No events.
+    With `vids` (a vehicle that changed kind): only those, from nothing: their rows of every kind are purged first."""
     conn, deriver = app.conn, app.deriver
     started = time.monotonic()
-    deriver.purge_stale()
-    vehicles = conn.execute("SELECT vehicle_id FROM vehicles").fetchall()
+    if vids is None:
+        deriver.purge_stale()
+        vehicles = conn.execute("SELECT vehicle_id FROM vehicles").fetchall()
+    else:
+        with db.tx(conn):
+            for vid in vids:
+                deriver.purge(vid)
+        vehicles = [(vid,) for vid in vids]
     for (vid,) in vehicles:
         try:
             first = conn.execute("SELECT MIN(t) FROM samples WHERE vehicle_id=?", (vid,)).fetchone()[0]

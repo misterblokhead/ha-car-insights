@@ -417,7 +417,8 @@ def test_derivation_loads_only_the_keys_it_uses(monkeypatch):
     conn, d = setup(trip_samples(0), [s(5000, "soc", 50.0), s(5000, "tire_pressure", 2.5)])
     trips, _, _ = d.update("car1", None, 10 * DAY)
     assert len(trips) == 1 and seen == [derive.KEYS]
-    assert {"gear", "ignition", "speed", "battery_wh", "outside_temp", "gps", "plugged", "range_m", "charging_state", "soc_percent", "plug_state"} == set(derive.KEYS)
+    assert {"gear", "ignition", "speed", "battery_wh", "outside_temp", "gps", "plugged", "range_m", "charging_state", "soc_percent", "plug_state",
+            "odometer_km"} == set(derive.KEYS)  # odometer_km: the cloud-only trips
 
 
 def test_has_ignition_is_looked_up_until_it_is_true(monkeypatch):
@@ -800,3 +801,188 @@ def test_trip_points_stay_off_the_wire():
              *[e for e, _ in mqtt.on("car_insights/car1/trip_event")], store.current_trip(conn, "car1") or {}]
     assert len(wires) == 7 and all(k not in w for w in wires for k in POINTS)
     assert len(mqtt.on("car_insights/car1/trip_event")) == 2
+
+
+# --- cloud-only vehicles: approximate trips from the readings of the car's own HA integration ---
+MIN = 60_000
+T0 = 1_700_000_000_000  # invented
+
+
+def cloud_drive(on, off, odo=(1000.0, 1012.4), wh=(40_000, 37_600)):
+    """the readings a minute-level poll sees around an ignition trip: before it, ignition on, two fixes, ignition off, the settled readings"""
+    return [s(on - MIN, "odometer_km", odo[0]), s(on - MIN, "battery_wh", wh[0]), s(on - MIN, "gps", [45.0, 10.0, 5.0]),
+            s(on, "ignition", 4), s(on + 5 * MIN, "gps", [45.05, 10.0, 5.0]), s(on + 10 * MIN, "gps", [45.1, 10.0, 5.0]),
+            s(off, "ignition", 2), s(off + MIN, "odometer_km", odo[1]), s(off + MIN, "battery_wh", wh[1])]
+
+
+def cloud_setup(*batches):
+    conn = db.connect(":memory:")
+    db.set_vehicle(conn, "car9", "Invented", True)
+    for b in batches:
+        db.ingest(conn, "car9", CLOUD, b, 0)
+    return conn, Deriver(conn, lambda la, lo: "Home", cloud_only=lambda vid: db.is_cloud_only(conn, vid))
+
+
+def test_cloud_only_vehicle_gets_an_approximate_trip_without_style_or_series():
+    conn, d = cloud_setup(cloud_drive(T0, T0 + 20 * MIN))
+    d.horizon["car9"] = T0 + 120 * MIN
+    (trip,), _, _ = d.update("car9", None, T0 + 120 * MIN)
+    assert trip["approx"] is True and trip["style"] is None and trip["from"] == "Home"
+    assert (trip["start"], trip["end"], trip["distance_m"], trip["net_wh"], trip["gross_wh"]) == (T0, T0 + 20 * MIN, pytest.approx(12_400), 2400, None)
+    stored = store.closed(conn, TRIP, "car9", 1)[0]
+    assert stored["approx"] is True and stored["style"] is None and store.series(conn, TRIP, "car9", stored["start"]) is None
+    assert store.route(conn, "car9", stored["start"]) == [[45.05, 10.0], [45.1, 10.0]]  # the polled fixes of the trip
+    assert d.update("car9", None, T0 + 120 * MIN) == ([], [], set())
+
+
+def test_cloud_only_trip_stays_open_without_a_horizon_and_closes_with_one():
+    conn, d = cloud_setup(cloud_drive(T0, T0 + 20 * MIN))
+    assert d.update("car9", None, T0 + 120 * MIN) == ([], [], set()) and store.current_trip(conn, "car9")["end"] is None
+    d.horizon["car9"] = T0 + 120 * MIN
+    assert [t["end"] for t in d.update("car9", None, T0 + 120 * MIN)[0]] == [T0 + 20 * MIN] and store.current_trip(conn, "car9") is None
+
+
+def test_the_horizon_never_reaches_past_what_the_window_read():
+    # a rebuild window reads up to received + a day; a later motion sample may still extend the trip, so the poll's own horizon cannot close it
+    r = T0
+    samples = [s(r + 86_400_000 - 4 * MIN, "odometer_km", 1000.0), s(r + 86_400_000 - 3 * MIN, "odometer_km", 1003.0)]
+    conn, d = cloud_setup(samples)
+    d.horizon["car9"] = r + 10 * 86_400_000
+    assert d.update("car9", None, r) == ([], [], set()) and store.current_trip(conn, "car9")["end"] is None
+    assert [t["end"] for t in d.update("car9", None, r + 20 * MIN)[0]] == [r + 86_400_000 - 3 * MIN]
+
+
+def test_car_app_vehicle_derives_as_before():
+    plain = setup(trip_samples(0))[1].update("car1", None, 10 * DAY)[0]
+    conn, d = setup(trip_samples(0), [s(5_000, "odometer_km", 1000.0)])  # a polled reading the car app car also gets
+    flat = lambda rows: [{k: v for k, v in r.items() if k not in ("odometer_start_km", "odometer_end_km")} for r in rows]
+    (trip,) = d.update("car1", None, 10 * DAY)[0]
+    assert flat([trip]) == flat(plain) and "approx" not in trip and trip["style"] is not None
+    assert store.series(conn, TRIP, "car1", 0) is not None
+
+
+def test_cloud_charge_between_two_trips_is_measured_from_battery_energy():
+    conn, d = cloud_setup(
+        cloud_drive(T0, T0 + 20 * MIN),
+        [s(T0 + 60 * MIN, "charging_state", True), s(T0 + 120 * MIN, "charging_state", False), s(T0 + 121 * MIN, "battery_wh", 52_000)],
+        cloud_drive(T0 + 180 * MIN, T0 + 200 * MIN, odo=(1012.4, 1020.0), wh=(52_000, 50_000)))
+    d.horizon["car9"] = T0 + 300 * MIN
+    trips, charges, _ = d.update("car9", None, T0 + 300 * MIN)
+    assert [t["start"] for t in trips] == [T0, T0 + 180 * MIN] and all(t["approx"] for t in trips)
+    (c,) = charges
+    assert c["energy_source"] == "car" and c["added_wh"] == 14_400 and (c["start"], c["end"]) == (T0 + 60 * MIN, T0 + 120 * MIN)
+    assert "approx" not in c
+
+
+def test_restart_mid_trip_keeps_one_trip():
+    first = [s(T0 + i * MIN, "odometer_km", v) for i, v in enumerate([1000.0, 1001.0, 1003.0])]
+    conn, d = cloud_setup(first)
+    assert d.update("car9", None, T0 + 3 * MIN) == ([], [], set())  # the start-up rebuild: no horizon yet
+    assert store.current_trip(conn, "car9")["start"] == T0 + MIN
+    d2 = Deriver(conn, lambda la, lo: "Home", cloud_only=lambda vid: db.is_cloud_only(conn, vid))  # the restart
+    db.ingest(conn, "car9", CLOUD, [s(T0 + (3 + i) * MIN, "odometer_km", v) for i, v in enumerate([1006.0] * 13)], 0)
+    d2.horizon["car9"] = T0 + 40 * MIN
+    (trip,), _, _ = d2.update("car9", T0 + 3 * MIN, T0 + 40 * MIN)
+    assert (trip["start"], trip["end"], trip["distance_m"]) == (T0 + MIN, T0 + 3 * MIN, pytest.approx(6000))
+    assert [t["start"] for t in store.closed(conn, TRIP, "car9")] == [T0 + MIN] and store.current_trip(conn, "car9") is None
+
+
+@pytest.mark.parametrize("restart", [False, True])
+def test_ignition_trip_open_across_a_window_boundary_ends_up_as_one_trip(restart):
+    # the coarse finder opens a trip only at its ignition-on sample and ignores an ignition seed, so every window must reach back to it.
+    # Here a cloud charge that was still flagged when the drive began closes after the trip's start: the window starts past the ignition sample
+    t1 = T0 + 3 * DAY
+    charge = [s(t1 - 30 * MIN, "charging_state", True), s(t1 + MIN, "charging_state", False), s(t1 + 2 * MIN, "battery_wh", 40_500)]
+    conn, d = cloud_setup(cloud_drive(T0, T0 + 20 * MIN), [s(t1 - 40 * MIN, "battery_wh", 40_000), *charge],
+                          cloud_drive(t1, t1 + 20 * MIN, odo=(1012.4, 1030.0), wh=(40_500, 38_000))[1:])
+    d.horizon["car9"] = t1 + DAY
+    d.update("car9", None, t1 + 10 * MIN - DAY)  # this window reads up to the middle of the second trip
+    assert store.current_trip(conn, "car9")["start"] == t1 and store.newest_end(conn, "car9") > t1
+    if restart:
+        d = Deriver(conn, lambda la, lo: "Home", cloud_only=lambda vid: db.is_cloud_only(conn, vid))
+        d.horizon["car9"] = t1 + DAY
+    d.update("car9", None, t1 + 2 * 3_600_000)
+    assert [(t["start"], t["end"]) for t in store.closed(conn, TRIP, "car9")] == [(t1, t1 + 20 * MIN), (T0, T0 + 20 * MIN)]
+    assert store.current_trip(conn, "car9") is None and len(store.closed(conn, CHARGE, "car9")) == 1
+
+
+def test_forget_drops_what_the_deriver_remembers():
+    conn, d = cloud_setup(cloud_drive(T0, T0 + 20 * MIN), [s(T0 + 60 * MIN, "charging_state", False)])
+    d.horizon["car9"] = T0 + 120 * MIN
+    d.update("car9", None, T0 + 120 * MIN)
+    assert "car9" in d._ignition and "car9" in d._cloud and "car9" in d._idle
+    d._quiet["car9"] = 1
+    d.forget("car9")
+    d.forget("nobody")
+    assert not (d._ignition or d._cloud or d._idle or d._quiet)
+
+
+def test_rebuild_without_a_horizon_closes_every_trip_the_stored_samples_prove_over():
+    # a start-up or kind-switch rebuild has no horizon: the newest stored sample is the evidence
+    later = [s(T0 + 10 * 3_600_000, "odometer_km", 1020.0)]
+    conn, d = cloud_setup(cloud_drive(T0, T0 + 20 * MIN), cloud_drive(T0 + 180 * MIN, T0 + 200 * MIN, odo=(1012.4, 1020.0)), later)
+    trips, _, _ = d.update("car9", None, T0 + 12 * 3_600_000)
+    assert [(t["start"], t["end"]) for t in trips] == [(T0, T0 + 20 * MIN), (T0 + 180 * MIN, T0 + 200 * MIN)]
+    assert store.current_trip(conn, "car9") is None
+    conn2, d2 = cloud_setup(cloud_drive(T0, T0 + 20 * MIN)[:-2])  # the newest sample is the ignition-off itself: nothing after it yet
+    assert d2.update("car9", None, T0 + 3_600_000) == ([], [], set()) and store.current_trip(conn2, "car9")["end"] is None
+
+
+def ignition_drive(on, off):
+    """an ignition trip whose odometer has settled before the off, so no reading after it looks like motion"""
+    return [s(on - MIN, "odometer_km", 1000.0), s(on, "ignition", 4), s(on + 10 * MIN, "odometer_km", 1006.0), s(on + 19 * MIN, "odometer_km", 1012.4),
+            s(off, "ignition", 2)]
+
+
+def test_a_cloud_only_vehicle_takes_its_ignition_from_its_configuration_not_its_history():
+    conn, d = cloud_setup(ignition_drive(T0, T0 + 20 * MIN))
+    d.set_ignition("car9", False)  # the source reads no ignition entity any more: the stored ignition samples say nothing
+    d.horizon["car9"] = T0 + 120 * MIN  # a forgotten vehicle gets its horizon from the next poll
+    (trip,), _, _ = d.update("car9", None, T0 + 120 * MIN)
+    assert trip["start"] == T0 + 10 * MIN and trip["distance_m"] == pytest.approx(12_400)  # from the odometer, not from the ignition on
+
+
+def test_a_changed_ignition_configuration_derives_again_from_the_newest_closed_end():
+    conn, d = cloud_setup(ignition_drive(T0, T0 + 20 * MIN))
+    d.horizon["car9"] = T0 + 300 * MIN
+    d.set_ignition("car9", True)
+    assert [t["start"] for t in d.update("car9", None, T0 + 300 * MIN)[0]] == [T0]
+    db.ingest(conn, "car9", CLOUD, [s(T0 + 180 * MIN, "odometer_km", 1012.4), s(T0 + 181 * MIN, "odometer_km", 1015.0), s(T0 + 182 * MIN, "odometer_km", 1020.0)], 0)
+    assert d.update("car9", None, T0 + 300 * MIN) == ([], [], set())  # no ignition on: no trip, and the window has moved past these samples
+    d.set_ignition("car9", True)  # unchanged: nothing is forgotten
+    assert d.update("car9", None, T0 + 300 * MIN) == ([], [], set())
+    d.set_ignition("car9", False)
+    d.horizon["car9"] = T0 + 300 * MIN
+    (trip,) = d.update("car9", None, T0 + 300 * MIN)[0]
+    assert (trip["start"], trip["end"]) == (T0 + 181 * MIN, T0 + 182 * MIN)
+
+
+def test_forget_also_drops_the_horizon():
+    conn, d = cloud_setup()
+    d.horizon["car9"] = T0
+    d.forget("car9")
+    assert "car9" not in d.horizon
+
+
+def test_purge_deletes_the_rows_of_every_kind_and_forgets_the_vehicle():
+    conn, d = setup()
+    seed_trip(conn, "car1", 1000, 2000)
+    seed_charge(conn, "car1", 3000, 4000)
+    seed_trip(conn, "car2", 1000, 2000)
+    d.set_horizon("car1", 5)
+    assert d.horizon == {"car1": 5}
+    with db.tx(conn):
+        d.purge("car1")
+    assert store.closed(conn, TRIP, "car1") == [] and store.closed(conn, CHARGE, "car1") == [] and d.horizon == {}
+    assert len(store.closed(conn, TRIP, "car2")) == 1
+
+
+def test_a_cloud_restart_a_few_minutes_after_an_off_is_one_trip_across_live_polls():
+    conn, d = cloud_setup(ignition_drive(T0, T0 + 20 * MIN))
+    d.horizon["car9"] = T0 + 23 * MIN
+    assert d.update("car9", None, T0 + 23 * MIN)[0] == []  # off 3 min ago: the trip may still go on
+    db.ingest(conn, "car9", CLOUD, [s(T0 + 25 * MIN, "ignition", 4), s(T0 + 39 * MIN, "odometer_km", 1018.0), s(T0 + 40 * MIN, "ignition", 2)], 0)
+    d.horizon["car9"] = T0 + 51 * MIN
+    d.update("car9", None, T0 + 51 * MIN)
+    assert [(t["start"], t["end"]) for t in store.closed(conn, TRIP, "car9")] == [(T0, T0 + 40 * MIN)]
+    assert store.current_trip(conn, "car9") is None

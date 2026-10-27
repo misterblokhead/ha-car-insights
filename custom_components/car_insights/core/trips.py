@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 from typing import Any, Iterator
 
-from .protocol import PARK_GEAR, Sample, fix, num
+from .protocol import IGNITION_LOCK, IGNITION_OFF, PARK_GEAR, Sample, fix, num
 
 KEYS = ("gear", "ignition", "speed", "battery_wh", "outside_temp", "gps")  # the sample keys find_trips reads
-IGNITION_ENDS_TRIP = (1, 2)  # LOCK, OFF; 0 is UNDEFINED
+IGNITION_ENDS_TRIP = (IGNITION_LOCK, IGNITION_OFF)
 MERGE_GAP_MS = 180_000
 # no batch from the car for this long with the trip's tail in P (server side: the car switched off and its last batch was lost),
 # or this much silence between two samples (the car side: it was off)

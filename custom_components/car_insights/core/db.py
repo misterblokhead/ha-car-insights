@@ -65,6 +65,8 @@ CREATE INDEX trips_places ON trips(vehicle_id, from_place, to_place)
 CREATE TABLE addresses(lat4 INTEGER, lon4 INTEGER, text TEXT, looked_up_ms INTEGER NOT NULL, PRIMARY KEY(lat4, lon4))
 """, """
 CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL)
+""", """
+ALTER TABLE vehicles ADD COLUMN cloud_only INTEGER NOT NULL DEFAULT 0
 """]
 
 
@@ -125,6 +127,35 @@ def set_capacity_wh(conn, vehicle_id: str, wh: float) -> None:
                  "ON CONFLICT(vehicle_id) DO UPDATE SET usable_capacity_wh=excluded.usable_capacity_wh", (vehicle_id, wh))
 
 
+def set_vehicle(conn, vehicle_id: str, name: str, cloud_only: bool) -> bool:
+    """Store a vehicle's name and kind; True when its kind changed (a missing row counts as not cloud-only)."""
+    changed = is_cloud_only(conn, vehicle_id) != cloud_only
+    conn.execute("INSERT INTO vehicles(vehicle_id, name, cloud_only) VALUES(?,?,?) "
+                 "ON CONFLICT(vehicle_id) DO UPDATE SET name=excluded.name, cloud_only=excluded.cloud_only", (vehicle_id, name, int(cloud_only)))
+    return changed
+
+
+def is_cloud_only(conn, vehicle_id: str) -> bool:
+    """A car without the car app: only its own HA integration's entities are polled."""
+    r = conn.execute("SELECT cloud_only FROM vehicles WHERE vehicle_id=?", (vehicle_id,)).fetchone()
+    return bool(r and r[0])
+
+
+def _check_kwh(kwh: float, what: str) -> None:
+    if not (math.isfinite(kwh) and kwh > 0):
+        raise ValueError(f"{what} must be a positive number of kWh, got {kwh!r}")
+
+
+def apply_capacity_option(conn, vehicle_id: str, kwh: float) -> None:
+    """The capacity the owner typed becomes the vehicle's capacity once per value: what the capacity learning found since is kept."""
+    _check_kwh(kwh, "capacity")
+    key = f"capacity_option:{vehicle_id}"
+    r = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    if r is None or float(r[0]) != kwh:
+        set_capacity_wh(conn, vehicle_id, kwh * 1000)
+        conn.execute("INSERT INTO settings VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, str(float(kwh))))
+
+
 def default_capacity_kwh(conn) -> float:
     """Usable capacity assumed for a vehicle that has none of its own (it used to be an add-on option)."""
     r = conn.execute("SELECT value FROM settings WHERE key='default_capacity_kwh'").fetchone()
@@ -132,15 +163,15 @@ def default_capacity_kwh(conn) -> float:
 
 
 def set_default_capacity_kwh(conn, kwh: float) -> None:
-    if not (math.isfinite(kwh) and kwh > 0):
-        raise ValueError(f"default capacity must be a positive number of kWh, got {kwh!r}")
+    _check_kwh(kwh, "default capacity")
     conn.execute("INSERT INTO settings VALUES('default_capacity_kwh',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(float(kwh)),))
 
 
 def device_info(conn, vehicle_id: str) -> tuple[str, str | None, str | None]:
-    """(name, make, model) of the HA device for a vehicle; the name falls back to the vehicle id."""
+    """(name, make, model) of the HA device for a vehicle; the name falls back to the stored name, then the vehicle id."""
     meta = (vehicle(conn, vehicle_id) or {}).get("meta") or {}
-    return (meta.get("vehicle_name") or vehicle_id, meta.get("make"), meta.get("model"))
+    stored = conn.execute("SELECT name FROM vehicles WHERE vehicle_id=?", (vehicle_id,)).fetchone()
+    return (meta.get("vehicle_name") or (stored and stored[0]) or vehicle_id, meta.get("make"), meta.get("model"))
 
 
 def latest_per_key(conn, vehicle_id: str, max_t: int) -> list[Sample]:

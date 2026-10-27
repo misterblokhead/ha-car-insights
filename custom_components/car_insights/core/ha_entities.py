@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
+from .protocol import IGNITION_OFF, IGNITION_ON
+
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 _MS = timedelta(milliseconds=1)
 _SKIP = {"unknown", "unavailable", ""}
@@ -19,95 +21,143 @@ def _iso_ms(s: str) -> int:
     return (d - _EPOCH) // _MS
 
 
-def _ranged(lo: float, hi: float | None = None) -> Callable[[str], float]:
-    def conv(s: str) -> float:
-        v = float(s)
-        if not math.isfinite(v) or v < lo or (hi is not None and v > hi):
-            raise ValueError(s)
-        return v
+REQUIRED = ("charge_level", "odometer")
+REPORT_STAMPED = frozenset({"charge_level", "charging"})
+CAR_APP_IGNORED = frozenset({"speed", "location", "ignition", "battery_energy", "range"})  # the car app already sends these
+# 1.0.0 entity ids of the HA car integrations that had a fixed mapping
+LEGACY: dict[str, dict[str, str]] = {"renault": {
+    "charging": "sensor.{stem}_charge_state", "charge_level": "sensor.{stem}_battery", "odometer": "sensor.{stem}_mileage",
+    "plugged": "sensor.{stem}_plug_state", "report_time": "sensor.{stem}_last_battery_activity"}}
+
+
+def _num(s: str, lo: float, hi: float | None = None) -> float:
+    v = float(s)
+    if not math.isfinite(v) or v < lo or (hi is not None and v > hi):
+        raise ValueError(s)
+    return v
+
+
+def _scaled(factors: dict[str, float]) -> Callable[[str, str | None, dict | None], float]:
+    """>= 0 value in a known unit, times its factor"""
+    def conv(s: str, unit: str | None, attrs: dict | None) -> float:
+        if unit not in factors:
+            raise ValueError(unit)
+        v = _num(s, 0)
+        return v * factors[unit]
 
     return conv
 
 
-def _plug(s: str) -> bool:
-    """plugged/unplugged only; plug_error, plug_unknown and the like are no reading (ValueError: skipped)"""
-    if s not in ("plugged", "unplugged"):
+def _soc(s: str, unit: str | None, attrs: dict | None) -> float:
+    return _num(s, 0, 100)
+
+
+def _charging(s: str, unit: str | None, attrs: dict | None) -> bool:
+    return s in ("on", "true", "charging", "charge_in_progress")
+
+
+def _plugged(s: str, unit: str | None, attrs: dict | None) -> bool:
+    """plug_error, plug_unknown and the like are no reading"""
+    if s in ("on", "true", "plugged"):
+        return True
+    if s in ("off", "false", "unplugged"):
+        return False
+    raise ValueError(s)
+
+
+def _ignition(s: str, unit: str | None, attrs: dict | None) -> int:
+    if s not in ("on", "off"):
         raise ValueError(s)
-    return s == "plugged"
+    return IGNITION_ON if s == "on" else IGNITION_OFF
+
+
+def _location(s: str, unit: str | None, attrs: dict | None) -> list[float]:
+    a = attrs or {}
+    try:
+        lat, lon, acc = float(a["latitude"]), float(a["longitude"]), float(a.get("gps_accuracy") or 0)
+    except (KeyError, TypeError) as e:
+        raise ValueError(s) from e
+    if not all(map(math.isfinite, (lat, lon, acc))):
+        raise ValueError(s)
+    return [lat, lon, acc]
 
 
 @dataclass(frozen=True)
-class Mapping:
-    metrics: dict[str, tuple[str, Callable[[str], Any]]]  # key -> (entity id template with {stem}, state -> value)
-    report_time: str | None  # entity id template whose state is the cloud's report time (ISO)
-    report_metrics: frozenset[str]  # metrics stamped with the report time
+class Reading:
+    key: str | None  # sample key; None for report_time, which only stamps other rows
+    name: str  # the English label, for people
+    convert: Callable[[str, str | None, dict | None], Any]  # (state, unit, attributes) -> value; ValueError = no reading
 
 
-RENAULT = Mapping(
-    metrics={
-        "charging_state": ("sensor.{stem}_charge_state", lambda s: s == "charge_in_progress"),
-        "soc_percent": ("sensor.{stem}_battery", _ranged(0, 100)),
-        "odometer_km": ("sensor.{stem}_mileage", _ranged(0)),
-        "plug_state": ("sensor.{stem}_plug_state", _plug),  # not "plugged": that key opens car spans
-    },
-    report_time="sensor.{stem}_last_battery_activity",
-    report_metrics=frozenset({"charging_state", "soc_percent"}),
-)
-MAPPINGS: dict[str, Mapping] = {"renault": RENAULT}
+READINGS: dict[str, Reading] = {  # reading -> how to read it
+    "charge_level": Reading("soc_percent", "Charge level", _soc),
+    "odometer": Reading("odometer_km", "Odometer", _scaled({"km": 1, "mi": 1.609344, "m": 0.001})),
+    "range": Reading("range_m", "Range", _scaled({"km": 1000, "mi": 1609.344, "m": 1})),
+    "battery_energy": Reading("battery_wh", "Battery energy", _scaled({"kWh": 1000, "Wh": 1})),
+    "speed": Reading("speed", "Speed", _scaled({"km/h": 1 / 3.6, "mph": 0.44704, "m/s": 1})),
+    "charging": Reading("charging_state", "Charging", _charging),
+    "plugged": Reading("plug_state", "Plugged in", _plugged),
+    "ignition": Reading("ignition", "Driving / ignition", _ignition),
+    "location": Reading("gps", "Location", _location),
+    "report_time": Reading(None, "Report time", lambda s, u, a: _iso_ms(s)),
+}
 
 
-def entity_ids(mapping: Mapping, stem: str) -> list[str]:
-    ids = [tmpl.format(stem=stem) for tmpl, _ in mapping.metrics.values()]
-    return ids + [mapping.report_time.format(stem=stem)] if mapping.report_time else ids
+SCALED = frozenset({"odometer", "range", "battery_energy", "speed"})  # the readings whose number needs the unit of the entity's state
 
 
-def parse_history(payload: list[list[dict]]) -> dict[str, list[tuple[int, str]]]:
-    """HA /api/history/period?minimal_response: one list per entity, only its first row has entity_id"""
-    out: dict[str, list[tuple[int, str]]] = {}
+def parse_history(payload: list[list[dict]]) -> dict[str, list[tuple[int, str, dict | None]]]:
+    """HA /api/history/period: one list per entity, only its first row has entity_id.
+    A row with attributes is timed by last_updated (attribute changes keep last_changed)."""
+    out: dict[str, list[tuple[int, str, dict | None]]] = {}
     for rows in payload:
         if not rows or not isinstance(rows[0], dict) or not isinstance(rows[0].get("entity_id"), str):
             continue
         dst = out.setdefault(rows[0]["entity_id"], [])
         for r in rows:
             try:
-                dst.append((_iso_ms(r["last_changed"]), r["state"]))
-            except (KeyError, TypeError, ValueError):
+                attrs = r.get("attributes")
+                dst.append((_iso_ms(r["last_updated" if attrs else "last_changed"]), r["state"], attrs))
+            except (KeyError, TypeError, ValueError, AttributeError):
                 continue
     return out
 
 
-def to_samples(mapping: Mapping, stem: str, history: dict[str, list[tuple[int, str]]],
-               cursor: dict[str, int]) -> tuple[list[tuple[int, str, Any]], dict[str, int]]:
-    """(t, key, value) sorted by t, and the cursor advanced to the newest row seen per entity"""
+def to_samples(entities: dict[str, str], units: dict[str, str | None], history: dict[str, list[tuple[int, str, dict | None]]],
+               cursor: dict[str, int]) -> tuple[list[tuple[int, str, Any]], dict[str, int], list[tuple[str, str]]]:
+    """(t, key, value) sorted by t, the cursor advanced to the newest row seen per entity, and the (entity, state) rows that are no reading"""
     new_cursor = dict(cursor)
     reports: list[tuple[int, int | None]] = []  # (last_changed, report time) of every report-time row, even before the cursor
-    if mapping.report_time:
-        rid = mapping.report_time.format(stem=stem)
-        for t, state in history.get(rid, []):
-            try:
-                reports.append((t, _iso_ms(state)))
-            except ValueError:
-                reports.append((t, None))
-            new_cursor[rid] = max(new_cursor.get(rid, -1), t)
+    rid = entities.get("report_time")
+    for t, state, _ in history.get(rid, []) if rid else []:
+        try:
+            reports.append((t, _iso_ms(state)))
+        except ValueError:
+            reports.append((t, None))
+        new_cursor[rid] = max(new_cursor.get(rid, -1), t)
 
     def stamp(t: int) -> int:
         r = max(((c, v) for c, v in reversed(reports) if c <= t + REPORT_LEAD_MS), key=lambda x: x[0], default=(0, None))[1]
         return r if r is not None and t - REPORT_MAX_AGE_MS <= r <= t else t
 
     out: list[tuple[int, str, Any]] = []
-    for key, (tmpl, conv) in mapping.metrics.items():
-        eid = tmpl.format(stem=stem)
+    bad: list[tuple[str, str]] = []
+    for name, eid in entities.items():
+        rd = READINGS.get(name)
+        if rd is None or rd.key is None:
+            continue
         floor = cursor.get(eid, -1)
-        for t, state in history.get(eid, []):
+        for t, state, attrs in history.get(eid, []):
             if t <= floor:
                 continue
             new_cursor[eid] = max(new_cursor.get(eid, -1), t)
             if state in _SKIP:
                 continue
             try:
-                v = conv(state)
+                v = rd.convert(state, units.get(eid), attrs)
             except ValueError:
+                bad.append((eid, state))
                 continue
-            out.append((stamp(t) if key in mapping.report_metrics else t, key, v))
+            out.append((stamp(t) if name in REPORT_STAMPED and rid else t, rd.key, v))
     out.sort(key=lambda x: x[0])
-    return out, new_cursor
+    return out, new_cursor, bad
