@@ -309,6 +309,50 @@ def test_set_conf_none_stops_polling():
     assert f.calls == [] and calls == []
 
 
+def stored(conn, vid="car1"):
+    return [conn.execute(f"SELECT COUNT(*) FROM {t} WHERE vehicle_id=?", (vid,)).fetchone()[0] for t in ("samples", "sources", "source_cursors")]
+
+
+def test_a_car_removed_during_the_history_fetch_gets_nothing_written():
+    """its history may be deleted while the fetch runs: the poll must not write it back"""
+    p = None
+
+    def fetch(*a):
+        p.set_conf("car1", None)
+        return FULL
+
+    p, conn, calls = make(fetch)
+    poll(p)
+    assert stored(conn) == [0, 0, 0] and calls == []
+
+
+def test_a_car_removed_during_the_lookup_gets_nothing_written_or_reported():
+    missing, p = [], None
+
+    def resolve(ids):
+        p.set_conf("car1", None)
+        return {}
+
+    p = Poller(connect(":memory:"), Fetch(FULL), resolve, lambda *a: None, lambda *a: missing.append(a), lambda: NOW)
+    p.set_conf("car1", CONF)
+    poll(p)
+    assert missing == [] and stored(p._conn) == [0, 0, 0]
+
+
+def test_a_car_removed_while_another_is_polled_is_not_polled():
+    p, f = None, Fetch()
+
+    def fetch(*a):
+        f(*a)
+        p.set_conf("car2", None)
+        return FULL
+
+    p, conn, calls = make(fetch)
+    p.set_conf("car2", SourceConf("car2", SID, ENTITIES, False))
+    poll(p)
+    assert len(f.calls) == 1 and stored(conn, "car2") == [0, 0, 0] and [c[0] for c in calls] == ["car1"]
+
+
 def test_bad_value_logged_once_per_hour(caplog):
     clock, f = [NOW], Fetch([rows(SOC, (NOW - 5_000, "abc"))])
     p, _, _ = make(f, clock=clock)

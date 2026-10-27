@@ -62,12 +62,15 @@ async def remove_vehicle(hass: HomeAssistant, vid: str, delete_history: bool) ->
         return 404, {"detail": "This car was already removed"}
     removing.add(vid)
     try:
-        await hass.config_entries.async_remove(entry.entry_id)
+        removed = await hass.config_entries.async_remove(entry.entry_id)
     except Exception:
         log.exception("Removing the entry of %s failed", vid)
         return 500, {"detail": "Could not remove the car"}
     finally:
         removing.discard(vid)
+    if delete_history and removed["require_restart"]:  # its unload failed: the car is still read until a restart, which would write rows back
+        log.warning("The entry of %s did not unload, so its history is kept; restart Home Assistant, then delete it", vid)
+        return 200, {"removed": True, "history_deleted": False}
     if delete_history:
         try:
             await purge(hass, vid)

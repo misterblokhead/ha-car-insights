@@ -77,6 +77,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         service = hass.data.get(DOMAIN)
         if service is None:  # the last entry is unloading
             return web.Response(status=503)
+        if not vehicles.has_entry(hass, vehicle_id):  # removed while the body was read: its history may be deleted already (with an entry, the upload reaches the worker first)
+            return web.Response(status=404)
         try:
             status, reply = await service.ingest(body, int(time.time() * 1000))
         except (asyncio.CancelledError, RuntimeError) as err:  # the worker is stopping: HA is shutting down or the entry is unloading

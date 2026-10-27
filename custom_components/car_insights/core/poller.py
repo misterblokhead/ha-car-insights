@@ -53,6 +53,8 @@ class Poller:
 
     async def poll_once(self) -> None:
         for conf in list(self._confs.values()):
+            if self._confs.get(conf.vehicle_id) is not conf:  # removed or replaced while an earlier car was polled
+                continue
             try:
                 await self._poll(conf)
             except Exception:
@@ -62,6 +64,8 @@ class Poller:
         vid, sid = conf.vehicle_id, conf.source_id
         wanted = {r: rid for r, rid in conf.entities.items() if not (conf.car_app and r in CAR_APP_IGNORED)}
         found = await asyncio.to_thread(self._resolve, list(wanted.values()))
+        if self._confs.get(vid) is not conf:  # removed meanwhile: its history may be deleted already, so nothing of it is written back
+            return
         missing = sorted({r for r, rid in wanted.items() if rid not in found} | {r for r in REQUIRED if r not in wanted})
         if self._reported.get(vid) != missing:
             self._reported[vid] = missing
@@ -82,6 +86,8 @@ class Poller:
         start = self._until[key] - REPORT_MAX_AGE_MS if key in self._until else oldest - REPORT_MAX_AGE_MS if cursor else now - BACKFILL_MS
         attr_ids = [entities["location"]] if "location" in entities else []
         history = parse_history(await asyncio.to_thread(self._fetch, ids, start, now - SETTLE_MS, attr_ids))  # the only work off the loop
+        if self._confs.get(vid) is not conf:  # as above: the fetch can take a minute
+            return
         if cursor:  # a renamed (or newly added) entity starts where the source is, not at its whole history
             cursor = {**{e: max(cursor.values()) for e in ids}, **cursor}
         if key in self._until:  # HA answers with each entity's state at `start`, stamped `start`: that is not a new row

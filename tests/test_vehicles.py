@@ -1,5 +1,7 @@
 """Removing a car from the page and deleting its stored history, through the page's own routes."""
 import asyncio
+import hashlib
+import hmac
 import json
 import sqlite3
 import time
@@ -10,6 +12,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er, 
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+import custom_components.car_insights as integration
 from custom_components.car_insights import bridge, vehicles
 from custom_components.car_insights.const import DOMAIN
 from custom_components.car_insights.core import pipeline, store
@@ -28,6 +31,11 @@ def env(enable_custom_integrations, hass):
 async def hass_admin_client(hass, hass_client):
     assert await async_setup_component(hass, "http", {})  # an entry sets it up, but the client is made before the first one
     return await hass_client()
+
+
+def upload(vid):
+    now = int(time.time() * 1000)
+    return json.dumps({"v": 1, "vehicle_id": vid, "source_id": "car_app-0000abcd", "samples": [{"seq": 1, "t": now, "k": "battery_wh", "v": 20_000.0}]}).encode()
 
 
 def add_entry(hass, vid):
@@ -56,9 +64,7 @@ async def add_car(hass, vid):
     """a loaded entry whose car has a stored sample and a trip"""
     entry = add_entry(hass, vid)
     assert await hass.config_entries.async_setup(entry.entry_id)
-    now = int(time.time() * 1000)
-    body = json.dumps({"v": 1, "vehicle_id": vid, "source_id": "car_app-0000abcd", "samples": [{"seq": 1, "t": now, "k": "battery_wh", "v": 20_000.0}]}).encode()
-    assert (await hass.data[DOMAIN].ingest(body, now))[0] == 200
+    assert (await hass.data[DOMAIN].ingest(upload(vid), int(time.time() * 1000)))[0] == 200
     await on_worker(hass, seed_trip, hass.data[DOMAIN].app, vid)
     await hass.async_block_till_done()
     return entry
@@ -162,6 +168,40 @@ async def test_failed_deletion_after_removal_reports_it(hass, hass_admin_client,
     assert (resp.status, await resp.json()) == (200, {"removed": True, "history_deleted": False})
     assert entry_ids(hass) == ["car2"] and await rows(hass, "car1") == (1, 1, 1)
     assert (await settings_of(hass_admin_client))["car1"]["archived"] is True
+
+
+async def test_a_removal_whose_unload_failed_deletes_nothing(hass, hass_admin_client, monkeypatch):
+    """HA removes the entry anyway and asks for a restart: until then the car may still be read, so its history stays"""
+    await add_car(hass, "car1")
+    await add_car(hass, "car2")
+
+    async def refuse(entry, platforms):
+        return False
+
+    monkeypatch.setattr(hass.config_entries, "async_unload_platforms", refuse)
+    resp = await hass_admin_client.delete(f"{UI}/vehicles/car1?history=delete")
+
+    assert (resp.status, await resp.json()) == (200, {"removed": True, "history_deleted": False})
+    assert entry_ids(hass) == ["car2"] and await rows(hass, "car1") == (1, 1, 1)
+
+
+async def test_an_upload_arriving_while_its_car_is_deleted_stores_nothing(hass, hass_client_no_auth, monkeypatch):
+    await add_car(hass, "car1")
+    await add_car(hass, "car2")  # the service keeps running
+    client, read = await hass_client_no_auth(), integration.read_limited
+
+    async def read_while_deleted(content, limit):
+        body = await read(content, limit)
+        assert (await vehicles.remove_vehicle(hass, "car1", True))[0] == 200  # Delete everything while the body is read
+        return body
+
+    monkeypatch.setattr(integration, "read_limited", read_while_deleted)
+    body = upload("car1")
+    sign = "sha256=" + hmac.new(b"invented-secret-0123", body, hashlib.sha256).hexdigest()
+    resp = await client.post("/api/webhook/hook_car1", data=body, headers={"X-CI-Vehicle": "car1", "X-CI-Signature": sign})
+
+    assert resp.status == 404
+    assert await rows(hass, "car1") == (0, 0, 0) and await rows(hass, "car2") == (1, 1, 1)
 
 
 async def test_second_removal_is_already_removed(hass, hass_admin_client):
