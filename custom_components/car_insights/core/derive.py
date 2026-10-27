@@ -63,6 +63,7 @@ class Deriver:
         self.horizon: dict[str, int] = {}  # vehicle -> the time up to which its cloud source has been read (set by pipeline.polled)
         self._idle: dict[str, int] = {}  # vehicle -> newest sample t read while nothing was open: the next window starts there
         self._ignition: set[str] = set()  # vehicles known to send an ignition signal (it never goes away)
+        self._ignition_conf: dict[str, bool] = {}  # cloud-only vehicle -> whether its source reads an ignition entity now (see set_ignition)
         self._cloud: set[str] = set()  # vehicles with a cloud source (charging_state samples)
         # vehicle -> start of its trip closed by the quiet rule alone: once the car is back its backlog may extend that trip;
         # a rejoined trip fires a second ended event (same start) at its real close
@@ -82,6 +83,23 @@ class Deriver:
             memo.pop(vid, None)
         self._ignition.discard(vid)
         self._cloud.discard(vid)
+        self.horizon.pop(vid, None)  # the next poll sets a new one; until then the stored samples are the evidence
+
+    def has_ignition(self, vid: str) -> bool:
+        """Whether to find trips by ignition. A cloud-only vehicle follows what its source reads now (set_ignition; its history may hold
+        samples of an entity that was dropped); a car-app one, and a cloud-only one not configured yet, what its history has sent."""
+        if self.cloud_only(vid) and vid in self._ignition_conf:
+            return self._ignition_conf[vid]
+        if vid not in self._ignition and db.has_key(self._conn, vid, "ignition"):
+            self._ignition.add(vid)
+        return vid in self._ignition
+
+    def set_ignition(self, vid: str, on: bool) -> None:
+        """A cloud-only vehicle's source reads an ignition entity (or not). A change derives the vehicle again from its newest closed end."""
+        changed = self.has_ignition(vid) != on
+        self._ignition_conf[vid] = on
+        if changed:
+            self.forget(vid)
 
     def _is_quiet(self, vid: str, received_ms: int) -> bool:
         """The car's own senders have delivered nothing for QUIET_MS, so no backlog is draining."""
@@ -125,8 +143,7 @@ class Deriver:
             old = {k: store.rows_after(conn, k, vid, w) for k in KINDS}
             for k in KINDS:  # the series and routes go with their rows
                 store.drop_after(conn, k, vid, w)
-            if vid not in self._ignition and db.has_key(conn, vid, "ignition"):
-                self._ignition.add(vid)
+            ignition = self.has_ignition(vid)
             if vid not in self._cloud and db.has_key(conn, vid, "charging_state"):
                 self._cloud.add(vid)
             # samples stamped far in the future (a bad clock) are no data yet
@@ -158,12 +175,12 @@ class Deriver:
                 # The cloud data is complete up to the poll's horizon and up to the newest stored sample (a rebuild has no horizon yet),
                 # whichever is later; a window never reads past received + FUTURE_SLACK_MS, so that caps it.
                 known = [h for h in (self.horizon.get(vid), samples[-1].t if samples else None) if h is not None]
-                raw_trips = find_cloud_trips([x for x in samples if x.k in coarse.KEYS], seed, vid in self._ignition, self._capacity(vid),
+                raw_trips = find_cloud_trips([x for x in samples if x.k in coarse.KEYS], seed, ignition, self._capacity(vid),
                                              min(max(known), received_ms + FUTURE_SLACK_MS) if known else None)
                 trip_parts = lambda t, span: _cloud_trip_parts(t, span, self._zones, chain(conn, vid, t.start, t.distance_m))
             else:
                 # a cloud report is no proof the car slept: find_trips sees only its own keys
-                raw_trips = find_trips([x for x in samples if x.k in TRIP_KEYS], seed, vid in self._ignition, quiet)
+                raw_trips = find_trips([x for x in samples if x.k in TRIP_KEYS], seed, ignition, quiet)
                 trip_parts = lambda t, span: _trip_parts(t, span, self._zones, chain(conn, vid, t.start, t.distance_m))
             for trip in raw_trips:
                 if trip.quiet_closed:

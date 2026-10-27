@@ -79,10 +79,9 @@ def test_location_only_trip_uses_route_length():
     assert t.first_fix == (LAT0, LON0) and t.last_fix == (LAT0 + 3 * KM_LAT, LON0)
 
 
-def test_negative_odometer_difference_falls_back_to_route_length():
+def test_a_lower_odometer_reading_in_an_ignition_trip_gives_no_distance():
     samples = [*ign_trace(T0, T0 + 20 * MIN, odo=(1010.0, 1005.0)), gps(T0 - MIN, 0), gps(T0 + 10 * MIN, 2), gps(T0 + 20 * MIN, 4)]
-    (t,) = find_cloud_trips(sorted(samples, key=lambda x: (x.t, x.seq)), {}, True, 60_000, T0 + 30 * MIN)
-    assert t.distance_m == pytest.approx(4000, rel=0.01)
+    assert find_cloud_trips(sorted(samples, key=lambda x: (x.t, x.seq)), {}, True, 60_000, T0 + 30 * MIN) == []  # 1005 is a glitch: 1010 stays the odometer
 
 
 def test_missing_odometer_falls_back_to_route_length_from_the_seed_fix():
@@ -118,3 +117,41 @@ def test_two_trips_with_a_long_stop_between():
     a, b = find_cloud_trips(odo_trace(T0, odos), {"odometer_km": 1000}, False, 60_000, T0 + 90 * MIN)
     assert (a.start, a.end, b.start, b.end) == (T0 + MIN, T0 + 2 * MIN, T0 + 33 * MIN, T0 + 34 * MIN)
     assert a.distance_m == pytest.approx(5000) and b.distance_m == pytest.approx(7000)
+
+
+def test_an_ignition_off_and_on_again_within_ten_minutes_is_one_trip():
+    samples = [s(T0 - MIN, "odometer_km", 1000.0), s(T0, "ignition", 4), s(T0 + 10 * MIN, "ignition", 2), s(T0 + 13 * MIN, "ignition", 4),
+               s(T0 + 25 * MIN, "ignition", 2), s(T0 + 26 * MIN, "odometer_km", 1012.4)]
+    (t,) = find_cloud_trips(samples, {}, True, 60_000, T0 + 40 * MIN)
+    assert (t.start, t.end) == (T0, T0 + 25 * MIN) and t.distance_m == pytest.approx(12_400)
+
+
+def test_an_ignition_off_and_on_again_after_ten_minutes_is_two_trips():
+    samples = [s(T0 - MIN, "odometer_km", 1000.0), s(T0, "ignition", 4), s(T0 + 10 * MIN, "ignition", 2), s(T0 + 11 * MIN, "odometer_km", 1006.0),
+               s(T0 + 21 * MIN, "ignition", 4), s(T0 + 30 * MIN, "ignition", 2), s(T0 + 31 * MIN, "odometer_km", 1012.4)]
+    a, b = find_cloud_trips(samples, {}, True, 60_000, T0 + 60 * MIN)
+    assert (a.start, a.end, b.start, b.end) == (T0, T0 + 10 * MIN, T0 + 21 * MIN, T0 + 30 * MIN)
+
+
+def test_an_odometer_reading_that_drops_is_a_glitch_and_no_trip():
+    assert find_cloud_trips(odo_trace(T0, [1000, 0, 1000]), {}, False, 60_000, T0 + 60 * MIN) == []
+    assert find_cloud_trips(odo_trace(T0, [1000, 0, 1000]), {"odometer_km": 1000}, False, 60_000, T0 + 60 * MIN) == []
+
+
+def test_a_dropped_odometer_reading_is_no_end_value_either():
+    (t,) = find_cloud_trips(odo_trace(T0, [1000, 1004, 1008, 0]), {"odometer_km": 1000}, False, 60_000, T0 + 60 * MIN)
+    assert t.end == T0 + 2 * MIN and t.distance_m == pytest.approx(8000)  # the 0 did not become the end value, and moves nothing
+
+
+def test_a_dropped_odometer_reading_is_no_start_value_in_an_ignition_trip():
+    (t,) = find_cloud_trips(odo_trace(T0 - 5 * MIN, [1000, 0]) + [s(T0, "ignition", 4), s(T0 + 10 * MIN, "odometer_km", 1006.0),
+                                                                    s(T0 + 20 * MIN, "ignition", 2)], {}, True, 60_000, T0 + 60 * MIN)
+    assert t.distance_m == pytest.approx(6000)
+
+
+def test_an_ignition_trip_whose_off_never_comes_closes_at_its_last_change_after_three_hours():
+    samples = [s(T0 - MIN, "odometer_km", 1000.0), s(T0, "ignition", 4), s(T0 + 10 * MIN, "odometer_km", 1005.0), s(T0 + 20 * MIN, "odometer_km", 1010.0)]
+    (open_,) = find_cloud_trips(samples, {}, True, 60_000, T0 + 20 * MIN + 3 * 3_600_000 - 1)
+    assert open_.end is None
+    (t,) = find_cloud_trips(samples, {}, True, 60_000, T0 + 20 * MIN + 4 * 3_600_000)
+    assert (t.start, t.end) == (T0, T0 + 20 * MIN) and t.distance_m == pytest.approx(10_000)

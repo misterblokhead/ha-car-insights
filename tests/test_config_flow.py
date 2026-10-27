@@ -263,6 +263,10 @@ async def test_options_suggest_the_saved_capacity_before_the_integrations(hass):
     assert suggested(result)["capacity_kwh"] == 50.8
 
 
+def test_the_ignition_picker_takes_any_binary_sensor():
+    assert ENTITY_FILTERS["ignition"] == [{"domain": "binary_sensor"}]  # Stellantis `engine` has no device class
+
+
 def test_every_reading_has_a_picker():
     assert set(ENTITY_FILTERS) == set(READINGS)  # report_time included: the form must not miss one
 

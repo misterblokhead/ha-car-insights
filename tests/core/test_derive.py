@@ -926,3 +926,39 @@ def test_rebuild_without_a_horizon_closes_every_trip_the_stored_samples_prove_ov
     assert store.current_trip(conn, "car9") is None
     conn2, d2 = cloud_setup(cloud_drive(T0, T0 + 20 * MIN)[:-2])  # the newest sample is the ignition-off itself: nothing after it yet
     assert d2.update("car9", None, T0 + 3_600_000) == ([], [], set()) and store.current_trip(conn2, "car9")["end"] is None
+
+
+def ignition_drive(on, off):
+    """an ignition trip whose odometer has settled before the off, so no reading after it looks like motion"""
+    return [s(on - MIN, "odometer_km", 1000.0), s(on, "ignition", 4), s(on + 10 * MIN, "odometer_km", 1006.0), s(on + 19 * MIN, "odometer_km", 1012.4),
+            s(off, "ignition", 2)]
+
+
+def test_a_cloud_only_vehicle_takes_its_ignition_from_its_configuration_not_its_history():
+    conn, d = cloud_setup(ignition_drive(T0, T0 + 20 * MIN))
+    d.set_ignition("car9", False)  # the source reads no ignition entity any more: the stored ignition samples say nothing
+    d.horizon["car9"] = T0 + 120 * MIN  # a forgotten vehicle gets its horizon from the next poll
+    (trip,), _, _ = d.update("car9", None, T0 + 120 * MIN)
+    assert trip["start"] == T0 + 10 * MIN and trip["distance_m"] == pytest.approx(12_400)  # from the odometer, not from the ignition on
+
+
+def test_a_changed_ignition_configuration_derives_again_from_the_newest_closed_end():
+    conn, d = cloud_setup(ignition_drive(T0, T0 + 20 * MIN))
+    d.horizon["car9"] = T0 + 300 * MIN
+    d.set_ignition("car9", True)
+    assert [t["start"] for t in d.update("car9", None, T0 + 300 * MIN)[0]] == [T0]
+    db.ingest(conn, "car9", CLOUD, [s(T0 + 180 * MIN, "odometer_km", 1012.4), s(T0 + 181 * MIN, "odometer_km", 1015.0), s(T0 + 182 * MIN, "odometer_km", 1020.0)], 0)
+    assert d.update("car9", None, T0 + 300 * MIN) == ([], [], set())  # no ignition on: no trip, and the window has moved past these samples
+    d.set_ignition("car9", True)  # unchanged: nothing is forgotten
+    assert d.update("car9", None, T0 + 300 * MIN) == ([], [], set())
+    d.set_ignition("car9", False)
+    d.horizon["car9"] = T0 + 300 * MIN
+    (trip,) = d.update("car9", None, T0 + 300 * MIN)[0]
+    assert (trip["start"], trip["end"]) == (T0 + 181 * MIN, T0 + 182 * MIN)
+
+
+def test_forget_also_drops_the_horizon():
+    conn, d = cloud_setup()
+    d.horizon["car9"] = T0
+    d.forget("car9")
+    assert "car9" not in d.horizon

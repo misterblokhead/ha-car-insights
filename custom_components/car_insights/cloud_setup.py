@@ -26,7 +26,7 @@ ENTITY_FILTERS: dict[str, list[dict]] = {
     "plugged": [{"domain": "binary_sensor", "device_class": "plug"}, {"domain": "sensor"}],
     "battery_energy": [{"domain": "sensor", "device_class": ["energy_storage", "energy"]}],
     "speed": [{"domain": "sensor", "device_class": "speed"}],
-    "ignition": [{"domain": "binary_sensor", "device_class": ["power", "moving", "running"]}],
+    "ignition": [{"domain": "binary_sensor"}],  # Stellantis `engine` has no device class
     "report_time": [{"domain": "sensor", "device_class": "timestamp"}],
 }
 

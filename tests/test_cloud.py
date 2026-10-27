@@ -21,6 +21,7 @@ from custom_components.car_insights.core import db, store
 from custom_components.car_insights.core.ha_entities import parse_history
 from custom_components.car_insights.core.kinds import TRIP
 from custom_components.car_insights.core.poller import SourceConf, legacy_source_id
+from custom_components.car_insights.core.protocol import Sample
 
 SECRET = "invented-secret-0123"
 SOURCE = "ha_entities-1a2b3c4d"
@@ -327,4 +328,20 @@ async def test_capacity_option_is_ignored_for_a_car_app_vehicle(hass):
     hass.config_entries.async_update_entry(entry, options={"cloud": {**entry.options["cloud"], "capacity_kwh": 53.0}})
     await hass.async_block_till_done()
     assert await on_worker(hass, lambda conn: db.capacity_wh(conn, "car1", 0)) == 41_000
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_a_cloud_only_vehicle_reads_its_ignition_from_the_options_not_from_the_history(hass):
+    zoe = make_zoe(hass)
+    entry = cloud_entry(hass, zoe)  # no ignition entity
+    await setup(hass, entry)
+    has_ignition = lambda: on_worker(hass, lambda conn: hass.data[DOMAIN].app.deriver.has_ignition("car1"))
+    await on_worker(hass, lambda conn: db.ingest(conn, "car1", SOURCE, [Sample(1, 1_000, "ignition", 4)], 2_000))  # a stored one, from an entity picked once
+    assert await has_ignition() is False
+    engine = er.async_get(hass).async_get_or_create("binary_sensor", "renault", "invented_zoe-engine", suggested_object_id="invented_zoe_engine",
+                                                    config_entry=zoe.cfg, device_id=zoe.device.id)
+    cloud = entry.options["cloud"]
+    hass.config_entries.async_update_entry(entry, options={"cloud": {**cloud, "entities": {**cloud["entities"], "ignition": engine.id}}})
+    await hass.async_block_till_done()  # reloaded
+    assert await has_ignition() is True
     await hass.config_entries.async_unload(entry.entry_id)

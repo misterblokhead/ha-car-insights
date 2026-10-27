@@ -184,6 +184,8 @@ class Service:
 
     def _configure(self, vid: str, title: str, cloud_only: bool, capacity_kwh: float | None, conf: SourceConf | None) -> None:
         """On the worker. A vehicle that changed kind loses its derived rows and gets them again from its samples."""
+        if cloud_only:  # its trips follow what its source reads now, before any rebuild below
+            self.app.deriver.set_ignition(vid, conf is not None and "ignition" in conf.entities)
         if db.set_vehicle(self.conn, vid, title, cloud_only):
             pipeline.rebuild(self.app, _now_ms(), [vid])
             self.app.totals.publish_vehicle(vid)  # rebuild republishes the last trip and charge only

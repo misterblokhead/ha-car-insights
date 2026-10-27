@@ -585,13 +585,15 @@ def test_rebuild_of_one_vehicle_after_a_kind_switch_replaces_its_trips(env):
     now = 10_000_000
     for vid in ("car1", "car2"):  # both are car-app vehicles at first, with an odometer reading around the drive
         db.set_vehicle(conn, vid, vid, False)
-        db.ingest(conn, vid, SRC, [*trip_samples(now - 400_000), s(now - 401_000, "odometer_km", 100.0), s(now - 200_000, "odometer_km", 101.0)], now)
+        db.ingest(conn, vid, SRC, [*trip_samples(now - 400_000), s(now - 401_000, "odometer_km", 100.0), s(now - 200_000, "odometer_km", 101.0),
+                                   s(now + 700_000, "odometer_km", 101.0)], now)  # the last one proves ten quiet minutes: a rebuild has no horizon
         ingested(app, vid, None, now)
     before = {vid: store.closed(conn, TRIP, vid) for vid in ("car1", "car2")}
     assert "approx" not in before["car1"][0] and before["car1"][0]["style"] is not None and len(before["car2"]) == 1
     db.set_vehicle(conn, "car1", "car1", True)  # the owner switched it to a cloud source
-    app.deriver.horizon["car1"] = now
+    app.deriver.horizon["car1"] = now  # a horizon of its earlier life must not survive
     rebuild(app, now, ["car1"])
+    assert "car1" not in app.deriver.horizon
     (trip,) = store.closed(conn, TRIP, "car1")
     assert trip["approx"] is True and trip["style"] is None and trip["distance_m"] == pytest.approx(1000)
     assert store.series(conn, TRIP, "car1", trip["start"]) is None
@@ -631,8 +633,8 @@ def test_rebuild_without_a_horizon_derives_every_cloud_trip(env):
     conn, *_ = env
     app, _ = cloud_app(env)
     db.set_vehicle(conn, "car9", "Invented", True)
-    drive = lambda on: [s(on - MIN, "odometer_km", 1000.0), s(on, "ignition", 4), s(on + 20 * MIN, "ignition", 2), s(on + 21 * MIN, "odometer_km", 1010.0)]
-    db.ingest(conn, "car9", CLOUD, [*drive(T0), *drive(T0 + 3_600_000), s(T0 + 5_000_000, "odometer_km", 1010.0)], T0 + 6_000_000)
+    drive = lambda on, lo, hi: [s(on - MIN, "odometer_km", lo), s(on, "ignition", 4), s(on + 20 * MIN, "ignition", 2), s(on + 21 * MIN, "odometer_km", hi)]
+    db.ingest(conn, "car9", CLOUD, [*drive(T0, 1000.0, 1010.0), *drive(T0 + 3_600_000, 1010.0, 1020.0), s(T0 + 5_000_000, "odometer_km", 1020.0)], T0 + 6_000_000)
     rebuild(app, T0 + 6_000_000, ["car9"])
     assert [t["start"] for t in store.closed(conn, TRIP, "car9")] == [T0 + 3_600_000, T0] and store.current_trip(conn, "car9") is None
 
