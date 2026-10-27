@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 
 from . import bridge
+from .cloud_setup import has_car_app, missing_issue_id
 from .const import DB_PATH, DOMAIN
 from .core import db
 
@@ -24,6 +25,14 @@ def issue_id(vid: str) -> str:
 def entries_by_vehicle(hass: HomeAssistant) -> dict[str, ConfigEntry]:
     """The entries of the domain by vehicle id. Any state counts: a disabled or retrying entry is still the car's."""
     return {e.data["vehicle_id"]: e for e in hass.config_entries.async_entries(DOMAIN) if "vehicle_id" in e.data}
+
+
+def car_sources(hass: HomeAssistant) -> dict[str, dict]:
+    """For every entry, in any state: where the car's data comes from ("car_app", "integration" or "both") and whether its missing-entity repair is open."""
+    issues = ir.async_get(hass)
+    return {vid: {"source": ("both" if has_car_app(e) else "integration") if isinstance(e.options.get("cloud"), dict) else "car_app",
+                  "missing_entities": issues.async_get_issue(DOMAIN, missing_issue_id(vid)) is not None}
+            for vid, e in entries_by_vehicle(hass).items()}
 
 
 def has_entry(hass: HomeAssistant, vid: str) -> bool:

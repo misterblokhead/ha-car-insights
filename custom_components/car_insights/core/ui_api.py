@@ -8,7 +8,7 @@ from typing import Any, Callable
 
 import voluptuous as vol
 
-from . import access, activity, costs, db, prices, stats, store
+from . import access, activity, costs, db, onboarding, prices, stats, store
 from .access import Viewer
 from .figures import pct, with_figures
 from .periods import local_date, midnight_ms
@@ -83,6 +83,7 @@ _RECEIPT = _shape({"amount": vol.Any(None, _num)})
 _FIXED_COST = _shape({"name": str, "amount": _num, "period": str, "start": _date, "end": vol.Any(None, _date)})
 _END = _shape({"end": vol.Any(None, _date)})
 _CARD = _shape({"markup_pct": _num, "start_fee": _num})
+_ONBOARDING = vol.Schema(vol.Any({vol.Required("opened"): vol.In(onboarding.STEPS_OPENED)}, {vol.Required("hidden"): bool}))  # exactly one of the two
 
 
 def _body(schema: vol.Schema, body: Any) -> dict:
@@ -120,10 +121,11 @@ class UiApi:
     def __init__(self, conn, zones: Zones, tz, capacity: Callable[[str], float], on_settings: Callable[[], None] = lambda: None,
                  on_costs: Callable[[list[str] | None], None] = lambda vids: None, relabel: Callable[[], None] = lambda: None,
                  now_ms: Callable[[], int] = lambda: int(time.time() * 1000),
-                 entry_vehicles: Callable[[], frozenset[str]] = frozenset):
+                 entry_vehicles: Callable[[], frozenset[str]] = frozenset, cars: Callable[[], dict[str, dict]] = dict):
         self.conn, self.zones, self.tz, self.capacity = conn, zones, tz, capacity
         self.on_settings, self.on_costs, self.relabel, self.now_ms = on_settings, on_costs, relabel, now_ms
         self.entry_vehicles = entry_vehicles  # the vehicle ids that still have a config entry; any other stored vehicle is archived
+        self.cars = cars  # those vehicle ids -> {"source": "car_app" | "integration" | "both", "missing_entities": bool}
 
     async def handle(self, method: str, path: str, query: dict[str, str], body: Any, viewer: Viewer) -> tuple[int, Any]:
         """`path` is relative to /api/car_insights/ui. An admin-only route answers a non-admin 403 before anything else (so before a bad
@@ -263,6 +265,15 @@ class UiApi:
         return access.settings(self.conn, self.entry_vehicles()) | {"prices": prices.settings(self.conn)}
 
     @_admin
+    def _onboarding(self, viewer, p, q, body):
+        return onboarding.state(self.conn, self.cars())
+
+    @_admin
+    def _put_onboarding(self, viewer, p, q, body):
+        onboarding.update(self.conn, **_body(_ONBOARDING, body))
+        return onboarding.state(self.conn, self.cars())
+
+    @_admin
     def _create_group(self, viewer, p, q, body):
         gid = self._attempt(access.create_group, self.conn, _body(_NAME, body)["name"])
         self.on_settings()
@@ -349,6 +360,8 @@ ROUTES = [_route(*r) for r in (
     ("GET", "/charges/{vid}/{start}", UiApi._charge),
     ("GET", "/samples/{vid}", UiApi._raw_samples),
     ("GET", "/settings", UiApi._settings),
+    ("GET", "/onboarding", UiApi._onboarding),
+    ("PUT", "/onboarding", UiApi._put_onboarding),
     ("POST", "/groups", UiApi._create_group),
     ("PUT", "/groups/{gid}", UiApi._rename_group),
     ("DELETE", "/groups/{gid}", UiApi._delete_group),

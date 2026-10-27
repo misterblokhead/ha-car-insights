@@ -610,3 +610,29 @@ async def test_car_app_vehicle_is_never_no_data(conn):
     db.ingest(conn, "car1", "src", [s(NOW - 8 * 86_400_000, "battery_wh", 30_000)], NOW)
     c, _ = client(conn)
     assert (await c.get("/overview", view="v:car1")).json()["vehicles"][0]["status"] == "parked"
+
+
+CARS = {"car1": {"source": "car_app", "missing_entities": False}}
+
+
+async def test_onboarding_routes_are_admin_only(conn):
+    c, _ = client(conn, cars=lambda: CARS)
+    for r in (await c.get("/onboarding", VIEWER), await c.put("/onboarding", {"hidden": True}, VIEWER)):
+        assert (r.status_code, r.json()) == (403, {"detail": "forbidden"})
+    assert conn.execute("SELECT COUNT(*) FROM settings WHERE key='onboarding'").fetchone()[0] == 0  # not even read: no row was written
+
+
+async def test_put_onboarding_returns_the_new_state(conn):
+    c, _ = client(conn, cars=lambda: CARS)
+    got = (await c.get("/onboarding", ADMIN)).json()
+    assert got["cars"] == [{"id": "car1", "name": "Car One", "source": "car_app", "has_data": False, "missing_entities": False}]
+    r = await c.put("/onboarding", {"opened": "viewers"})
+    assert (r.status_code, r.json()) == (200, got | {"opened": ["viewers"]})
+    assert (await c.put("/onboarding", {"hidden": True})).json() == got | {"opened": ["viewers"], "hidden": True}
+
+
+async def test_put_onboarding_rejects_bad_bodies(conn):
+    c, _ = client(conn, cars=lambda: CARS)
+    for body in ({"opened": "prices"}, {}, {"opened": "viewers", "hidden": True}, {"hidden": "yes"}, {"hidden": 1}, {"opened": ["viewers"]}, None, ["hidden"]):
+        assert (await c.put("/onboarding", body)).status_code == 422, body
+    assert (await c.get("/onboarding", ADMIN)).json()["opened"] == []

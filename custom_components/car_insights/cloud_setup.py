@@ -37,6 +37,11 @@ def has_car_app(entry: ConfigEntry) -> bool:
     return "webhook_id" in entry.data
 
 
+def missing_issue_id(vid: str) -> str:
+    """The repair that names the readings a car's cloud source cannot find."""
+    return f"cloud_entity_missing_{vid}"
+
+
 def device_entries(hass: HomeAssistant, device_id: str) -> tuple[str | None, list[RegEntry]]:
     """(the integration of a device, its registry entries): the first of its integrations that has a preset, else the first one."""
     device = dr.async_get(hass).async_get(device_id)

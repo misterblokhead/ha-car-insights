@@ -233,7 +233,8 @@ def main(frontend: Path) -> None:
     async def start(app):  # the connection is made on the loop's thread, where every handler runs
         conn = db.connect(":memory:")
         build(conn, now)
-        app["ui"] = UiApi(conn, zones, TZ, lambda vid: db.capacity_wh(conn, vid, 60_000.0), relabel=lambda: relabel(conn))
+        app["ui"] = UiApi(conn, zones, TZ, lambda vid: db.capacity_wh(conn, vid, 60_000.0), relabel=lambda: relabel(conn),
+                        cars=lambda: {vid: {"source": "integration", "missing_entities": False} for vid in CARS})
 
     async def ui(request):
         body = await request.json() if request.can_read_body else None

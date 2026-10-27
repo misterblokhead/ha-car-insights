@@ -14,6 +14,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 import custom_components.car_insights as integration
 from custom_components.car_insights import bridge, vehicles
+from custom_components.car_insights.cloud_setup import missing_issue_id
 from custom_components.car_insights.const import DOMAIN
 from custom_components.car_insights.core import pipeline, store
 from custom_components.car_insights.core.derive import ALGO
@@ -545,3 +546,31 @@ async def test_last_removed_car_without_data_raises_no_repair(hass):
     await hass.async_block_till_done()
 
     assert DOMAIN not in hass.data and issue_of(hass, "car1") is None
+
+
+def add_cloud_entry(hass, vid, webhook=False, **kw):
+    data = {"vehicle_id": vid, "vehicle_name": f"Car {vid}", **({"secret": "invented-secret-0123", "webhook_id": f"hook_{vid}"} if webhook else {})}
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=vid, title=f"Car {vid}", data=data,
+                            options={"cloud": {"preset": "x", "device_id": "d", "entities": {}, "source_id": "cloud-0000abcd"}}, **kw)
+    entry.add_to_hass(hass)
+    return entry
+
+
+async def test_car_sources_reports_each_entry_source(hass):
+    add_entry(hass, "car1")
+    add_cloud_entry(hass, "car2")
+    add_cloud_entry(hass, "car3", webhook=True)
+    add_cloud_entry(hass, "car4", disabled_by=ConfigEntryDisabler.USER)
+
+    assert vehicles.car_sources(hass) == {
+        "car1": {"source": "car_app", "missing_entities": False}, "car2": {"source": "integration", "missing_entities": False},
+        "car3": {"source": "both", "missing_entities": False}, "car4": {"source": "integration", "missing_entities": False}}
+
+
+async def test_car_sources_names_the_missing_entity_repair(hass):
+    add_cloud_entry(hass, "car1")
+    add_cloud_entry(hass, "car2")
+    ir.async_create_issue(hass, DOMAIN, missing_issue_id("car1"), is_fixable=False, severity=ir.IssueSeverity.ERROR,
+                          translation_key="cloud_entity_missing_required", translation_placeholders={"vehicle": "Car car1", "readings": "x"})
+
+    assert {vid: c["missing_entities"] for vid, c in vehicles.car_sources(hass).items()} == {"car1": True, "car2": False}

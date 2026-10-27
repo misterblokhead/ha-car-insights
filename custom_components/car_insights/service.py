@@ -15,7 +15,7 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.loader import async_get_integration
 
 from . import bridge, ha_adapters, importer, vehicles
-from .cloud_setup import convert_legacy, has_car_app, source_conf
+from .cloud_setup import convert_legacy, has_car_app, missing_issue_id, source_conf
 from .const import DB_PATH, DOMAIN
 from .core import capacity as capacity_learning, costs, db, geocode, pipeline, prices
 from .core.access import Viewer
@@ -48,7 +48,8 @@ class Service:
         self.worker = Worker("car-insights")
         self.imported = importer.ImportResult()
         self._live: dict[str, str] = {}  # vehicle id -> entry title, of the entries configured now (the issues' names; on HA's loop)
-        self.entry_vehicles: frozenset[str] = frozenset()  # the vehicle ids of every entry of the domain, in any state, at the last page request; the rest are archived
+        self.cars: dict[str, dict] = {}  # vehicle id -> vehicles.car_sources, for every entry of the domain in any state, at the last page request
+        self.entry_vehicles: frozenset[str] = frozenset()  # its keys; any other stored vehicle is archived
         self._ready: asyncio.Future | None = None
         self.paused = False  # between a backup's start and its end
         self._unhold: asyncio.TimerHandle | None = None
@@ -161,7 +162,8 @@ class Service:
         self.poller = Poller(conn, lambda ids, a, b, attrs: ha_adapters.history(hass, ids, a, b, attrs), lambda rids: ha_adapters.resolve(hass, rids),
                              partial(pipeline.polled, app, self.publisher), self._on_missing)
         self.ui_api = UiApi(conn, zones, tz, capacity, on_settings=app.totals.publish_groups, on_costs=partial(pipeline.republish, app),
-                            relabel=partial(pipeline.relabel, app), entry_vehicles=lambda: self.entry_vehicles)  # an atomic read from the worker
+                            relabel=partial(pipeline.relabel, app), entry_vehicles=lambda: self.entry_vehicles,
+                            cars=lambda: self.cars)  # atomic reads from the worker
         # before the first ingest and run_daily's first publish: an ALGO bump emptied the rows
         zones.refresh()  # a success renames the stored rows through on_change; a failure changes nothing and zones.run retries
         now = _now_ms()
@@ -200,7 +202,7 @@ class Service:
     async def unconfigure(self, vehicle_id: str) -> None:
         """Stop reading a vehicle's cloud source and drop its repair and what was announced for it; its samples stay."""
         self._live.pop(vehicle_id, None)
-        ir.async_delete_issue(self.hass, DOMAIN, f"cloud_entity_missing_{vehicle_id}")
+        ir.async_delete_issue(self.hass, DOMAIN, missing_issue_id(vehicle_id))
         with suppress(RuntimeError):  # a stopped worker polls nothing
             await asyncio.wrap_future(self.worker.call(self._unconfigure, vehicle_id))
 
@@ -215,7 +217,7 @@ class Service:
         self.hass.loop.call_soon_threadsafe(self._set_issue, vid, readings)
 
     def _set_issue(self, vid: str, readings: list[str]) -> None:
-        issue_id = f"cloud_entity_missing_{vid}"
+        issue_id = missing_issue_id(vid)
         if vid not in self._live or not readings:  # an entry unloaded meanwhile leaves no repair behind
             ir.async_delete_issue(self.hass, DOMAIN, issue_id)
             return
@@ -271,5 +273,6 @@ class Service:
 
     async def ui(self, method: str, path: str, query: dict[str, str], body: Any, viewer: Viewer) -> tuple[int, Any]:
         await asyncio.shield(self._ready)
-        self.entry_vehicles = frozenset(vehicles.entries_by_vehicle(self.hass))  # read on HA's loop at each request: the registry is the truth
+        self.cars = vehicles.car_sources(self.hass)  # read on HA's loop at each request: the registries are the truth
+        self.entry_vehicles = frozenset(self.cars)
         return await asyncio.wrap_future(self.worker.call(self.ui_api.handle, method, path, query, body, viewer))
