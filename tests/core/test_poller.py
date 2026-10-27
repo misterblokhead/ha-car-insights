@@ -321,3 +321,28 @@ def test_bad_value_logged_once_per_hour(caplog):
         clock[0], f.payload = NOW + 3_700_000, [rows(SOC, (NOW + 3_690_000, "abc"))]
         poll(p)
         assert warnings() == 2
+
+
+@pytest.mark.parametrize("absent", ["odometer", "charge_level"])
+def test_required_reading_absent_from_the_conf_counts_as_missing(absent):
+    missing, f = [], Fetch(FULL)
+    conf = SourceConf("car1", SID, {k: v for k, v in ENTITIES.items() if k != absent}, False)
+    p, conn, calls = make(f, conf=conf, missing=missing)
+    poll(p)
+    assert missing == [("car1", [absent])] and f.calls == [] and calls == [] and db.cursors(conn, "car1", SID) == {}
+
+
+def test_required_absent_and_unresolvable_are_reported_together_sorted():
+    missing = []
+    conf = SourceConf("car1", SID, {k: v for k, v in ENTITIES.items() if k != "odometer"}, False)
+    poll(make(Fetch(FULL), conf=conf, res={k: v for k, v in RES.items() if k != "rid-ps"}, missing=missing)[0])
+    assert missing == [("car1", ["odometer", "plugged"])]
+
+
+def test_stale_cursor_of_an_unpolled_entity_does_not_widen_the_window():
+    conn = connect(":memory:")
+    poll(make(Fetch(FULL), conn)[0])
+    db.save_cursors(conn, "car1", SID, {"sensor.zoe_gone": T - 86_400_000})
+    f = Fetch(FULL)
+    poll(make(f, conn)[0])
+    assert f.calls[0][1] == T - REPORT_MAX_AGE_MS  # the oldest polled cursor is the odometer's, at T

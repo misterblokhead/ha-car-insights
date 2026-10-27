@@ -62,7 +62,7 @@ class Poller:
         vid, sid = conf.vehicle_id, conf.source_id
         wanted = {r: rid for r, rid in conf.entities.items() if not (conf.car_app and r in CAR_APP_IGNORED)}
         found = await asyncio.to_thread(self._resolve, list(wanted.values()))
-        missing = sorted(r for r, rid in wanted.items() if rid not in found)
+        missing = sorted({r for r, rid in wanted.items() if rid not in found} | {r for r in REQUIRED if r not in wanted})
         if self._reported.get(vid) != missing:
             self._reported[vid] = missing
             self._on_missing(vid, missing)
@@ -74,7 +74,8 @@ class Poller:
         # the report time may be older than its metric row by REPORT_MAX_AGE_MS, so reach back that far before the oldest cursor
         # once polled, only the last poll counts: the cursor of a parked car's quiet entity can be days old
         key = (vid, sid)
-        start = self._until[key] - REPORT_MAX_AGE_MS if key in self._until else min(cursor.values()) - REPORT_MAX_AGE_MS if cursor else now - BACKFILL_MS
+        oldest = min((cursor[e] for e in ids if e in cursor), default=max(cursor.values())) if cursor else None  # a dead entity's cursor must not widen it
+        start = self._until[key] - REPORT_MAX_AGE_MS if key in self._until else oldest - REPORT_MAX_AGE_MS if cursor else now - BACKFILL_MS
         attr_ids = [entities["location"]] if "location" in entities else []
         history = parse_history(await asyncio.to_thread(self._fetch, ids, start, now - SETTLE_MS, attr_ids))  # the only work off the loop
         if cursor:  # a renamed (or newly added) entity starts where the source is, not at its whole history
