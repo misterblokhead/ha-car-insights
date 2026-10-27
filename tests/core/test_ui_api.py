@@ -211,7 +211,7 @@ async def test_settings_admin_only(conn):
 
 
 async def test_settings_marks_vehicles_without_a_config_entry_archived(conn):
-    c, _ = client(conn, entry_vehicles=lambda: frozenset({"car1", "car3"}))
+    c, _ = client(conn, cars=lambda: {"car1": {}, "car3": {}})
     assert [(v["id"], v["archived"]) for v in (await c.get("/settings", ADMIN)).json()["vehicles"]] == [("car1", False), ("car2", True), ("car3", False)]
 
 

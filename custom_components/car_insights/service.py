@@ -49,7 +49,6 @@ class Service:
         self.imported = importer.ImportResult()
         self._live: dict[str, str] = {}  # vehicle id -> entry title, of the entries configured now (the issues' names; on HA's loop)
         self.cars: dict[str, dict] = {}  # vehicle id -> vehicles.car_sources, for every entry of the domain in any state, at the last page request
-        self.entry_vehicles: frozenset[str] = frozenset()  # its keys; any other stored vehicle is archived
         self._ready: asyncio.Future | None = None
         self.paused = False  # between a backup's start and its end
         self._unhold: asyncio.TimerHandle | None = None
@@ -162,7 +161,7 @@ class Service:
         self.poller = Poller(conn, lambda ids, a, b, attrs: ha_adapters.history(hass, ids, a, b, attrs), lambda rids: ha_adapters.resolve(hass, rids),
                              partial(pipeline.polled, app, self.publisher), self._on_missing)
         self.ui_api = UiApi(conn, zones, tz, capacity, on_settings=app.totals.publish_groups, on_costs=partial(pipeline.republish, app),
-                            relabel=partial(pipeline.relabel, app), entry_vehicles=lambda: self.entry_vehicles,
+                            relabel=partial(pipeline.relabel, app),
                             cars=lambda: self.cars)  # atomic reads from the worker
         # before the first ingest and run_daily's first publish: an ALGO bump emptied the rows
         zones.refresh()  # a success renames the stored rows through on_change; a failure changes nothing and zones.run retries
@@ -274,5 +273,4 @@ class Service:
     async def ui(self, method: str, path: str, query: dict[str, str], body: Any, viewer: Viewer) -> tuple[int, Any]:
         await asyncio.shield(self._ready)
         self.cars = vehicles.car_sources(self.hass)  # read on HA's loop at each request: the registries are the truth
-        self.entry_vehicles = frozenset(self.cars)
         return await asyncio.wrap_future(self.worker.call(self.ui_api.handle, method, path, query, body, viewer))
