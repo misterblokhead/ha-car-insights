@@ -74,10 +74,13 @@
     } catch {} // the strip keeps what it shows
   }
 
+  const onboardingRequest = latest();
   async function loadOnboarding() {
     if (!isAdmin) return;
+    const ticket = onboardingRequest.next();
     try {
-      onboarding = await get("onboarding");
+      const d = await get("onboarding");
+      if (ticket.current) onboarding = d; // an older reply must not bring the card back after Hide
     } catch {} // the card keeps what it shows, or stays away
   }
 
@@ -85,7 +88,7 @@
     load(view);
     live();
     loadOnboarding();
-    return liveRequest.reset; // another view (or leaving the page) drops the reply still on its way
+    return () => (liveRequest.reset(), onboardingRequest.reset()); // another view (or leaving the page) drops the replies still on their way
   });
 
   $effect(() => {
