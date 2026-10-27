@@ -2,7 +2,9 @@ import json
 
 import pytest
 
-from custom_components.car_insights.core.db import acked_seq, connect, default_capacity_kwh, ingest, latest_per_key, set_default_capacity_kwh, vehicle
+from custom_components.car_insights.core import db
+from custom_components.car_insights.core.db import (acked_seq, apply_capacity_option, capacity_wh, connect, default_capacity_kwh, device_info, ingest,
+                                                       is_cloud_only, latest_per_key, set_default_capacity_kwh, set_vehicle, vehicle)
 from custom_components.car_insights.core.protocol import Sample
 from conftest import v6_database
 
@@ -112,11 +114,11 @@ def _version(c):
 def test_fresh_db_sets_version_and_reopen_keeps_it(tmp_path):
     path = str(tmp_path / "m.db")
     c = connect(path)
-    assert _version(c) == 9
+    assert _version(c) == 10
     assert c.execute("SELECT name FROM sqlite_master WHERE name='trip_routes'").fetchone() == ("trip_routes",)
     c.close()
     c = connect(path)
-    assert _version(c) == 9
+    assert _version(c) == 10
 
 
 def test_newer_schema_refused(tmp_path):
@@ -135,7 +137,7 @@ def test_unversioned_db_with_duplicate_gaps_is_upgraded(tmp_path):
     old.commit()
     old.close()
     c = connect(path)
-    assert c.execute("SELECT COUNT(*) FROM gaps").fetchone()[0] == 1 and _version(c) == 9
+    assert c.execute("SELECT COUNT(*) FROM gaps").fetchone()[0] == 1 and _version(c) == 10
 
 
 def test_failed_migration_rolls_back_and_keeps_version(tmp_path, monkeypatch):
@@ -273,7 +275,7 @@ def test_migration_7_recreates_derived_tables(tmp_path):
     old.close()
     c = connect(path)
     cols = lambda t: {r[1] for r in c.execute(f"PRAGMA table_info({t})")}
-    assert _version(c) == 9
+    assert _version(c) == 10
     assert {"distance_m", "net_wh", "gross_wh", "recup_wh", "duration_s", "from_lat", "from_lon", "to_lat", "to_lon", "from_place",
             "to_place", "algo", "json"} <= cols("trips")
     assert {"added_wh", "energy_source", "start_wh", "lat", "lon", "zone", "place", "algo", "json"} <= cols("charges")
@@ -300,3 +302,47 @@ def test_default_capacity_kwh(tmp_path):
         with pytest.raises(ValueError):
             set_default_capacity_kwh(c, bad)
     assert default_capacity_kwh(c) == 41.5
+
+
+def test_set_vehicle_reports_a_kind_change(conn):
+    assert set_vehicle(conn, "car9", "Invented", True) is True
+    assert set_vehicle(conn, "car9", "Invented", True) is False and is_cloud_only(conn, "car9")
+    assert device_info(conn, "car9")[0] == "Invented"
+    assert set_vehicle(conn, "car9", "Renamed", False) is True and not is_cloud_only(conn, "car9") and device_info(conn, "car9")[0] == "Renamed"
+    assert set_vehicle(conn, "car8", "Other", False) is False  # a missing row counts as flag 0
+    assert not is_cloud_only(conn, "nobody")
+
+
+def test_device_name_prefers_the_car_apps_meta_then_the_stored_name_then_the_id(conn):
+    set_vehicle(conn, "car9", "Invented", True)
+    ingest(conn, "car9", S, [Sample(1, 1, "meta", {"vehicle_name": "Meg", "make": "Renault"})], 0)
+    assert device_info(conn, "car9") == ("Meg", "Renault", None) and is_cloud_only(conn, "car9")  # meta keeps the row's other columns
+    conn.execute("INSERT INTO vehicles(vehicle_id, name) VALUES('car7', NULL)")
+    assert device_info(conn, "car7")[0] == "car7"
+
+
+def test_capacity_option_applies_once_per_value(conn):
+    apply_capacity_option(conn, "car9", 50)
+    assert capacity_wh(conn, "car9", 0) == 50_000
+    db.set_capacity_wh(conn, "car9", 48_000)  # learning moved it
+    apply_capacity_option(conn, "car9", 50)
+    assert capacity_wh(conn, "car9", 0) == 48_000
+    apply_capacity_option(conn, "car9", 52)
+    assert capacity_wh(conn, "car9", 0) == 52_000
+    apply_capacity_option(conn, "car8", 40)  # per vehicle
+    assert capacity_wh(conn, "car9", 0) == 52_000 and capacity_wh(conn, "car8", 0) == 40_000
+
+
+@pytest.mark.parametrize("kwh", [0, -5, float("nan"), float("inf")])
+def test_capacity_option_refuses_a_bad_value(conn, kwh):
+    with pytest.raises(ValueError):
+        apply_capacity_option(conn, "car9", kwh)
+    assert capacity_wh(conn, "car9", 7) == 7
+
+
+def test_cloud_only_column_defaults_to_false_for_existing_vehicles(tmp_path):
+    old = v6_database(str(tmp_path / "m.db"))
+    old.execute("INSERT INTO vehicles(vehicle_id, name) VALUES('car1', 'Meg')")
+    old.close()
+    c = connect(str(tmp_path / "m.db"))
+    assert not is_cloud_only(c, "car1") and device_info(c, "car1")[0] == "Meg"

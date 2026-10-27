@@ -10,6 +10,7 @@ from . import db, periods, prices, route, store, summary
 from .derive import ESTIMATE_HOLD_MS, Deriver
 from .kinds import CHARGE, KINDS, TRIP
 from .protocol import FUTURE_SLACK_MS, Sample
+from .publisher import Publisher
 from .totals_sensors import TotalsSensors
 from .trip_sensors import TripSensors
 from .trips import QUIET_MS
@@ -59,6 +60,17 @@ def ingested(app: App, vid: str, min_t: int | None, received: int) -> None:
             app.totals.publish_groups()
 
 
+def polled(app: App, publisher: Publisher, vid: str, samples: list[Sample], received: int, known_until: int) -> None:
+    """After a poll of a vehicle's cloud source (stored already): derive and publish what it brought. A poll with nothing new still moves the
+    horizon, which can close an open approximate trip."""
+    app.deriver.horizon[vid] = known_until
+    if samples:
+        ingested(app, vid, min(s.t for s in samples), received)
+        publisher.on_ingested(vid, samples, received)
+    elif app.deriver.cloud_only(vid) and store.has_open(app.conn, TRIP, vid):
+        ingested(app, vid, None, received)
+
+
 def reply(app: App, vid: str, received: int) -> tuple[dict | None, dict]:
     """The car's webhook answer, from the stored rows: (open trip, summary)."""
     conn = app.conn
@@ -79,13 +91,22 @@ def relabel(app: App) -> None:
         republish(app, None)
 
 
-def rebuild(app: App, now_ms: int) -> None:
+def rebuild(app: App, now_ms: int, vids: list[str] | None = None) -> None:
     """At start-up, before the first totals publish: derive every vehicle again, so rows dropped by an ALGO bump are back before its
-    next ingest, then republish its last trip and charge states (a rebuild may have closed one). No events."""
+    next ingest, then republish its last trip and charge states (a rebuild may have closed one). No events.
+    With `vids` (a vehicle that changed kind): only those, from nothing: their rows of every kind are purged first."""
     conn, deriver = app.conn, app.deriver
     started = time.monotonic()
-    deriver.purge_stale()
-    vehicles = conn.execute("SELECT vehicle_id FROM vehicles").fetchall()
+    if vids is None:
+        deriver.purge_stale()
+        vehicles = conn.execute("SELECT vehicle_id FROM vehicles").fetchall()
+    else:
+        with db.tx(conn):
+            for vid in vids:
+                for kind in KINDS:
+                    store.purge(conn, kind, vid)
+                deriver.forget(vid)
+        vehicles = [(vid,) for vid in vids]
     for (vid,) in vehicles:
         try:
             first = conn.execute("SELECT MIN(t) FROM samples WHERE vehicle_id=?", (vid,)).fetchone()[0]
