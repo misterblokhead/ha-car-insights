@@ -53,6 +53,10 @@ class TotalsSensors:
     def _publish(self, key: str, vids: list[str]) -> None:
         self._mqtt.publish([(ha_mqtt.topic(key, "totals"), json.dumps(_state(totals(self._conn, vids, self._now_ms(), self._tz))))])
 
+    def forget(self, vid: str) -> None:
+        """Drop that a vehicle was announced (its entry was removed), so a vehicle added again is announced again."""
+        self._announced.discard(vid)
+
     def publish_vehicle(self, vid: str) -> None:
         if vid not in self._announced:
             self._mqtt.publish(self._discovery(vid, ha_mqtt.device(vid, *db.device_info(self._conn, vid))))

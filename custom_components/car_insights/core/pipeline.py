@@ -4,6 +4,7 @@ import sqlite3
 import time
 from dataclasses import dataclass
 from datetime import tzinfo
+from functools import partial
 from typing import Callable, Sequence
 
 from . import db, periods, prices, route, store, summary
@@ -152,9 +153,11 @@ def republish(app: App, vids: list[str] | None) -> None:
 def forget_vehicle(app: App, publisher: Publisher, vid: str) -> None:
     """Delete a vehicle's stored history and everything remembered of it, then publish its groups again without it. On the worker."""
     db.delete_vehicle(app.conn, vid)
-    app.deriver.forget(vid)
-    publisher.forget(vid)
-    app.totals.publish_groups()
+    for what, step in (("deriver", partial(app.deriver.forget, vid)), ("live state", partial(publisher.forget, vid)), ("groups", app.totals.publish_groups)):
+        try:  # the deletion is committed: a later failure must not make the caller report it as failed
+            step()
+        except Exception:
+            log.exception("Forgetting the deleted %s failed: its %s was not updated", vid, what)
 
 
 def close_quiet(app: App, now_ms: int) -> None:

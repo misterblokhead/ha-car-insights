@@ -1,4 +1,5 @@
 import json
+import logging
 import math
 import sqlite3
 from datetime import timezone
@@ -678,3 +679,27 @@ def test_forget_vehicle_republishes_groups_and_drops_live_state(env):
     assert [t for t, _, _ in mqtt.msgs[n:]] == ["car_insights/car2/state"]
     pub.on_ingested("car1", [s(9_000_002, "speed", 3.0)], 9_000_002)  # car1 starts from nothing: announced again
     assert "homeassistant/sensor/car1_speed_kmh/config" in [t for t, _, _ in mqtt.msgs[n:]]
+
+
+def test_forget_vehicle_never_raises_once_the_deletion_committed(env, monkeypatch, caplog):
+    conn, mqtt, d, _, totals = env
+    db.ingest(conn, "car1", SRC, [s(9_000_000, "speed", 1.0)], 9_000_000)
+    conn.execute("INSERT INTO vehicles(vehicle_id, name) VALUES(?,?)", ("car1", "car1"))
+    app, pub = make_app(env), Publisher(conn, mqtt, CAP)
+
+    def boom(*a):
+        raise RuntimeError("late failure")
+
+    for owner, name in ((d, "forget"), (pub, "forget"), (totals, "publish_groups")):
+        monkeypatch.setattr(owner, name, boom)
+    with caplog.at_level(logging.ERROR):
+        pipeline.forget_vehicle(app, pub, "car1")  # the page must not report a deletion that happened as one that failed
+    assert conn.execute("SELECT COUNT(*) FROM samples WHERE vehicle_id='car1'").fetchone()[0] == 0
+    assert len(caplog.records) == 3  # every later step was tried and logged
+
+
+def test_forget_vehicle_raises_when_the_deletion_itself_fails(env, monkeypatch):
+    conn, mqtt, *_ = env
+    monkeypatch.setattr(db, "delete_vehicle", lambda c, v: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")))
+    with pytest.raises(sqlite3.OperationalError):
+        pipeline.forget_vehicle(make_app(env), Publisher(conn, mqtt, CAP), "car1")

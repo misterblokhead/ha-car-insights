@@ -48,6 +48,7 @@ class Service:
         self.worker = Worker("car-insights")
         self.imported = importer.ImportResult()
         self._live: dict[str, str] = {}  # vehicle id -> entry title, of the entries configured now (the issues' names; on HA's loop)
+        self.entry_vehicles: frozenset[str] = frozenset()  # the vehicle ids of every entry of the domain, in any state; the rest are archived
         self._ready: asyncio.Future | None = None
         self.paused = False  # between a backup's start and its end
         self._unhold: asyncio.TimerHandle | None = None
@@ -99,6 +100,11 @@ class Service:
         except BaseException:
             await self._stop()
             raise
+        self.refresh_entry_vehicles()
+
+    def refresh_entry_vehicles(self) -> None:
+        """On HA's loop: the page's archived cars are the stored ones without an entry, and a disabled or retrying entry is an entry."""
+        self.entry_vehicles = frozenset(e.data["vehicle_id"] for e in self.hass.config_entries.async_entries(DOMAIN) if "vehicle_id" in e.data)
 
     async def _import_export(self) -> None:
         """The add-on's export, on the first start after it: the database comes in beside the new one's place, the options go to the entries."""
@@ -160,7 +166,7 @@ class Service:
         self.poller = Poller(conn, lambda ids, a, b, attrs: ha_adapters.history(hass, ids, a, b, attrs), lambda rids: ha_adapters.resolve(hass, rids),
                              partial(pipeline.polled, app, self.publisher), self._on_missing)
         self.ui_api = UiApi(conn, zones, tz, capacity, on_settings=app.totals.publish_groups, on_costs=partial(pipeline.republish, app),
-                            relabel=partial(pipeline.relabel, app))
+                            relabel=partial(pipeline.relabel, app), entry_vehicles=lambda: self.entry_vehicles)  # an atomic read from the worker
         # before the first ingest and run_daily's first publish: an ALGO bump emptied the rows
         zones.refresh()  # a success renames the stored rows through on_change; a failure changes nothing and zones.run retries
         now = _now_ms()
@@ -180,6 +186,7 @@ class Service:
         await asyncio.shield(self._ready)
         vid, capacity = entry.data["vehicle_id"], (entry.options.get("cloud") or {}).get("capacity_kwh")
         self._live[vid] = entry.title
+        self.refresh_entry_vehicles()
         await asyncio.wrap_future(self.worker.call(self._configure, vid, entry.title, not has_car_app(entry), capacity, source_conf(entry)))
 
     def _configure(self, vid: str, title: str, cloud_only: bool, capacity_kwh: float | None, conf: SourceConf | None) -> None:
@@ -197,11 +204,18 @@ class Service:
         self.poller.set_conf(vid, conf)
 
     async def unconfigure(self, vehicle_id: str) -> None:
-        """Stop reading a vehicle's cloud source and drop its repair; its samples stay."""
+        """Stop reading a vehicle's cloud source and drop its repair and what was announced for it; its samples stay."""
         self._live.pop(vehicle_id, None)
+        self.refresh_entry_vehicles()
         ir.async_delete_issue(self.hass, DOMAIN, f"cloud_entity_missing_{vehicle_id}")
         with suppress(RuntimeError):  # a stopped worker polls nothing
-            await asyncio.wrap_future(self.worker.call(self.poller.set_conf, vehicle_id, None))
+            await asyncio.wrap_future(self.worker.call(self._unconfigure, vehicle_id))
+
+    def _unconfigure(self, vid: str) -> None:
+        """On the worker. A vehicle added again later (its history kept or deleted) is announced again, which its entities need."""
+        self.poller.set_conf(vid, None)
+        for announced in (self.publisher, self.app.totals, self.app.sensors):
+            announced.forget(vid)
 
     def _on_missing(self, vid: str, readings: list[str]) -> None:
         """On the worker, when the readings a vehicle's source cannot find change: raise or clear its repair on HA's loop."""
@@ -251,6 +265,11 @@ class Service:
     async def ingest(self, body: bytes, received: int) -> tuple[int, dict]:
         await asyncio.shield(self._ready)  # a re-added service is registered while its worker still builds
         return await asyncio.wrap_future(self.worker.call(handle_batch, self.app, self.publisher, body, received))
+
+    async def forget(self, vid: str) -> None:
+        """Delete a vehicle's stored history (see pipeline.forget_vehicle)."""
+        await asyncio.shield(self._ready)
+        await asyncio.wrap_future(self.worker.call(pipeline.forget_vehicle, self.app, self.publisher, vid))
 
     async def ui(self, method: str, path: str, query: dict[str, str], body: Any, viewer: Viewer) -> tuple[int, Any]:
         await asyncio.shield(self._ready)

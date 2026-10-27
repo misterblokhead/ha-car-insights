@@ -188,3 +188,16 @@ def test_percent_added_null_without_energy(env):
     _, mqtt, ts = env
     ts.publish("car1", None, {"start": 1000, "end": 4600, "added_wh": None}, [], [])
     assert mqtt.on("car_insights/car1/last_charge")[0][0]["added_percent"] is None
+
+
+def test_forget_announces_the_vehicle_again_and_leaves_others(env):
+    _, mqtt, ts = env
+    ts.publish("car1", trip(1000), None, [], [])
+    ts.publish("car2", trip(1000), None, [], [])
+    ts.forget("car1")
+    ts.forget("nobody")  # a vehicle never announced is no error
+    n = len(mqtt.msgs)
+    ts.publish("car1", trip(2000), None, [], [])
+    ts.publish("car2", trip(2000), None, [], [])
+    new = [t for t, _, _ in mqtt.msgs[n:]]
+    assert "homeassistant/sensor/car1_last_trip_distance/config" in new and "homeassistant/sensor/car2_last_trip_distance/config" not in new

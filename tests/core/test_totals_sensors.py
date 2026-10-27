@@ -186,3 +186,18 @@ def test_group_deleted_after_restart_is_cleared(env, monkeypatch):
     access.delete_group(conn, gid)
     ts.publish_groups()
     assert {t for t, p, _ in mqtt.msgs if p == ""} >= {f"homeassistant/sensor/group_{gid}_{s}/config" for s in SENSORS}
+
+
+def test_forget_announces_the_vehicle_again_and_leaves_others(env):
+    conn, mqtt, ts = env
+    add(conn, "car1")
+    add(conn, "car2")
+    ts.publish_vehicle("car1")
+    ts.publish_vehicle("car2")
+    ts.forget("car1")
+    ts.forget("nobody")  # a vehicle never announced is no error
+    n = len(mqtt.msgs)
+    ts.publish_vehicle("car1")
+    ts.publish_vehicle("car2")
+    new = [t for t, _, _ in mqtt.msgs[n:]]
+    assert "homeassistant/sensor/car1_month_distance/config" in new and "homeassistant/sensor/car2_month_distance/config" not in new
