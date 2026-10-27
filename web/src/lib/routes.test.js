@@ -2,12 +2,23 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { parse } from "./routes.js";
 
-const to = (page, detail = null, redirect = null) => ({ page, detail, redirect });
+const to = (page, detail = null, redirect = null, section = null) => ({ page, section, detail, redirect });
 
 test("the three pages", () => {
   assert.deepEqual(parse("#/activity"), to("activity"));
   assert.deepEqual(parse("#/stats"), to("stats"));
   assert.deepEqual(parse("#/settings"), to("settings"));
+});
+
+test("the settings sections", () => {
+  assert.deepEqual(parse("#/settings/prices"), to("settings", null, null, "prices"));
+  assert.deepEqual(parse("#/settings/cars"), to("settings", null, null, "cars"));
+});
+
+test("an unknown settings section, or more path, redirects", () => {
+  for (const h of ["#/settings/nope", "#/settings/prices/x", "#/activity/prices", "#/stats/cars"]) {
+    assert.deepEqual(parse(h), to("activity", null, "#/activity"), h);
+  }
 });
 
 test("old and unknown routes redirect to the activity page", () => {

@@ -79,7 +79,7 @@
 {:else}
   <Shell page={route.page} isAdmin={me.is_admin} {options} bind:view>
     {#if route.page === "settings" && me.is_admin}
-      <Settings />
+      <Settings section={route.section} />
     {:else if !view}
       <p class="msg">No vehicles available to you.</p>
     {:else if route.page === "stats"}

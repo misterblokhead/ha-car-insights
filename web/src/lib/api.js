@@ -4,6 +4,8 @@
 const PREFIX = "/api/car_insights/ui/";
 let hass;
 export const setHass = (h) => (hass = h);
+// whether the user has named a place besides home (a zone); the demo has no hass, so no
+export const hasPlaces = () => Object.keys(hass?.states ?? {}).some((id) => id.startsWith("zone.") && id !== "zone.home");
 export const authedFetch = (url, init) => (hass ? hass.fetchWithAuth(url, init) : fetch(url, init));
 
 export async function send(method, path, body) {

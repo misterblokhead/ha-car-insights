@@ -4,13 +4,15 @@
 
 <script>
   import { untrack } from "svelte";
-  import { get, latest } from "../lib/api.js";
+  import { get, hasPlaces, latest } from "../lib/api.js";
   import { feed, hashOf, linkAction, load, more, neighbours, refresh, visible } from "../lib/activity.svelte.js";
   import { daySummary } from "../lib/format.js";
+  import { showCard } from "../lib/onboarding.js";
   import { dayLabel } from "../lib/time.js";
   import { screen } from "../lib/media.svelte.js";
   import { cssMs } from "../lib/motion.js";
   import ChargeCard from "../lib/ui/ChargeCard.svelte";
+  import GettingStarted from "../lib/ui/GettingStarted.svelte";
   import LiveStrip from "../lib/ui/LiveStrip.svelte";
   import Segmented from "../lib/ui/Segmented.svelte";
   import DetailPane from "../lib/ui/DetailPane.svelte";
@@ -25,6 +27,8 @@
   const EMPTY = { all: "Your trips and charges appear here after the first drive.", trips: "No trips yet.", charges: "No charges yet." };
 
   let vehicles = $state([]);
+  let onboarding = $state(null); // the Getting started checklist's state, read only for an administrator
+  let title = $state();
   let sentinel = $state();
   // the list shows `shown`, which follows the filter after the old list has faded out; both halves together are --fade
   let shown = $state(feed.filter);
@@ -70,9 +74,17 @@
     } catch {} // the strip keeps what it shows
   }
 
+  async function loadOnboarding() {
+    if (!isAdmin) return;
+    try {
+      onboarding = await get("onboarding");
+    } catch {} // the card keeps what it shows, or stays away
+  }
+
   $effect(() => {
     load(view);
     live();
+    loadOnboarding();
     return liveRequest.reset; // another view (or leaving the page) drops the reply still on its way
   });
 
@@ -91,6 +103,7 @@
       if (document.visibilityState === "visible") {
         refresh();
         live();
+        loadOnboarding(); // the first data, or a price set elsewhere, ticks a step
       }
     };
     const id = setInterval(tick, 60_000);
@@ -112,7 +125,10 @@
 
 <div class="split" class:two={screen.split && detail}>
 <div class="page" class:wide={screen.wide}>
-  <h1 class="page-title">Activity</h1>
+  <h1 class="page-title" tabindex="-1" bind:this={title}>Activity</h1>
+  {#if onboarding && showCard(isAdmin, onboarding, hasPlaces())}
+    <GettingStarted checklist={onboarding} places={hasPlaces()} reload={loadOnboarding} gone={title} />
+  {/if}
   <LiveStrip {vehicles} />
   <div class="filter"><Segmented options={FILTERS} bind:value={feed.filter} label="Show" /></div>
 

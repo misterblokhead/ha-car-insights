@@ -1,13 +1,17 @@
 <script>
   import { tick } from "svelte";
-  import { get, latest, send } from "../lib/api.js";
+  import { get, hasPlaces, latest, send } from "../lib/api.js";
   import { ADD_CAR_PATH, CONFIGURE_PATH, STOPPED, navigateHa, removalMessage, splitCars, stoppedWithLastCar } from "../lib/cars.js";
+  import { canShowAgain } from "../lib/onboarding.js";
   import { dateTime } from "../lib/time.js";
   import FixedCosts from "./settings/FixedCosts.svelte";
   import Prices from "./settings/Prices.svelte";
   import "./settings/settings.css";
 
+  let { section = null } = $props(); // "prices" or "cars": scrolled into view once the page has loaded
+
   let data = $state(null);
+  let onboarding = $state(null); // the Getting started checklist's state; null when it could not be read
   let error = $state("");
   let newName = $state("");
   let names = $state({});
@@ -26,9 +30,10 @@
     const afterRemoval = removed;
     removed = false;
     try {
-      const d = await get("settings");
+      const [d, o] = await Promise.all([get("settings"), get("onboarding").catch(() => null)]);
       if (!ticket.current) return;
       data = d;
+      onboarding = o;
       stopped = false;
       names = Object.fromEntries(d.groups.map((g) => [g.id, g.name]));
     } catch (e) {
@@ -94,6 +99,15 @@
   // the card fields are sent together; a blank one counts as 0
   const setCard = (v, card) => () => send("PUT", `vehicles/${v.id}/card`, card);
 
+  const showGettingStarted = async () => {
+    if (await change(() => send("PUT", "onboarding", { hidden: false }))) location.hash = "#/activity";
+  };
+
+  // the route's section (#/settings/prices) comes into view once its heading is on the page
+  $effect(() => {
+    if (data && section) document.getElementById(section)?.scrollIntoView();
+  });
+
   load();
 </script>
 
@@ -122,7 +136,7 @@
   <Prices {data} {change} />
 
   {@const cars = splitCars(data.vehicles)}
-  <h2>Cars</h2>
+  <h2 id="cars">Cars</h2>
   <p class="note caption">Users appear here after they open this page once. Administrators always see every car.</p>
   <div class="row"><button class="press" type="button" disabled={busy} bind:this={addCar} onclick={() => navigateHa(ADD_CAR_PATH)}>Add car</button></div>
   {#each cars.active as v (v.id)}
@@ -180,6 +194,9 @@
     </div>
   {/if}
   <FixedCosts {data} {change} />
+  {#if onboarding && canShowAgain(onboarding, hasPlaces())}
+    <div class="row"><button class="press" type="button" disabled={busy} onclick={showGettingStarted}>Show getting started</button></div>
+  {/if}
 {:else if !error}
   <p class="msg">Loading…</p>
 {/if}

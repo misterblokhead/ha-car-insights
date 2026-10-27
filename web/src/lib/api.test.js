@@ -1,6 +1,6 @@
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { latest, send, setHass } from "./api.js";
+import { hasPlaces, latest, send, setHass } from "./api.js";
 
 const reply = (status, body) => () =>
   Promise.resolve({ ok: status < 400, status, json: () => (body === undefined ? Promise.reject(new Error("no body")) : Promise.resolve(body)) });
@@ -72,4 +72,17 @@ test("the older request resolving last does not overwrite the newer one", async 
   await pa;
   assert.deepEqual(later, ["second", "first"]);
   assert.equal(shown, "second");
+});
+
+test("hasPlaces without hass", () => {
+  assert.equal(hasPlaces(), false);
+  setHass({});
+  assert.equal(hasPlaces(), false); // a hass without states
+});
+
+test("hasPlaces counts a zone other than home", () => {
+  setHass({ states: { "zone.home": {}, "sensor.x": {} } });
+  assert.equal(hasPlaces(), false);
+  setHass({ states: { "zone.home": {}, "zone.work": {} } });
+  assert.equal(hasPlaces(), true);
 });
