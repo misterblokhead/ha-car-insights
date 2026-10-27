@@ -611,3 +611,27 @@ def test_rebuild_of_named_vehicles_leaves_the_others_stale_rows_alone(env):
     rebuild(app, now, ["car1"])
     assert [r[0] for r in conn.execute("SELECT vehicle_id FROM trips WHERE algo=(SELECT MAX(algo) FROM trips)")] == ["car1"]
     assert conn.execute("SELECT COUNT(*) FROM trips WHERE vehicle_id='car2'").fetchone()[0] == 1  # not purged for nothing
+
+
+def test_polled_derives_from_the_late_window_only_but_always_publishes(env, monkeypatch):
+    conn, mqtt, *_ = env
+    app, pub = cloud_app(env)
+    db.set_vehicle(conn, "car9", "Invented", True)
+    seen = []
+    monkeypatch.setattr(pipeline, "ingested", lambda app, vid, min_t, received: seen.append(min_t))
+    now = T0 + 100 * DAY
+    poll(app, pub, "car9", [s(now - 40 * DAY, "battery_wh", 30_000.0)], now, now)  # older than the late window
+    poll(app, pub, "car9", [s(now + 2 * DAY, "battery_wh", 30_000.0)], now, now)  # stamped in the future
+    assert seen == [] and len(mqtt.on("car_insights/car9/state")) == 1  # the old sample is published; a future one is no live state
+    poll(app, pub, "car9", [s(now - 2 * DAY, "battery_wh", 31_000.0), s(now - 40 * DAY, "battery_wh", 1.0), s(now + 2 * DAY, "battery_wh", 1.0)], now, now)
+    assert seen == [now - 2 * DAY]  # the oldest sample inside the window
+
+
+def test_rebuild_without_a_horizon_derives_every_cloud_trip(env):
+    conn, *_ = env
+    app, _ = cloud_app(env)
+    db.set_vehicle(conn, "car9", "Invented", True)
+    drive = lambda on: [s(on - MIN, "odometer_km", 1000.0), s(on, "ignition", 4), s(on + 20 * MIN, "ignition", 2), s(on + 21 * MIN, "odometer_km", 1010.0)]
+    db.ingest(conn, "car9", CLOUD, [*drive(T0), *drive(T0 + 3_600_000), s(T0 + 5_000_000, "odometer_km", 1010.0)], T0 + 6_000_000)
+    rebuild(app, T0 + 6_000_000, ["car9"])
+    assert [t["start"] for t in store.closed(conn, TRIP, "car9")] == [T0 + 3_600_000, T0] and store.current_trip(conn, "car9") is None

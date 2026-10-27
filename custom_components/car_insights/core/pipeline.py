@@ -65,7 +65,8 @@ def polled(app: App, publisher: Publisher, vid: str, samples: list[Sample], rece
     horizon, which can close an open approximate trip."""
     app.deriver.horizon[vid] = known_until
     if samples:
-        ingested(app, vid, min(s.t for s in samples), received)
+        if (min_t := late_min_t(samples, received)) is not None:  # a backfill older than the late window, or a future stamp, derives nothing
+            ingested(app, vid, min_t, received)
         publisher.on_ingested(vid, samples, received)
     elif app.deriver.cloud_only(vid) and store.has_open(app.conn, TRIP, vid):
         ingested(app, vid, None, received)

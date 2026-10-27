@@ -915,3 +915,14 @@ def test_forget_drops_what_the_deriver_remembers():
     d.forget("car9")
     d.forget("nobody")
     assert not (d._ignition or d._cloud or d._idle or d._quiet)
+
+
+def test_rebuild_without_a_horizon_closes_every_trip_the_stored_samples_prove_over():
+    # a start-up or kind-switch rebuild has no horizon: the newest stored sample is the evidence
+    later = [s(T0 + 10 * 3_600_000, "odometer_km", 1020.0)]
+    conn, d = cloud_setup(cloud_drive(T0, T0 + 20 * MIN), cloud_drive(T0 + 180 * MIN, T0 + 200 * MIN, odo=(1012.4, 1020.0)), later)
+    trips, _, _ = d.update("car9", None, T0 + 12 * 3_600_000)
+    assert [(t["start"], t["end"]) for t in trips] == [(T0, T0 + 20 * MIN), (T0 + 180 * MIN, T0 + 200 * MIN)]
+    assert store.current_trip(conn, "car9") is None
+    conn2, d2 = cloud_setup(cloud_drive(T0, T0 + 20 * MIN)[:-2])  # the newest sample is the ignition-off itself: nothing after it yet
+    assert d2.update("car9", None, T0 + 3_600_000) == ([], [], set()) and store.current_trip(conn2, "car9")["end"] is None

@@ -154,11 +154,12 @@ class Deriver:
                         seed["plugged_held"] = vid in self._cloud
             if self.cloud_only(vid):
                 # the finder opens an ignition trip only at its ignition-on sample, so the window must reach it: an open row straddles
-                # the window start (_window_start), which pulls the window back to that sample. A cloud poll never reads past its own
-                # end, and a window ends at received + FUTURE_SLACK_MS: the horizon is the earlier of the two.
-                h = self.horizon.get(vid)
+                # the window start (_window_start), which pulls the window back to that sample.
+                # The cloud data is complete up to the poll's horizon and up to the newest stored sample (a rebuild has no horizon yet),
+                # whichever is later; a window never reads past received + FUTURE_SLACK_MS, so that caps it.
+                known = [h for h in (self.horizon.get(vid), samples[-1].t if samples else None) if h is not None]
                 raw_trips = find_cloud_trips([x for x in samples if x.k in coarse.KEYS], seed, vid in self._ignition, self._capacity(vid),
-                                             None if h is None else min(h, received_ms + FUTURE_SLACK_MS))
+                                             min(max(known), received_ms + FUTURE_SLACK_MS) if known else None)
                 trip_parts = lambda t, span: _cloud_trip_parts(t, span, self._zones, chain(conn, vid, t.start, t.distance_m))
             else:
                 # a cloud report is no proof the car slept: find_trips sees only its own keys
