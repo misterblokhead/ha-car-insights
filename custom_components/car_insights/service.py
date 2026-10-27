@@ -15,7 +15,7 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.loader import async_get_integration
 
 from . import bridge, ha_adapters, importer
-from .cloud_setup import convert_legacy, source_conf
+from .cloud_setup import convert_legacy, has_car_app, source_conf
 from .const import DOMAIN
 from .core import capacity as capacity_learning, costs, db, geocode, pipeline, prices
 from .core.access import Viewer
@@ -180,7 +180,7 @@ class Service:
         await asyncio.shield(self._ready)
         vid, capacity = entry.data["vehicle_id"], (entry.options.get("cloud") or {}).get("capacity_kwh")
         self._live[vid] = entry.title
-        await asyncio.wrap_future(self.worker.call(self._configure, vid, entry.title, "webhook_id" not in entry.data, capacity, source_conf(entry)))
+        await asyncio.wrap_future(self.worker.call(self._configure, vid, entry.title, not has_car_app(entry), capacity, source_conf(entry)))
 
     def _configure(self, vid: str, title: str, cloud_only: bool, capacity_kwh: float | None, conf: SourceConf | None) -> None:
         """On the worker. A vehicle that changed kind loses its derived rows and gets them again from its samples."""
@@ -189,7 +189,7 @@ class Service:
             self.app.totals.publish_vehicle(vid)  # rebuild republishes the last trip and charge only
             if self.app.totals.in_group(vid):
                 self.app.totals.publish_groups()
-        if capacity_kwh is not None:
+        if cloud_only and capacity_kwh is not None:  # a car with the car app keeps the capacity it learned
             try:
                 db.apply_capacity_option(self.conn, vid, capacity_kwh)
             except (TypeError, ValueError):

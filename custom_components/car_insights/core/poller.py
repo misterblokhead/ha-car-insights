@@ -8,7 +8,7 @@ from typing import Callable
 
 from . import db
 from .protocol import Sample
-from .ha_entities import CAR_APP_IGNORED, REPORT_MAX_AGE_MS, REQUIRED, parse_history, to_samples
+from .ha_entities import CAR_APP_IGNORED, REPORT_MAX_AGE_MS, REQUIRED, SCALED, parse_history, to_samples
 
 log = logging.getLogger(__name__)
 BACKFILL_MS = 10 * 86_400_000  # HA's default history retention
@@ -69,6 +69,10 @@ class Poller:
         if any(r in missing for r in REQUIRED):
             return  # paused: the cursor stays, so the catch-up after the fix loses nothing
         entities = {r: found[rid][0] for r, rid in wanted.items() if rid in found}
+        # a scaled reading with no unit has no state yet (HA is starting): its rows would be dropped as bad and their cursor moved past them,
+        # so it sits this poll out
+        waiting = [e for r, e in entities.items() if r in SCALED and found[wanted[r]][1] is None]
+        entities = {r: e for r, e in entities.items() if e not in waiting}
         units = dict(found.values())
         ids, cursor, now = list(entities.values()), db.cursors(self._conn, vid, sid), self._now()
         # the report time may be older than its metric row by REPORT_MAX_AGE_MS, so reach back that far before the oldest cursor
@@ -83,6 +87,7 @@ class Poller:
         if key in self._until:  # HA answers with each entity's state at `start`, stamped `start`: that is not a new row
             cursor = {**cursor, **{e: max(cursor.get(e, -1), start) for e in ids}}
         found_samples, new_cursor, bad = to_samples(entities, units, history, cursor)
+        new_cursor = {**{e: start for e in waiting if e not in cursor}, **new_cursor}  # one never read starts here when it is back, not at the source's position
         for eid, state in bad:
             if now - self._bad_logged.get(eid, -BAD_LOG_MS) >= BAD_LOG_MS:
                 self._bad_logged[eid] = now
@@ -92,7 +97,10 @@ class Poller:
             first = db.acked_seq(self._conn, vid, sid) + 1
             samples = [Sample(first + i, t, k, v) for i, (t, k, v) in enumerate(found_samples)]
             db.ingest(self._conn, vid, sid, samples, now, after=lambda c: db.save_cursors(c, vid, sid, new_cursor))
-        self._until[key] = now
+        if waiting:
+            self._until.pop(key, None)  # the next window reaches back to the waiting entity's cursor
+        else:
+            self._until[key] = now
         self._on_polled(vid, samples, now, now - SETTLE_MS)
 
     async def run(self, interval_s: float = 60) -> None:

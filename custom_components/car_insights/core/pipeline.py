@@ -67,7 +67,8 @@ def polled(app: App, publisher: Publisher, vid: str, samples: list[Sample], rece
     if samples:
         if (min_t := late_min_t(samples, received)) is not None:  # a backfill older than the late window, or a future stamp, derives nothing
             ingested(app, vid, min_t, received)
-        publisher.on_ingested(vid, samples, received)
+        if app.deriver.cloud_only(vid):  # a car app delivers the live state: a cloud report would move its last_seen
+            publisher.on_ingested(vid, samples, received)
     elif app.deriver.cloud_only(vid) and store.has_open(app.conn, TRIP, vid):
         ingested(app, vid, None, received)
 

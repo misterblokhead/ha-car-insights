@@ -9,7 +9,7 @@ from homeassistant.helpers.selector import SelectSelector, SelectSelectorConfig,
 from homeassistant.util import slugify
 
 from .cloud_setup import (
-    ENTITY_FILTERS, capacity_default, device_entries, device_schema, entities_schema, to_entity_ids, to_registry_ids)
+    ENTITY_FILTERS, capacity_default, device_entries, device_schema, entities_schema, has_car_app, to_entity_ids, to_registry_ids)
 from .const import DOMAIN
 from .core.poller import new_source_id
 from .core.presets import capacity_entry, match
@@ -26,6 +26,9 @@ class _CloudSteps:
         self._current: dict = {}  # the cloud options of the entry being changed; none for a new car
 
     def _vehicle_id(self) -> str:
+        raise NotImplementedError
+
+    def _car_app(self) -> bool:
         raise NotImplementedError
 
     async def _save(self, cloud: dict):
@@ -46,22 +49,24 @@ class _CloudSteps:
     async def async_step_cloud_entities(self, user_input=None):
         preset, matched = match(self._integration, self._entries)
         same_device = self._current.get("device_id") == self._device_id
-        errors = {}
+        car_app, errors = self._car_app(), {}
         if user_input is not None:
             picked = {r: user_input[r] for r in ENTITY_FILTERS if r in user_input}
             entities = to_registry_ids(self.hass, picked)
             errors = {r: "entity_not_in_registry" for r in picked if r not in entities}  # one the registry lacks cannot be tracked
             if not errors:
                 return await self._save({
-                    "preset": preset, "device_id": self._device_id, "entities": entities, "capacity_kwh": user_input["capacity_kwh"],
+                    "preset": preset, "device_id": self._device_id, "entities": entities,
                     "source_id": self._current.get("source_id") if same_device and self._current.get("source_id")
-                    else new_source_id(self._vehicle_id(), self._device_id)})
+                    else new_source_id(self._vehicle_id(), self._device_id),
+                    **({} if car_app else {"capacity_kwh": user_input["capacity_kwh"]})})
             values = user_input
         else:
-            capacity = capacity_default(self.hass, capacity_entry(self._integration, self._entries), self._current.get("capacity_kwh"))
-            values = {**to_entity_ids(self.hass, (self._current.get("entities") or {}) if same_device else matched), "capacity_kwh": capacity}
+            values = to_entity_ids(self.hass, (self._current.get("entities") or {}) if same_device else matched)
+            if not car_app:
+                values["capacity_kwh"] = capacity_default(self.hass, capacity_entry(self._integration, self._entries), self._current.get("capacity_kwh"))
         return self.async_show_form(
-            step_id="cloud_entities", data_schema=self.add_suggested_values_to_schema(entities_schema(), values), errors=errors,
+            step_id="cloud_entities", data_schema=self.add_suggested_values_to_schema(entities_schema(not car_app), values), errors=errors,
             description_placeholders={"preset": _PRESET_NAMES.get(preset, preset) if preset else "none"})
 
 
@@ -74,6 +79,9 @@ class CarInsightsConfigFlow(_CloudSteps, config_entries.ConfigFlow, domain=DOMAI
 
     def _vehicle_id(self) -> str:
         return self._data["vehicle_id"]
+
+    def _car_app(self) -> bool:
+        return self._source == "both"
 
     def _app_data(self) -> dict:
         return {**self._data, "webhook_id": webhook.async_generate_id(), "secret": secrets.token_hex(32)}
@@ -114,6 +122,9 @@ class CarInsightsOptionsFlow(_CloudSteps, config_entries.OptionsFlow):
     def _vehicle_id(self) -> str:
         return self.config_entry.data["vehicle_id"]
 
+    def _car_app(self) -> bool:
+        return has_car_app(self.config_entry)
+
     async def _save(self, cloud: dict):
         return self.async_create_entry(data={**self.config_entry.options, "cloud": cloud})
 
@@ -121,7 +132,7 @@ class CarInsightsOptionsFlow(_CloudSteps, config_entries.OptionsFlow):
         entry = self.config_entry
         cloud = entry.options.get("cloud")
         self._current = cloud if isinstance(cloud, dict) else {}
-        if "webhook_id" not in entry.data:  # a cloud-only car has nothing else to change
+        if not has_car_app(entry):  # a cloud-only car has nothing else to change
             return await self.async_step_cloud_device()
         if not self._current:
             return await self.async_step_cloud_add()

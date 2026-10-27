@@ -346,3 +346,33 @@ def test_stale_cursor_of_an_unpolled_entity_does_not_widen_the_window():
     f = Fetch(FULL)
     poll(make(f, conn)[0])
     assert f.calls[0][1] == T - REPORT_MAX_AGE_MS  # the oldest polled cursor is the odometer's, at T
+
+
+def test_a_scaled_reading_without_a_unit_is_left_out_of_the_poll_and_read_later():
+    res, clock = dict(RES), [NOW]
+    f = Fetch(FULL)
+    p, conn, _ = make(f, res=res, clock=clock)
+    poll(p)
+    cursor = db.cursors(conn, "car1", SID)[ODO]
+    res["rid-mil"] = (ODO, None)  # HA is starting: the odometer has no state yet, so no unit
+    f.payload = FULL[:2] + [rows(ODO, (T, "1000"), (T + 3_000_000, "1005"))] + FULL[3:]
+    clock[0] = NOW + 60_000
+    poll(p)
+    assert ODO not in f.calls[1][0] and db.cursors(conn, "car1", SID)[ODO] == cursor
+    assert conn.execute("SELECT COUNT(*) FROM samples WHERE key='odometer_km'").fetchone()[0] == 1
+    res["rid-mil"] = (ODO, "km")
+    clock[0] = NOW + 120_000
+    poll(p)
+    assert ODO in f.calls[2][0] and [r[0] for r in conn.execute("SELECT value_json FROM samples WHERE key='odometer_km' ORDER BY seq")] == ["1000.0", "1005.0"]
+
+
+def test_a_first_poll_without_the_odometer_unit_still_reads_its_whole_history_later():
+    res, clock = {**RES, "rid-mil": (ODO, None)}, [NOW]
+    p, conn, _ = make(Fetch(FULL), res=res, clock=clock)
+    poll(p)
+    assert conn.execute("SELECT COUNT(*) FROM samples WHERE key='odometer_km'").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM samples").fetchone()[0] == 6  # the others went in; their cursors are past the odometer's row
+    res["rid-mil"] = (ODO, "km")
+    clock[0] = NOW + 60_000
+    poll(p)
+    assert [r[0] for r in conn.execute("SELECT value_json FROM samples WHERE key='odometer_km'")] == ["1000.0"]

@@ -41,7 +41,7 @@ What you get:
 - **Missing entities.** If an entity is removed or renamed, a repair says "some car data is missing". If Charge level or Odometer is missing, the car's cloud data is paused until you fix it. Nothing is lost: it catches up on up to 10 days.
 - **No data.** A car with only the integration and no new data for 7 days shows "No data since <date>" on its page. Stellantis cars stop being connected after 7 days without a trip of more than 15 minutes, so a parked Stellantis car shows this until you drive it.
 
-Upgrading from 1.0.0: a car-app vehicle's Renault cloud options are converted on the first start. The converted source keeps the same id, so nothing is read twice, and entity ids and stored data are unchanged.
+Upgrading from 1.0.0: a car-app vehicle's Renault cloud options are converted on the first start. The converted source keeps the same id, so nothing is read twice, and entity ids and stored data are unchanged. Take a Home Assistant backup before updating; going back to 1.0.0 means restoring it. A 1.0.0 cloud source that cannot be converted is dropped with a warning in the log; add it again in Configure.
 
 ## Moving from the add-on
 

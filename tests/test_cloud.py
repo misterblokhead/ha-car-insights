@@ -317,3 +317,14 @@ async def test_capacity_option_is_applied(hass):
     await setup(hass, entry)
     assert await on_worker(hass, lambda conn: db.capacity_wh(conn, "car1", 0)) == 52_000
     await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_capacity_option_is_ignored_for_a_car_app_vehicle(hass):
+    entry = cloud_entry(hass, make_zoe(hass), car_app=True, capacity_kwh=52.0)  # the car app learns the capacity: Configure never sets it
+    await setup(hass, entry)
+    assert await on_worker(hass, lambda conn: db.capacity_wh(conn, "car1", 0)) == 0
+    await on_worker(hass, lambda conn: db.set_capacity_wh(conn, "car1", 41_000))  # learned since
+    hass.config_entries.async_update_entry(entry, options={"cloud": {**entry.options["cloud"], "capacity_kwh": 53.0}})
+    await hass.async_block_till_done()
+    assert await on_worker(hass, lambda conn: db.capacity_wh(conn, "car1", 0)) == 41_000
+    await hass.config_entries.async_unload(entry.entry_id)

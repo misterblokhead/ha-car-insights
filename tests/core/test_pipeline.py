@@ -635,3 +635,11 @@ def test_rebuild_without_a_horizon_derives_every_cloud_trip(env):
     db.ingest(conn, "car9", CLOUD, [*drive(T0), *drive(T0 + 3_600_000), s(T0 + 5_000_000, "odometer_km", 1010.0)], T0 + 6_000_000)
     rebuild(app, T0 + 6_000_000, ["car9"])
     assert [t["start"] for t in store.closed(conn, TRIP, "car9")] == [T0 + 3_600_000, T0] and store.current_trip(conn, "car9") is None
+
+
+def test_polled_publishes_no_live_state_for_a_car_app_vehicle(env):
+    conn, mqtt, *_ = env
+    app, pub = cloud_app(env)
+    db.set_vehicle(conn, "car1", "Meg", False)  # a car app delivers the live state: a cloud report must not move last_seen
+    poll(app, pub, "car1", [s(T0, "soc_percent", 50.0)], T0 + MIN, T0 + MIN)
+    assert pub._states == {} and mqtt.on("car_insights/car1/state") == []

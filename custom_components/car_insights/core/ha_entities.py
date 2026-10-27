@@ -102,6 +102,9 @@ READINGS: dict[str, Reading] = {  # reading -> how to read it
 }
 
 
+SCALED = frozenset({"odometer", "range", "battery_energy", "speed"})  # the readings whose number needs the unit of the entity's state
+
+
 def parse_history(payload: list[list[dict]]) -> dict[str, list[tuple[int, str, dict | None]]]:
     """HA /api/history/period: one list per entity, only its first row has entity_id.
     A row with attributes is timed by last_updated (attribute changes keep last_changed)."""

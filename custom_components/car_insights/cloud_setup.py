@@ -31,6 +31,11 @@ ENTITY_FILTERS: dict[str, list[dict]] = {
 }
 
 
+def has_car_app(entry: ConfigEntry) -> bool:
+    """Whether the vehicle has a car app (its webhook): without one, the integration's own entities are all there is."""
+    return "webhook_id" in entry.data
+
+
 def device_entries(hass: HomeAssistant, device_id: str) -> tuple[str | None, list[RegEntry]]:
     """(the integration of a device, its registry entries): the first of its integrations that has a preset, else the first one."""
     device = dr.async_get(hass).async_get(device_id)
@@ -78,7 +83,7 @@ def source_conf(entry: ConfigEntry) -> SourceConf | None:
     if not cloud:
         return None
     try:
-        return SourceConf(entry.data["vehicle_id"], cloud["source_id"], dict(cloud["entities"]), "webhook_id" in entry.data)
+        return SourceConf(entry.data["vehicle_id"], cloud["source_id"], dict(cloud["entities"]), has_car_app(entry))
     except (KeyError, TypeError, ValueError):
         log.warning("Skipping the cloud source of %s: its options do not fit", entry.title)
         return None
@@ -90,11 +95,11 @@ def device_schema() -> vol.Schema:
     return vol.Schema({vol.Required("device_id"): DeviceSelector(DeviceSelectorConfig(entity=cars))})
 
 
-def entities_schema() -> vol.Schema:
-    """One entity picker per reading, then the battery capacity."""
+def entities_schema(capacity: bool) -> vol.Schema:
+    """One entity picker per reading, then the battery capacity (a car with the car app has none: the app learns it)."""
     pickers = {(vol.Required if r in REQUIRED else vol.Optional)(r): EntitySelector(EntitySelectorConfig(filter=f)) for r, f in ENTITY_FILTERS.items()}
-    capacity = NumberSelector(NumberSelectorConfig(min=5, max=200, step=0.1, unit_of_measurement="kWh", mode=NumberSelectorMode.BOX))
-    return vol.Schema({**pickers, vol.Required("capacity_kwh"): capacity})
+    kwh = NumberSelector(NumberSelectorConfig(min=5, max=200, step=0.1, unit_of_measurement="kWh", mode=NumberSelectorMode.BOX))
+    return vol.Schema({**pickers, **({vol.Required("capacity_kwh"): kwh} if capacity else {})})
 
 
 def capacity_default(hass: HomeAssistant, entry: RegEntry | None, current: float | None) -> float:
