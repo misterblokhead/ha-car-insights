@@ -219,7 +219,10 @@ async def test_service_imports_and_rederives(hass, share):
     svc = await Service.acquire(hass)
     try:
         assert entry.options == {"keep": 1, "cloud": {  # the imported options arrive converted, with the add-on's source id
-            "preset": "renault", "device_id": device.id, "entities": {"charge_level": battery.id}, "source_id": legacy_source_id("renault", "invented_zoe")}}
+            "preset": "renault", "device_id": device.id, "entities": {
+                "charging": "sensor.invented_zoe_charge_state", "charge_level": battery.id, "odometer": "sensor.invented_zoe_mileage",
+                "plugged": "sensor.invented_zoe_plug_state", "report_time": "sensor.invented_zoe_last_battery_activity"},  # the unresolved by entity id
+            "source_id": legacy_source_id("renault", "invented_zoe")}}
         assert other.options == {}
         assert ir.async_get(hass).async_get_issue(DOMAIN, "import_failed") is None
 

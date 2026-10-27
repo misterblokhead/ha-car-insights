@@ -142,7 +142,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass, DOMAIN, f"Car Insights {vehicle_id}", webhook_id, handler,
                 local_only=False, allowed_methods=("POST",),
             )
-            # not in async_unload_entry: an entry that lost its webhook_id (a switch to cloud-only) must still drop the webhook it had
+            # async_unload_entry drops it before the release; this one is for an entry that lost its webhook_id (a switch to cloud-only)
             entry.async_on_unload(partial(webhook.async_unregister, hass, webhook_id))
     except BaseException:
         await service.unconfigure(vehicle_id)  # a source that was configured before the failure must not go on polling
@@ -162,6 +162,8 @@ async def _reload(hass: HomeAssistant, entry: ConfigEntry) -> None:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False
+    if "webhook_id" in entry.data:  # before the release, as in 1.0.0: no upload may reach a released service (a second unregister is harmless)
+        webhook.async_unregister(hass, entry.data["webhook_id"])
     if (service := hass.data.get(DOMAIN)) is not None:
         await service.unconfigure(entry.data["vehicle_id"])
     await _release(hass)
@@ -178,8 +180,9 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if isinstance(old, dict) and "mapping" in old:
             try:
                 options["cloud"] = convert_legacy(hass, entry.data["vehicle_id"], old)
-            except ValueError as err:  # kept as it is: the source is skipped with a warning until the owner picks it again
-                _LOGGER.warning("Could not convert the cloud source of %s: %s", entry.title, err)
+            except ValueError as err:
+                _LOGGER.warning("Could not convert the cloud source of %s, so it is dropped: %s", entry.title, err)
+                del options["cloud"]  # nothing in it names an entity: the owner picks the car's device again
         hass.config_entries.async_update_entry(entry, options=options, version=2)
     return True
 

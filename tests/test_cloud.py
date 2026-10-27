@@ -105,13 +105,60 @@ async def test_migrate_with_an_unresolvable_entity_leaves_that_reading_out_and_r
         options={"cloud": {"mapping": "renault", "entity_stem": "invented_zoe"}})
     entry.add_to_hass(hass)
     await setup(hass, entry)
-    assert set(entry.options["cloud"]["entities"]) == {"charge_level", "charging", "plugged", "report_time"}
+    assert entry.options["cloud"]["entities"]["odometer"] == "sensor.invented_zoe_mileage"  # kept by entity id: the poller reports it
     await poll(hass)
     found = issue(hass)  # a required reading is gone: the source pauses
     assert found.severity is IssueSeverity.ERROR and found.translation_key == "cloud_entity_missing_required"
     assert found.translation_placeholders == {"vehicle": "Test Car", "readings": "odometer"}
     await hass.config_entries.async_unload(entry.entry_id)
     assert issue(hass) is None  # nothing polls the car any more
+
+
+async def test_migrate_with_an_unresolvable_optional_entity_raises_the_warning_and_heals(hass):
+    zoe = make_zoe(hass, skip=("charge_state",))
+    entry = MockConfigEntry(domain=DOMAIN, version=1, unique_id="car1", title="Test Car", data={
+        "vehicle_id": "car1", "vehicle_name": "Test Car", "secret": SECRET, "webhook_id": "invented_hook"},
+        options={"cloud": {"mapping": "renault", "entity_stem": "invented_zoe"}})
+    entry.add_to_hass(hass)
+    await setup(hass, entry)
+    assert entry.options["cloud"]["entities"]["charging"] == "sensor.invented_zoe_charge_state"
+    await poll(hass)
+    found = issue(hass)
+    assert found.severity is IssueSeverity.WARNING and found.translation_key == "cloud_entity_missing"
+    assert found.translation_placeholders == {"vehicle": "Test Car", "readings": "charging"}
+    er.async_get(hass).async_get_or_create("sensor", "renault", "invented_zoe-charge_state", suggested_object_id="invented_zoe_charge_state",
+                                           config_entry=zoe.cfg, device_id=zoe.device.id)  # the entity comes back
+    await poll(hass)
+    assert issue(hass) is None
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+@pytest.mark.parametrize("old", [{"mapping": "renault"}, {"mapping": "kia", "entity_stem": "invented_ev6"}])
+async def test_migrate_with_unusable_1_0_0_options_still_loads(hass, caplog, old):
+    entry = MockConfigEntry(domain=DOMAIN, version=1, unique_id="car1", title="Test Car", data={
+        "vehicle_id": "car1", "vehicle_name": "Test Car", "secret": SECRET, "webhook_id": "invented_hook"}, options={"cloud": old})
+    entry.add_to_hass(hass)
+    await setup(hass, entry)
+    assert entry.version == 2 and entry.state is ConfigEntryState.LOADED and "Test Car" in caplog.text
+    assert "car1" not in hass.data[DOMAIN].poller._confs
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_unload_drops_the_webhook_before_the_service_is_released(hass, monkeypatch):
+    import custom_components.car_insights as integration
+    entry = cloud_entry(hass, make_zoe(hass), car_app=True)
+    await setup(hass, entry)
+    assert "invented_hook" in hass.data[webhook.DOMAIN]
+    seen = []
+    release = integration._release
+
+    async def spy(h):
+        seen.append("invented_hook" in h.data[webhook.DOMAIN])
+        await release(h)
+
+    monkeypatch.setattr(integration, "_release", spy)
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    assert seen == [False] and "invented_hook" not in hass.data[webhook.DOMAIN]
 
 
 async def test_missing_optional_reading_raises_a_warning(hass):
@@ -133,7 +180,8 @@ async def test_migrate_with_nothing_resolvable_keeps_the_source_id_and_pauses(ha
     entry.add_to_hass(hass)
     await setup(hass, entry)
     cloud = entry.options["cloud"]
-    assert cloud["entities"] == {} and cloud["device_id"] is None and cloud["source_id"] == legacy_source_id("renault", "invented_gone")
+    assert cloud["device_id"] is None and cloud["source_id"] == legacy_source_id("renault", "invented_gone")
+    assert cloud["entities"]["odometer"] == "sensor.invented_gone_mileage" and len(cloud["entities"]) == 5  # kept by entity id
     await poll(hass)
     assert issue(hass).severity is IssueSeverity.ERROR
     await hass.config_entries.async_unload(entry.entry_id)

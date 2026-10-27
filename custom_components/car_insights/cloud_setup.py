@@ -37,12 +37,16 @@ def to_entity_ids(hass: HomeAssistant, registry_ids: dict[str, str]) -> dict[str
 
 def convert_legacy(hass: HomeAssistant, vehicle_id: str, old: dict) -> dict:
     """The 1.0.0 cloud options ({"mapping", "entity_stem"}) as the cloud options of 1.1.0. The source id stays the old one, so the stored cursor
-    carries on. An entity that is not in the registry is left out of `entities`: the poller reports it. Raises ValueError for another mapping."""
+    carries on. An entity that is not in the registry stays in `entities` as its entity id (the registry takes either): the poller reports
+    it as missing, and it is found again when the entity comes back. Raises ValueError for another mapping or a missing stem."""
     legacy = LEGACY.get(old["mapping"])
     if legacy is None:
         raise ValueError(f"no 1.0.0 mapping named {old['mapping']!r}")
-    stem = old["entity_stem"]
-    entities = to_registry_ids(hass, {r: tpl.format(stem=stem) for r, tpl in legacy.items()})
+    if not isinstance(stem := old.get("entity_stem"), str):
+        raise ValueError("no entity_stem")
+    wanted = {r: tpl.format(stem=stem) for r, tpl in legacy.items()}
+    found = to_registry_ids(hass, wanted)
+    entities = {r: found.get(r, eid) for r, eid in wanted.items()}
     reg = er.async_get(hass)
     device_id = next((e.device_id for rid in entities.values() if (e := reg.async_get(rid)) is not None and e.device_id), None)
     return {"preset": old["mapping"], "device_id": device_id, "entities": entities, "source_id": legacy_source_id(old["mapping"], stem)}
