@@ -5,9 +5,8 @@ from datetime import datetime, timezone
 from typing import Any, Iterable
 
 from .figures import pct
-from .ha_entities import IGNITION_ON
 from .ha_mqtt import device, discovery, sensor, topic
-from .protocol import FUTURE_SLACK_MS, PARK_GEAR, Sample, num
+from .protocol import FUTURE_SLACK_MS, IGNITION_ON, PARK_GEAR, Sample, num
 
 MODES = ("driving", "charging", "parked")
 

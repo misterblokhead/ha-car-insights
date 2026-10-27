@@ -2,7 +2,6 @@
 import asyncio
 import logging
 import time
-from functools import partial
 from pathlib import Path
 
 from aiohttp import web
@@ -13,7 +12,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.network import NoURLAvailableError
 
 from .bridge import PLATFORMS
-from .cloud_setup import convert_legacy
+from .cloud_setup import convert_legacy, has_car_app
 from .const import DOMAIN, MAX_BODY
 from .receiver import body_vehicle_matches, config_file_text, is_https_url, read_limited, verify_signature, write_conf
 from .panel import async_register_http, async_register_panel, remove_panel
@@ -88,7 +87,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return web.json_response(reply, status=status)
 
     written = None
-    if webhook_id:  # a cloud-only entry has no car to reach it: no URL, no .conf, no webhook
+    if has_car_app(entry):  # a cloud-only entry has no car to reach it: no URL, no .conf, no webhook
         try:
             url = await _webhook_url(hass, webhook_id)
         except NoURLAvailableError as err:
@@ -137,13 +136,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             persistent_notification.async_create(
                 hass, what, title="Car Insights", notification_id=f"{DOMAIN}_{vehicle_id}",
             )
-        if webhook_id:
+        if has_car_app(entry):
             webhook.async_register(  # last: a failed setup is not unloaded, so nothing after this may fail
                 hass, DOMAIN, f"Car Insights {vehicle_id}", webhook_id, handler,
                 local_only=False, allowed_methods=("POST",),
             )
-            # async_unload_entry drops it before the release; this one is for an entry that lost its webhook_id (a switch to cloud-only)
-            entry.async_on_unload(partial(webhook.async_unregister, hass, webhook_id))
     except BaseException:
         await service.unconfigure(vehicle_id)  # a source that was configured before the failure must not go on polling
         if forwarded:
@@ -162,7 +159,7 @@ async def _reload(hass: HomeAssistant, entry: ConfigEntry) -> None:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False
-    if "webhook_id" in entry.data:  # before the release, as in 1.0.0: no upload may reach a released service (a second unregister is harmless)
+    if has_car_app(entry):  # before the release, as in 1.0.0: no upload may reach a released service (a second unregister is harmless)
         webhook.async_unregister(hass, entry.data["webhook_id"])
     if (service := hass.data.get(DOMAIN)) is not None:
         await service.unconfigure(entry.data["vehicle_id"])
@@ -191,7 +188,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     # a re-added vehicle gets a new secret, so the stale .conf must go (also one left by an entry that has no car app any more)
     path = Path(hass.config.path("car_insights", f"{entry.data['vehicle_id']}.conf"))
     await hass.async_add_executor_job(lambda: path.unlink(missing_ok=True))
-    if "webhook_id" in entry.data and _uses_cloud(hass):
+    if has_car_app(entry) and _uses_cloud(hass):
         try:
             await cloud.async_delete_cloudhook(hass, entry.data["webhook_id"])
         except (cloud.CloudNotAvailable, ValueError):

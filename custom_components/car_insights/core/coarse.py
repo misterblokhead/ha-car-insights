@@ -5,7 +5,7 @@ from .trips import IGNITION_ENDS_TRIP, Trip
 from .zones import _haversine_m
 
 # the coarse rules, in one place: a car without the car app is only known from its cloud entities, polled about once a minute
-MOVE_M = 200  # a gps fix this far from the previous one is motion
+MOVE_M = 200  # a gps fix this far from where the car stood is motion; the car stands where its last motion fix was, so parked jitter never adds up
 END_QUIET_MS = 600_000  # without ignition, a trip ends after this long without motion
 MIN_DISTANCE_M = 500  # a closed trip shorter than this is noise
 ODO_SETTLE_MS = 120_000  # the cloud odometer lags the ignition: end values are read this long after the end

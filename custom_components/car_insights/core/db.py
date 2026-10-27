@@ -141,10 +141,14 @@ def is_cloud_only(conn, vehicle_id: str) -> bool:
     return bool(r and r[0])
 
 
+def _check_kwh(kwh: float, what: str) -> None:
+    if not (math.isfinite(kwh) and kwh > 0):
+        raise ValueError(f"{what} must be a positive number of kWh, got {kwh!r}")
+
+
 def apply_capacity_option(conn, vehicle_id: str, kwh: float) -> None:
     """The capacity the owner typed becomes the vehicle's capacity once per value: what the capacity learning found since is kept."""
-    if not (math.isfinite(kwh) and kwh > 0):
-        raise ValueError(f"capacity must be a positive number of kWh, got {kwh!r}")
+    _check_kwh(kwh, "capacity")
     key = f"capacity_option:{vehicle_id}"
     r = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
     if r is None or float(r[0]) != kwh:
@@ -159,8 +163,7 @@ def default_capacity_kwh(conn) -> float:
 
 
 def set_default_capacity_kwh(conn, kwh: float) -> None:
-    if not (math.isfinite(kwh) and kwh > 0):
-        raise ValueError(f"default capacity must be a positive number of kWh, got {kwh!r}")
+    _check_kwh(kwh, "default capacity")
     conn.execute("INSERT INTO settings VALUES('default_capacity_kwh',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(float(kwh)),))
 
 

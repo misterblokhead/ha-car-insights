@@ -962,3 +962,16 @@ def test_forget_also_drops_the_horizon():
     d.horizon["car9"] = T0
     d.forget("car9")
     assert "car9" not in d.horizon
+
+
+def test_purge_deletes_the_rows_of_every_kind_and_forgets_the_vehicle():
+    conn, d = setup()
+    seed_trip(conn, "car1", 1000, 2000)
+    seed_charge(conn, "car1", 3000, 4000)
+    seed_trip(conn, "car2", 1000, 2000)
+    d.set_horizon("car1", 5)
+    assert d.horizon == {"car1": 5}
+    with db.tx(conn):
+        d.purge("car1")
+    assert store.closed(conn, TRIP, "car1") == [] and store.closed(conn, CHARGE, "car1") == [] and d.horizon == {}
+    assert len(store.closed(conn, TRIP, "car2")) == 1

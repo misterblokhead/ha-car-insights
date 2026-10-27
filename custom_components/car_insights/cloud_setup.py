@@ -16,6 +16,7 @@ from .core.presets import PRESETS, RegEntry
 log = logging.getLogger(__name__)
 
 DEFAULT_CAPACITY_KWH = 60.0
+CAPACITY_RANGE_KWH = (5, 200)  # what the form takes and a suggestion must fall in
 # reading -> the entity filters of its picker (any one fits), in the order the form lists them
 ENTITY_FILTERS: dict[str, list[dict]] = {
     "charge_level": [{"domain": "sensor", "device_class": "battery"}],
@@ -98,14 +99,15 @@ def device_schema() -> vol.Schema:
 def entities_schema(capacity: bool) -> vol.Schema:
     """One entity picker per reading, then the battery capacity (a car with the car app has none: the app learns it)."""
     pickers = {(vol.Required if r in REQUIRED else vol.Optional)(r): EntitySelector(EntitySelectorConfig(filter=f)) for r, f in ENTITY_FILTERS.items()}
-    kwh = NumberSelector(NumberSelectorConfig(min=5, max=200, step=0.1, unit_of_measurement="kWh", mode=NumberSelectorMode.BOX))
+    kwh = NumberSelector(NumberSelectorConfig(min=CAPACITY_RANGE_KWH[0], max=CAPACITY_RANGE_KWH[1], step=0.1, unit_of_measurement="kWh", mode=NumberSelectorMode.BOX))
     return vol.Schema({**pickers, **({vol.Required("capacity_kwh"): kwh} if capacity else {})})
 
 
 def capacity_default(hass: HomeAssistant, entry: RegEntry | None, current: float | None) -> float:
     """kWh: the entry's saved capacity (the owner may have corrected the integration's), else the integration's capacity entity when it has a
     usable number (kWh, or Wh), else 60"""
-    if isinstance(current, (int, float)) and 5 <= current <= 200:
+    low, high = CAPACITY_RANGE_KWH
+    if isinstance(current, (int, float)) and low <= current <= high:
         return current
     if entry is not None and (state := hass.states.get(entry.entity_id)) is not None:
         factor = {"kWh": 1, "Wh": 0.001}.get(state.attributes.get("unit_of_measurement"))
@@ -113,6 +115,6 @@ def capacity_default(hass: HomeAssistant, entry: RegEntry | None, current: float
             kwh = round(float(state.state) * factor, 1) if factor else math.nan
         except ValueError:
             kwh = math.nan
-        if 5 <= kwh <= 200:
+        if low <= kwh <= high:
             return kwh
     return DEFAULT_CAPACITY_KWH

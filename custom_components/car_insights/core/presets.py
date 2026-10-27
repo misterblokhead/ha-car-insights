@@ -17,13 +17,14 @@ class RegEntry:
 @dataclass(frozen=True)
 class Preset:
     name: str
+    label: str  # for people
     # reading -> (entity domain, key) candidates, best first
     readings: dict[str, tuple[tuple[str, str], ...]]
     capacity: tuple[str, str] | None = None
 
 
 PRESETS: dict[str, Preset] = {
-    "renault": Preset("renault", {
+    "renault": Preset("renault", "Renault", {
         "charge_level": (("sensor", "battery_level"),),
         "odometer": (("sensor", "mileage"),),
         "charging": (("sensor", "charge_state"),),
@@ -33,7 +34,7 @@ PRESETS: dict[str, Preset] = {
         "location": (("device_tracker", "location"),),
         "report_time": (("sensor", "battery_last_activity"),),
     }),
-    "stellantis_vehicles": Preset("stellantis", {
+    "stellantis_vehicles": Preset("stellantis", "Stellantis", {
         "charge_level": (("sensor", "battery"),),
         "odometer": (("sensor", "mileage"),),
         "charging": (("binary_sensor", "battery_charging"),),

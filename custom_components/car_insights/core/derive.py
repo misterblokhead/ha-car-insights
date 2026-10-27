@@ -60,7 +60,7 @@ class Deriver:
                  cloud_only: Callable[[str], bool] = lambda vid: False):
         self._conn, self._zones, self._capacity, self._spots = conn, zones, capacity, spots
         self.cloud_only = cloud_only  # a vehicle without the car app: its trips are approximate, found from its cloud readings
-        self.horizon: dict[str, int] = {}  # vehicle -> the time up to which its cloud source has been read (set by pipeline.polled)
+        self.horizon: dict[str, int] = {}  # vehicle -> the time up to which its cloud source has been read (set by set_horizon)
         self._idle: dict[str, int] = {}  # vehicle -> newest sample t read while nothing was open: the next window starts there
         self._ignition: set[str] = set()  # vehicles known to send an ignition signal (it never goes away)
         self._ignition_conf: dict[str, bool] = {}  # cloud-only vehicle -> whether its source reads an ignition entity now (see set_ignition)
@@ -74,8 +74,17 @@ class Deriver:
         """Delete the rows of every vehicle with a row of another derivation version, so it is derived whole again."""
         with db.tx(self._conn):
             for vid in store.stale_vehicles(self._conn, ALGO):
-                for kind in KINDS:
-                    store.purge(self._conn, kind, vid)
+                self.purge(vid)
+
+    def purge(self, vid: str) -> None:
+        """Delete the rows of a vehicle of every kind and forget it, so it is derived whole again. In the caller's transaction."""
+        for kind in KINDS:
+            store.purge(self._conn, kind, vid)
+        self.forget(vid)
+
+    def set_horizon(self, vid: str, t: int) -> None:
+        """The time up to which a vehicle's cloud source has been read (after each poll)."""
+        self.horizon[vid] = t
 
     def forget(self, vid: str) -> None:
         """Drop what is remembered of a vehicle (its rows were purged, or it changed kind): the next update starts from scratch."""
@@ -169,7 +178,8 @@ class Deriver:
                     elif last_charge_end > plug_t:
                         seed[k] = False
                         seed["plugged_held"] = vid in self._cloud
-            if self.cloud_only(vid):
+            approx = self.cloud_only(vid)
+            if approx:
                 # the finder opens an ignition trip only at its ignition-on sample, so the window must reach it: an open row straddles
                 # the window start (_window_start), which pulls the window back to that sample.
                 # The cloud data is complete up to the poll's horizon and up to the newest stored sample (a rebuild has no horizon yet),
@@ -177,11 +187,11 @@ class Deriver:
                 known = [h for h in (self.horizon.get(vid), samples[-1].t if samples else None) if h is not None]
                 raw_trips = find_cloud_trips([x for x in samples if x.k in coarse.KEYS], seed, ignition, self._capacity(vid),
                                              min(max(known), received_ms + FUTURE_SLACK_MS) if known else None)
-                trip_parts = lambda t, span: _cloud_trip_parts(t, span, self._zones, chain(conn, vid, t.start, t.distance_m))
             else:
                 # a cloud report is no proof the car slept: find_trips sees only its own keys
                 raw_trips = find_trips([x for x in samples if x.k in TRIP_KEYS], seed, ignition, quiet)
-                trip_parts = lambda t, span: _trip_parts(t, span, self._zones, chain(conn, vid, t.start, t.distance_m))
+            parts = _cloud_trip_parts if approx else _trip_parts
+            trip_parts = lambda t, span: parts(t, span, self._zones, chain(conn, vid, t.start, t.distance_m))
             for trip in raw_trips:
                 if trip.quiet_closed:
                     self._quiet[vid] = trip.start

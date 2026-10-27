@@ -12,10 +12,9 @@ from .cloud_setup import (
     ENTITY_FILTERS, capacity_default, device_entries, device_schema, entities_schema, has_car_app, to_entity_ids, to_registry_ids)
 from .const import DOMAIN
 from .core.poller import new_source_id
-from .core.presets import capacity_entry, match
+from .core.presets import PRESETS, capacity_entry, match
 
 _VEHICLE_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
-_PRESET_NAMES = {"renault": "Renault", "stellantis": "Stellantis"}
 
 
 class _CloudSteps:
@@ -58,7 +57,8 @@ class _CloudSteps:
                 # the same entities on another device (the integration was removed and added again) are still the same source
                 same_source = same_device or to_entity_ids(self.hass, entities) == to_entity_ids(self.hass, self._current.get("entities") or {})
                 return await self._save({
-                    "preset": preset, "device_id": self._device_id, "entities": entities,
+                    "preset": preset,  # for diagnostics only: nothing reads it back
+                    "device_id": self._device_id, "entities": entities,
                     "source_id": self._current["source_id"] if same_source and self._current.get("source_id")
                     else new_source_id(self._vehicle_id(), self._device_id),
                     **({} if car_app else {"capacity_kwh": user_input["capacity_kwh"]})})
@@ -69,7 +69,7 @@ class _CloudSteps:
                 values["capacity_kwh"] = capacity_default(self.hass, capacity_entry(self._integration, self._entries), self._current.get("capacity_kwh"))
         return self.async_show_form(
             step_id="cloud_entities", data_schema=self.add_suggested_values_to_schema(entities_schema(not car_app), values), errors=errors,
-            description_placeholders={"preset": _PRESET_NAMES.get(preset, preset) if preset else "none"})
+            description_placeholders={"preset": PRESETS[self._integration].label if preset else "none"})
 
 
 class CarInsightsConfigFlow(_CloudSteps, config_entries.ConfigFlow, domain=DOMAIN):

@@ -188,9 +188,7 @@ class Service:
             self.app.deriver.set_ignition(vid, conf is not None and "ignition" in conf.entities)
         if db.set_vehicle(self.conn, vid, title, cloud_only):
             pipeline.rebuild(self.app, _now_ms(), [vid])
-            self.app.totals.publish_vehicle(vid)  # rebuild republishes the last trip and charge only
-            if self.app.totals.in_group(vid):
-                self.app.totals.publish_groups()
+            pipeline.publish_totals(self.app, vid)  # rebuild republishes the last trip and charge only
         if cloud_only and capacity_kwh is not None:  # a car with the car app keeps the capacity it learned
             try:
                 db.apply_capacity_option(self.conn, vid, capacity_kwh)

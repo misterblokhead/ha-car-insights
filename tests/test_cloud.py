@@ -268,13 +268,14 @@ async def test_removing_the_cloud_source_stops_polling_and_keeps_samples(hass):
 
 
 def _trip_body(t0):
-    samples = [(t0, "ignition", 4.0), (t0, "gear", 1.0), (t0 + 500, "gps", [52.0, 5.0]),
-               *[(t0 + t, "speed", 10.0) for t in range(0, 100_001, 1000)], (t0 + 110_000, "ignition", 2.0)]
+    samples = [(t0 - 60_000, "odometer_km", 1000.0), (t0, "ignition", 4.0), (t0, "gear", 1.0), (t0 + 500, "gps", [52.0, 5.0]),
+               *[(t0 + t, "speed", 10.0) for t in range(0, 100_001, 1000)], (t0 + 30_000, "odometer_km", 1001.0), (t0 + 60_000, "odometer_km", 1002.0),
+               (t0 + 110_000, "ignition", 2.0)]
     return json.dumps({"v": 1, "vehicle_id": "car1", "source_id": "car_app-0000abcd",
                        "samples": [{"seq": i, "t": t, "k": k, "v": v} for i, (t, k, v) in enumerate(samples, 1)]}).encode()
 
 
-async def test_switching_to_cloud_only_rederives_trips(hass):
+async def test_a_vehicle_added_again_without_its_car_app_rederives_its_trips_as_approximate(hass):
     zoe = make_zoe(hass)
     entry = cloud_entry(hass, zoe, car_app=True)
     await setup(hass, entry)
@@ -283,12 +284,14 @@ async def test_switching_to_cloud_only_rederives_trips(hass):
     assert status == 200
     trips = await on_worker(hass, lambda conn: store.closed(conn, TRIP, "car1"))
     assert len(trips) == 1 and not trips[0].get("approx")  # the car app's own trip
-    hass.config_entries.async_update_entry(entry, data={k: v for k, v in entry.data.items() if k != "webhook_id"})
-    await hass.async_block_till_done()
-    assert entry.state is ConfigEntryState.LOADED and not hass.data.get(webhook.DOMAIN)
+    assert await hass.config_entries.async_remove(entry.entry_id)
+    assert "invented_hook" not in hass.data.get(webhook.DOMAIN, {})
+    entry = cloud_entry(hass, zoe)  # the same vehicle id, now only its own integration
+    await setup(hass, entry)
     assert await on_worker(hass, lambda conn: db.is_cloud_only(conn, "car1")) is True
-    trips = await on_worker(hass, lambda conn: store.closed(conn, TRIP, "car1"))
-    assert all(t.get("approx") for t in trips)  # re-derived from the cloud kinds of reading: never the exact trip
+    await poll(hass)  # the first poll gives the new source its horizon, which closes the trip
+    (trip,) = await on_worker(hass, lambda conn: store.closed(conn, TRIP, "car1"))
+    assert trip["approx"] is True and trip["distance_m"] == pytest.approx(2000)  # re-derived from the odometer: never the exact trip
     await hass.config_entries.async_unload(entry.entry_id)
 
 

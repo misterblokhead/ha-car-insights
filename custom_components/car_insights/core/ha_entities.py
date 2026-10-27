@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
+from .protocol import IGNITION_OFF, IGNITION_ON
+
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 _MS = timedelta(milliseconds=1)
 _SKIP = {"unknown", "unavailable", ""}
@@ -19,7 +21,6 @@ def _iso_ms(s: str) -> int:
     return (d - _EPOCH) // _MS
 
 
-IGNITION_ON, IGNITION_OFF = 4, 2  # the car app's ignition codes
 REQUIRED = ("charge_level", "odometer")
 REPORT_STAMPED = frozenset({"charge_level", "charging"})
 CAR_APP_IGNORED = frozenset({"speed", "location", "ignition", "battery_energy", "range"})  # the car app already sends these

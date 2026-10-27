@@ -20,8 +20,8 @@ The **Car Insights** sidebar page (`/car_insights`) has Activity (one timeline o
 
 1. In HACS, open the menu (the three dots, top right) > **Custom repositories**, add `https://github.com/misterblokhead/ha-car-insights` with type **Integration**, then install **Car Insights** and restart Home Assistant.
    Manual alternative: copy `custom_components/car_insights` into your HA `custom_components` directory.
-2. Settings > Devices & services > Add integration > **Car Insights**. Enter a vehicle id and a vehicle name. Add the integration once per vehicle.
-3. The integration writes the car app's config file to `/config/car_insights/<vehicle_id>.conf` and shows a notification saying so. It holds the webhook URL and the secret. Copy it to the car's USB stick for the car app.
+2. Settings > Devices & services > Add integration > **Car Insights**. Enter the vehicle's name, optionally its ID under **Advanced** (it defaults to the name), and choose where the car's data comes from (see [Cars without the car app](#cars-without-the-car-app)). Add the integration once per vehicle.
+3. For a car with the car app, the integration writes the app's config file to `/config/car_insights/<vehicle_id>.conf` and shows a notification saying so. It holds the webhook URL and the secret. Copy it to the car's USB stick for the car app. A car with only its Home Assistant integration gets no `.conf`.
 
 All data lives in `/config/car_insights/car_insights.db`, so it is included in Home Assistant backups.
 
@@ -30,7 +30,7 @@ All data lives in `/config/car_insights/car_insights.db`, so it is included in H
 A car that has no car app (or whose app you do not want) can still be added, from its own Home Assistant integration.
 
 1. Settings > Devices & services > Add integration > **Car Insights**, enter the car's name, then under "How does Car Insights get this car's data?" choose **Car app (Android Automotive)**, **My car's Home Assistant integration** or **Both**.
-2. For the integration, pick the car's device and confirm the entities. **Charge level** and **Odometer** are required; **Location**, **Charging**, **Plugged in**, **Battery energy**, **Range**, **Speed**, **Driving / ignition** and **Report time** are optional. Then enter the car's usable battery capacity in kWh.
+2. For the integration, pick the car's device and confirm the entities. **Charge level** and **Odometer** are required; **Location**, **Charging**, **Plugged in**, **Battery energy**, **Range**, **Speed**, **Driving / ignition** and **Report time** are optional. For a car without the car app, then enter its usable battery capacity in kWh (the car app learns it for the others).
    - Renault and Stellantis devices are recognized and their entities are filled in for you. For any other car, pick the entities yourself. The entity lists show matching entities from every device, so check the preset's choices.
 3. The integration's **Configure** button adds, changes or removes the car's integration source later.
 

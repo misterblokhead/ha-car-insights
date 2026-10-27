@@ -47,6 +47,13 @@ def _publish_last(app: App, vid: str, fresh: tuple[bool, bool] = (True, True), r
     app.sensors.publish(vid, *last, *recent)
 
 
+def publish_totals(app: App, vid: str) -> None:
+    """The month and year totals of a vehicle, and its group's when it is in one."""
+    app.totals.publish_vehicle(vid)
+    if app.totals.in_group(vid):
+        app.totals.publish_groups()
+
+
 def ingested(app: App, vid: str, min_t: int | None, received: int) -> None:
     """After an ingest: re-derive and publish what closed."""
     trips, charges, refined = app.deriver.update(vid, min_t, received)
@@ -55,15 +62,13 @@ def ingested(app: App, vid: str, min_t: int | None, received: int) -> None:
               for kind, closed in ((TRIP, trips), (CHARGE, charges))]
     _publish_last(app, vid, (bool(trips), bool(charges)), recent)
     if trips or charges or refined:  # the month and year totals follow every close and every refinement
-        app.totals.publish_vehicle(vid)
-        if app.totals.in_group(vid):
-            app.totals.publish_groups()
+        publish_totals(app, vid)
 
 
 def polled(app: App, publisher: Publisher, vid: str, samples: list[Sample], received: int, known_until: int) -> None:
     """After a poll of a vehicle's cloud source (stored already): derive and publish what it brought. A poll with nothing new still moves the
     horizon, which can close an open approximate trip."""
-    app.deriver.horizon[vid] = known_until
+    app.deriver.set_horizon(vid, known_until)
     if samples:
         if (min_t := late_min_t(samples, received)) is not None:  # a backfill older than the late window, or a future stamp, derives nothing
             ingested(app, vid, min_t, received)
@@ -105,9 +110,7 @@ def rebuild(app: App, now_ms: int, vids: list[str] | None = None) -> None:
     else:
         with db.tx(conn):
             for vid in vids:
-                for kind in KINDS:
-                    store.purge(conn, kind, vid)
-                deriver.forget(vid)
+                deriver.purge(vid)
         vehicles = [(vid,) for vid in vids]
     for (vid,) in vehicles:
         try:
