@@ -43,9 +43,7 @@ alias: Car charge finished
 triggers:
   - trigger: state
     entity_id: event.my_car_charge
-    not_from:
-      - unavailable
-      - unknown
+    not_from: unavailable
 actions:
   - action: notify.notify
     data:
@@ -53,7 +51,7 @@ actions:
         Charge finished: {{ ((trigger.to_state.attributes.added_wh or 0) / 1000) | round(1) }} kWh{% if trigger.to_state.attributes.cost is not none %}, {{ trigger.to_state.attributes.cost }} EUR{% endif %}.
 ```
 
-`not_from` stops it firing again when Home Assistant restarts or the integration reloads. `added_wh` and `cost` can be empty, so the message copes with that. Replace `notify.notify` with your own notify service.
+`not_from: unavailable` stops it firing again when Home Assistant restarts or the integration reloads. `added_wh` and `cost` can be empty, so the message copes with that. Replace `notify.notify` with your own notify service.
 
 ## The ready-made dashboard
 
