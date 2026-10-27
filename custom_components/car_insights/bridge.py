@@ -16,6 +16,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import slugify
 
 from .const import DOMAIN
+from .core import ha_mqtt
 from .core.totals_sensors import GROUP_PREFIX
 
 log = logging.getLogger(__name__)
@@ -105,6 +106,11 @@ class Bridge:
         self._adders.pop((entry.entry_id, platform), None)
         self._entities = {t: v for t, v in self._entities.items() if (v[0], t.split("/")[1]) != (entry.entry_id, platform)}
         self._sync()  # the groups that lived on this entry move to the next one
+
+    def forget(self, vid: str) -> None:
+        """A vehicle's history was deleted: drop its retained states, so the entities of one added again show none of it."""
+        prefix = ha_mqtt.topic(vid, "")
+        self._states = {t: data for t, data in self._states.items() if not t.startswith(prefix)}
 
     def _handle(self, messages: list[tuple[str, str]], retain: bool) -> None:
         configs = False

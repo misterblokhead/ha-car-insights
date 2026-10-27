@@ -150,16 +150,10 @@ def republish(app: App, vids: list[str] | None) -> None:
         log.exception("republish of the groups failed")
 
 
-def _clear_states(app: App, publisher: Publisher, vid: str) -> None:
-    for owner in (publisher, app.sensors, app.totals):
-        owner.clear(vid)
-
-
 def forget_vehicle(app: App, publisher: Publisher, vid: str) -> None:
     """Delete a vehicle's stored history and everything remembered of it, then publish its groups again without it. On the worker."""
     db.delete_vehicle(app.conn, vid)
-    for what, step in (("deriver", partial(app.deriver.forget, vid)), ("live state", partial(publisher.forget, vid)),
-                       ("retained states", partial(_clear_states, app, publisher, vid)), ("groups", app.totals.publish_groups)):
+    for what, step in (("deriver", partial(app.deriver.forget, vid)), ("live state", partial(publisher.forget, vid)), ("groups", app.totals.publish_groups)):
         try:  # the deletion is committed: a later failure must not make the caller report it as failed
             step()
         except Exception:

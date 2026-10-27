@@ -80,10 +80,6 @@ class TripSensors:
         """Drop that a vehicle was announced (its entry was removed), so a vehicle added again is announced again."""
         self._announced.discard(vid)
 
-    def clear(self, vid: str) -> None:
-        """Empty the retained states of a vehicle whose history was deleted, so the entities of one added again show none of it."""
-        self._mqtt.publish([(ha_mqtt.topic(vid, leaf), "") for leaf in ("last_trip", "last_charge")])
-
     def publish(self, vid: str, last_trip: dict | None, last_charge: dict | None, ended_trips: list[dict], ended_charges: list[dict]) -> None:
         """last_trip/last_charge: the newest stored row of a kind that just had a segment close (None: leave the state alone).
         ended_*: the closed segments worth an event (a backlog's old ones are left out)."""

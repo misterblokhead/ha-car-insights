@@ -260,6 +260,20 @@ async def test_unload_then_reload_recreates_entities_with_retained_state(hass):
     assert hass.states.get("device_tracker.test_car_location") is not None
 
 
+async def test_forget_drops_the_retained_states_of_that_vehicle_only(hass):
+    entries = await add_entry(hass), await add_entry(hass, "car10", "Other Car")  # its id starts with car1's
+    await publish(hass, [*live_config(), *live_config("car10", "Other Car"),
+                         live.state_message("car1", {"soc": 77.0}), live.state_message("car10", {"soc": 33.0})])
+    for e in entries:
+        assert await hass.config_entries.async_unload(e.entry_id)
+    bridge.async_get(hass).forget("car1")
+    for e in entries:
+        assert await hass.config_entries.async_setup(e.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.test_car_state_of_charge").state == "unknown"
+    assert hass.states.get("sensor.other_car_state_of_charge").state == "33.0"
+
+
 async def test_removing_one_entity_keeps_a_device_that_still_has_others(hass):
     entry = await add_entry(hass)
     msgs = live_config()

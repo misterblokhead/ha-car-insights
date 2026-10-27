@@ -703,14 +703,3 @@ def test_forget_vehicle_raises_when_the_deletion_itself_fails(env, monkeypatch):
     monkeypatch.setattr(db, "delete_vehicle", lambda c, v: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")))
     with pytest.raises(sqlite3.OperationalError):
         pipeline.forget_vehicle(make_app(env), Publisher(conn, mqtt, CAP), "car1")
-
-
-def test_forget_vehicle_clears_the_retained_states_of_that_vehicle_only(env):
-    conn, mqtt, d, sensors, totals = env
-    for vid in ("car1", "car2"):
-        conn.execute("INSERT INTO vehicles(vehicle_id, name) VALUES(?,?)", (vid, vid))
-    app, pub = make_app(env), Publisher(conn, mqtt, CAP)
-    n = len(mqtt.msgs)
-    pipeline.forget_vehicle(app, pub, "car1")
-    cleared = {t for t, p, retain in mqtt.msgs[n:] if p == "" and retain}  # an empty retained payload drops the bridge's stored state
-    assert cleared == {f"car_insights/car1/{leaf}" for leaf in ("state", "location", "last_trip", "last_charge", "totals")}

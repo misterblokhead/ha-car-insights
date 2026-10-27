@@ -89,6 +89,11 @@ def car_device(hass, vid):
     return next((d for d in dr.async_get(hass).devices if (DOMAIN, f"car_insights_{vid}") in d.identifiers), None)
 
 
+def last_trip_state(hass):
+    eid = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, "car_insights_car1_last_trip_distance")
+    return hass.states.get(eid).state
+
+
 async def settings_of(client):
     resp = await client.get(f"{UI}/settings")
     assert resp.status == 200
@@ -295,10 +300,6 @@ async def test_readding_after_keep_continues_history_and_after_delete_starts_emp
         await hass.async_block_till_done()
         announced.clear()
 
-    def last_trip_state():
-        eid = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, "car_insights_car1_last_trip_distance")
-        return hass.states.get(eid).state
-
     async def publish(publish_trip):
         """what a closed trip does: publish the last trip and the totals"""
         await on_worker(hass, publish_trip, service.app, "car1")
@@ -308,7 +309,7 @@ async def test_readding_after_keep_continues_history_and_after_delete_starts_emp
 
     await remove("keep")
     await add_back()
-    assert last_trip_state() == "5.0"  # the kept history shows at once
+    assert last_trip_state(hass) == "5.0"  # the kept history shows at once
     await publish(lambda app, vid: pipeline.republish(app, [vid]))
     assert await rows(hass, "car1") == (1, 1, 1)  # the history continues
 
@@ -316,10 +317,22 @@ async def test_readding_after_keep_continues_history_and_after_delete_starts_emp
     assert await rows(hass, "car1") == (0, 0, 0)
     assert await rows(hass, "car2") == (1, 1, 1)
     await add_back()
-    assert last_trip_state() in ("unknown", "unavailable")  # not the deleted trip's distance, before any new trip
+    assert last_trip_state(hass) in ("unknown", "unavailable")  # not the deleted trip's distance, before any new trip
     await publish(seed_trip)  # it starts empty: its first trip is the only one
     assert await rows(hass, "car1") == (0, 1, 1)
-    assert last_trip_state() == "5.0"
+    assert last_trip_state(hass) == "5.0"
+
+
+async def test_readding_the_last_car_after_delete_starts_empty(hass, hass_admin_client):
+    await add_car(hass, "car1")
+    assert last_trip_state(hass) == "5.0"
+    assert (await hass_admin_client.delete(f"{UI}/vehicles/car1?history=delete")).status == 200
+    assert DOMAIN not in hass.data  # the service stopped with its last car; the bridge, with the retained states, did not
+
+    assert await hass.config_entries.async_setup(add_entry(hass, "car1").entry_id)
+    await hass.async_block_till_done()
+
+    assert last_trip_state(hass) in ("unknown", "unavailable")  # not the deleted trip's distance, before any new trip
 
 
 async def test_a_retrying_entry_is_not_archived(hass, hass_admin_client):

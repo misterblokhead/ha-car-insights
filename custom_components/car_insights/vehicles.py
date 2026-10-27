@@ -5,6 +5,7 @@ import os
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 
+from . import bridge
 from .const import DOMAIN
 from .core import db
 
@@ -59,6 +60,7 @@ async def purge(hass: HomeAssistant, vid: str) -> None:
             service = None
     if service is None:
         await hass.async_add_executor_job(_delete_directly, hass.config.path("car_insights", "car_insights.db"), vid)
+    bridge.async_get(hass).forget(vid)  # on HA's side: the bridge outlives a service stopped with its last car
     ir.async_delete_issue(hass, DOMAIN, issue_id(vid))  # its question is answered
 
 
