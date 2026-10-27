@@ -1,4 +1,5 @@
 import json
+import sqlite3
 
 import pytest
 
@@ -6,7 +7,7 @@ from custom_components.car_insights.core import db
 from custom_components.car_insights.core.db import (acked_seq, apply_capacity_option, capacity_wh, connect, default_capacity_kwh, device_info, ingest,
                                                        is_cloud_only, latest_per_key, set_default_capacity_kwh, set_vehicle, vehicle)
 from custom_components.car_insights.core.protocol import Sample
-from conftest import v6_database
+from conftest import seed_charge, seed_trip, v6_database
 
 S = "car_app-0000abcd"
 
@@ -346,3 +347,54 @@ def test_cloud_only_column_defaults_to_false_for_existing_vehicles(tmp_path):
     old.close()
     c = connect(str(tmp_path / "m.db"))
     assert not is_cloud_only(c, "car1") and device_info(c, "car1")[0] == "Meg"
+
+
+def two_vehicles(conn):
+    """car1 and car2 each with a row in every table that holds a vehicle's data"""
+    for vid, n in (("car1", 1), ("car2", 2)):
+        ingest(conn, vid, S, [Sample(1, 10 * n, "speed", 1.0), Sample(2, 11 * n, "meta", {"vehicle_name": vid}),
+                              Sample(5, 12 * n, "gap", {"from_seq": 3, "to_seq": 4})], 100)
+        db.save_cursors(conn, vid, "ha_entities-0000abcd", {"sensor.odo": 5})
+        seed_trip(conn, vid, 100, 200, series={"speed": []}, route=[[1.0, 2.0]])
+        seed_charge(conn, vid, 300, 400, series={"soc": []})
+        conn.execute("INSERT INTO charge_receipts VALUES(?,?,?)", (vid, 300, 4.5))
+        conn.execute("INSERT INTO fixed_costs VALUES(?,?,?,?,?,?,?)", (f"{vid}-fc", vid, "Insurance", 31.0, "month", "2026-01-01", None))
+        conn.execute("INSERT INTO vehicle_viewers VALUES(?,?)", (vid, "u-a"))
+        db.apply_capacity_option(conn, vid, 50)
+
+
+def snapshot(conn, vid=None):
+    """table -> its rows (of one vehicle, or all of them), for every table"""
+    out = {}
+    for (t,) in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall():
+        has_vid = "vehicle_id" in [c[1] for c in conn.execute(f"PRAGMA table_info({t})")]
+        where, args = (" WHERE vehicle_id=?", (vid,)) if vid and has_vid else ("", ())
+        out[t] = sorted(conn.execute(f"SELECT * FROM {t}{where}", args).fetchall(), key=repr)
+    return out
+
+
+def test_delete_vehicle_empties_every_vehicle_table_and_leaves_others(conn):
+    two_vehicles(conn)
+    other = snapshot(conn, "car2")
+    counts = db.delete_vehicle(conn, "car1")
+    held = [t for (t,) in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            if "vehicle_id" in [c[1] for c in conn.execute(f"PRAGMA table_info({t})")]]
+    assert set(held) >= {"samples", "sources", "vehicles", "gaps", "trips", "charges", "trip_series", "charge_series", "trip_routes",
+                         "source_cursors", "vehicle_viewers", "charge_receipts", "fixed_costs"}
+    for t in held:
+        assert conn.execute(f"SELECT COUNT(*) FROM {t} WHERE vehicle_id='car1'").fetchone()[0] == 0
+        assert counts[t] > 0, t  # every table had a row of car1, and each is reported
+    assert counts["samples"] == 3
+    assert conn.execute("SELECT 1 FROM settings WHERE key='capacity_option:car1'").fetchone() is None
+    assert conn.execute("SELECT 1 FROM settings WHERE key='capacity_option:car2'").fetchone() is not None
+    assert {t: r for t, r in snapshot(conn, "car2").items() if t != "settings"} == {t: r for t, r in other.items() if t != "settings"}
+    assert db.delete_vehicle(conn, "car1") == {t: 0 for t in held}  # nothing left: a second call deletes nothing
+
+
+def test_delete_vehicle_rolls_back_as_one_transaction(conn):
+    two_vehicles(conn)
+    conn.execute("CREATE TRIGGER fixed_costs_stay BEFORE DELETE ON fixed_costs BEGIN SELECT RAISE(ABORT, 'boom'); END")
+    before = snapshot(conn)
+    with pytest.raises(sqlite3.DatabaseError, match="boom"):
+        db.delete_vehicle(conn, "car1")  # samples and the tables before fixed_costs were already emptied when it failed
+    assert snapshot(conn) == before and not conn.in_transaction

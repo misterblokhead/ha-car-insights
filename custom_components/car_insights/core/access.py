@@ -89,11 +89,13 @@ def set_vehicle(conn, vid: str, group_id: str | None, viewers: list[str]) -> Non
         conn.executemany("INSERT OR IGNORE INTO vehicle_viewers VALUES(?,?)", [(vid, u) for u in viewers])
 
 
-def settings(conn) -> dict:
+def settings(conn, entry_vehicles: frozenset[str]) -> dict:
+    """The admin settings; a vehicle without a config entry is archived."""
     viewers: dict[str, list[str]] = {}
     for vid, uid in conn.execute("SELECT vehicle_id, user_id FROM vehicle_viewers ORDER BY user_id"):
         viewers.setdefault(vid, []).append(uid)
-    vehicles = [{"id": vid, "name": db.device_info(conn, vid)[0], "group_id": gid, "viewers": viewers.get(vid, [])}
+    vehicles = [{"id": vid, "name": db.device_info(conn, vid)[0], "group_id": gid, "viewers": viewers.get(vid, []),
+                 "archived": vid not in entry_vehicles}
                 for vid, gid in conn.execute("SELECT vehicle_id, cost_group_id FROM vehicles ORDER BY vehicle_id")]
     groups = [{"id": g, "name": n} for g, n in conn.execute("SELECT group_id, name FROM cost_groups ORDER BY lower(name), group_id")]
     users = [{"id": u, "name": n, "last_seen": t}

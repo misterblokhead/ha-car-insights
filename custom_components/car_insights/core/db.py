@@ -107,6 +107,17 @@ def _migrate(conn: sqlite3.Connection) -> None:
             conn.execute(f"PRAGMA user_version={i + 1}")
 
 
+def delete_vehicle(conn: sqlite3.Connection, vehicle_id: str) -> dict[str, int]:
+    """Delete everything stored for a vehicle, in one transaction: every table with a vehicle_id column (found by schema, so a later
+    migration's tables are covered) and its capacity-option setting. Returns the rows deleted per table."""
+    tables = [name for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]
+    with tx(conn):
+        counts = {t: conn.execute(f'DELETE FROM "{t}" WHERE vehicle_id=?', (vehicle_id,)).rowcount
+                  for t in tables if any(c[1] == "vehicle_id" for c in conn.execute(f'PRAGMA table_info("{t}")'))}
+        conn.execute("DELETE FROM settings WHERE key=?", (f"capacity_option:{vehicle_id}",))
+    return counts
+
+
 def acked_seq(conn, vehicle_id: str, source_id: str) -> int:
     r = conn.execute("SELECT acked_seq FROM sources WHERE vehicle_id=? AND source_id=?", (vehicle_id, source_id)).fetchone()
     return r[0] if r else 0

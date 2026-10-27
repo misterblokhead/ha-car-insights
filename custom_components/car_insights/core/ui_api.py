@@ -119,9 +119,11 @@ class UiApi:
 
     def __init__(self, conn, zones: Zones, tz, capacity: Callable[[str], float], on_settings: Callable[[], None] = lambda: None,
                  on_costs: Callable[[list[str] | None], None] = lambda vids: None, relabel: Callable[[], None] = lambda: None,
-                 now_ms: Callable[[], int] = lambda: int(time.time() * 1000)):
+                 now_ms: Callable[[], int] = lambda: int(time.time() * 1000),
+                 entry_vehicles: Callable[[], frozenset[str]] = frozenset):
         self.conn, self.zones, self.tz, self.capacity = conn, zones, tz, capacity
         self.on_settings, self.on_costs, self.relabel, self.now_ms = on_settings, on_costs, relabel, now_ms
+        self.entry_vehicles = entry_vehicles  # the vehicle ids that still have a config entry; any other stored vehicle is archived
 
     async def handle(self, method: str, path: str, query: dict[str, str], body: Any, viewer: Viewer) -> tuple[int, Any]:
         """`path` is relative to /api/car_insights/ui. An admin-only route answers a non-admin 403 before anything else (so before a bad
@@ -258,7 +260,7 @@ class UiApi:
 
     @_admin
     def _settings(self, viewer, p, q, body):
-        return access.settings(self.conn) | {"prices": prices.settings(self.conn)}
+        return access.settings(self.conn, self.entry_vehicles()) | {"prices": prices.settings(self.conn)}
 
     @_admin
     def _create_group(self, viewer, p, q, body):

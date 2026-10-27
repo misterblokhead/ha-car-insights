@@ -66,7 +66,7 @@ def test_delete_group_clears_vehicle_group(conn):
     access.set_vehicle(conn, "car1", gid, [])
     access.delete_group(conn, gid)
     assert conn.execute("SELECT cost_group_id FROM vehicles WHERE vehicle_id='car1'").fetchone() == (None,)
-    assert access.settings(conn)["groups"] == []
+    assert access.settings(conn, frozenset())["groups"] == []
 
 
 def test_set_vehicle_unknown_group_or_vehicle_raises(conn):
@@ -82,15 +82,15 @@ def test_set_vehicle_unknown_group_or_vehicle_raises(conn):
 def test_set_vehicle_replaces_viewers_and_dedupes(conn):
     access.set_vehicle(conn, "car1", None, ["u-a", "u-b", "u-a"])
     access.set_vehicle(conn, "car1", None, ["u-c"])
-    assert access.settings(conn)["vehicles"][0]["viewers"] == ["u-c"]
+    assert access.settings(conn, frozenset())["vehicles"][0]["viewers"] == ["u-c"]
 
 
 def test_group_name_validation(conn):
-    assert access.create_group(conn, "  Fleet  ") and access.settings(conn)["groups"][0]["name"] == "Fleet"
+    assert access.create_group(conn, "  Fleet  ") and access.settings(conn, frozenset())["groups"][0]["name"] == "Fleet"
     for bad in ("", "   ", "x" * 41):
         with pytest.raises(ValueError):
             access.create_group(conn, bad)
-    gid = access.settings(conn)["groups"][0]["id"]
+    gid = access.settings(conn, frozenset())["groups"][0]["id"]
     assert len(gid) == 8
     access.rename_group(conn, gid, "x" * 40)
     with pytest.raises(ValueError):
@@ -103,7 +103,7 @@ def test_see_upserts_last_seen(conn):
     access.see(conn, VIEWER, 1000)
     access.see(conn, Viewer("u-viewer", "Renamed", False), 2000)
     access.see(conn, Viewer("u-anon", None, False), 1500)
-    users = {u["id"]: u for u in access.settings(conn)["users"]}
+    users = {u["id"]: u for u in access.settings(conn, frozenset())["users"]}
     assert users["u-viewer"] == {"id": "u-viewer", "name": "Renamed", "last_seen": 2000}
     assert users["u-anon"]["name"] is None and len(users) == 2
 
@@ -111,9 +111,12 @@ def test_see_upserts_last_seen(conn):
 def test_settings_shape(conn):
     gid = access.create_group(conn, "Fleet")
     access.set_vehicle(conn, "car1", gid, ["u-b", "u-a"])
-    s = access.settings(conn)
-    assert s["vehicles"][0] == {"id": "car1", "name": "Car One", "group_id": gid, "viewers": ["u-a", "u-b"]}
+    s = access.settings(conn, frozenset())
+    assert s["vehicles"][0] == {"id": "car1", "name": "Car One", "group_id": gid, "viewers": ["u-a", "u-b"], "archived": True}
     assert [v["id"] for v in s["vehicles"]] == ["car1", "car2", "car3"] and s["vehicles"][1]["group_id"] is None
     assert s["groups"] == [{"id": gid, "name": "Fleet"}]
 
 
+def test_settings_marks_vehicles_without_entry_archived(conn):
+    assert [(v["id"], v["archived"]) for v in access.settings(conn, frozenset({"car1"}))["vehicles"]] == [("car1", False), ("car2", True), ("car3", True)]
+    assert not any(v["archived"] for v in access.settings(conn, frozenset({"car1", "car2", "car3", "gone"}))["vehicles"])  # an unknown id is ignored

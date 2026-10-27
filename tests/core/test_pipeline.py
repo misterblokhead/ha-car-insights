@@ -16,7 +16,7 @@ from custom_components.car_insights.core.trips import QUIET_MS
 from custom_components.car_insights.core.zones import Zone, ZoneCache
 from custom_components.car_insights.core.totals_sensors import TotalsSensors
 from custom_components.car_insights.core.trip_sensors import TripSensors
-from conftest import FakeMqtt, ms, s, v6_database
+from conftest import FakeMqtt, ms, s, seed_charge, seed_trip, v6_database
 
 SRC = "phone-0000abcd"
 TZ = timezone.utc
@@ -645,3 +645,36 @@ def test_polled_publishes_no_live_state_for_a_car_app_vehicle(env):
     db.set_vehicle(conn, "car1", "Meg", False)  # a car app delivers the live state: a cloud report must not move last_seen
     poll(app, pub, "car1", [s(T0, "soc_percent", 50.0)], T0 + MIN, T0 + MIN)
     assert pub._states == {} and mqtt.on("car_insights/car1/state") == []
+
+
+def test_forget_vehicle_republishes_groups_and_drops_live_state(env):
+    conn, mqtt, d, _, totals = env
+    gid = access.create_group(conn, "Fleet")
+    for vid, dist in (("car1", 10_000.0), ("car2", 4_000.0)):  # in one cost group; the totals' clock is 10_000_000
+        db.ingest(conn, vid, SRC, [s(9_000_000, "speed", 1.0)], 9_000_000)
+        conn.execute("INSERT INTO vehicles(vehicle_id, name) VALUES(?,?)", (vid, vid))
+        access.set_vehicle(conn, vid, gid, [])
+        seed_trip(conn, vid, 9_000_000, 9_000_001, distance_m=dist, net_wh=1_000.0)
+        seed_charge(conn, vid, 9_100_000, 9_100_001, added_wh=2_000.0)
+        d.set_horizon(vid, 9_000_000)
+    app, pub = make_app(env), Publisher(conn, mqtt, CAP)
+    pub.on_ingested("car1", [s(9_000_000, "speed", 1.0)], 9_000_000)
+    pub.on_ingested("car2", [s(9_000_000, "speed", 1.0)], 9_000_000)
+    totals.publish_groups()
+    assert mqtt.on(f"car_insights/group_{gid}/totals")[-1][0]["month_distance"] == 14.0
+    assert mqtt.on(f"car_insights/group_{gid}/totals")[-1][0]["month_charged"] == 4.0
+    rows = lambda vid: [conn.execute(f"SELECT COUNT(*) FROM {t} WHERE vehicle_id=?", (vid,)).fetchone()[0] for t in ("samples", "trips", "charges", "vehicles")]
+    car2_rows, n = rows("car2"), len(mqtt.msgs)
+
+    pipeline.forget_vehicle(app, pub, "car1")
+
+    assert rows("car1") == [0] * 4 and rows("car2") == car2_rows
+    group = mqtt.on(f"car_insights/group_{gid}/totals")[-1][0]  # published again, now car2 alone
+    assert group["month_distance"] == 4.0 and group["month_charged"] == 2.0
+    assert conn.execute("SELECT COUNT(*) FROM cost_groups WHERE group_id=?", (gid,)).fetchone()[0] == 1  # the group itself stays
+    assert "car1" not in d.horizon and d.horizon["car2"] == 9_000_000  # the deriver forgot only car1
+    n = len(mqtt.msgs)
+    pub.on_ingested("car2", [s(9_000_001, "speed", 2.0)], 9_000_001)  # car2's live state and announcement are intact: state only
+    assert [t for t, _, _ in mqtt.msgs[n:]] == ["car_insights/car2/state"]
+    pub.on_ingested("car1", [s(9_000_002, "speed", 3.0)], 9_000_002)  # car1 starts from nothing: announced again
+    assert "homeassistant/sensor/car1_speed_kmh/config" in [t for t, _, _ in mqtt.msgs[n:]]

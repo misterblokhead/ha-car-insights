@@ -19,6 +19,11 @@ class Publisher:
         self._announced: dict[str, set[str]] = {}
         self._device: dict[str, tuple] = {}  # (name, make, model) the announced fields were published with
 
+    def forget(self, vid: str) -> None:
+        """Drop a vehicle's live state and what was announced for it, so a later ingest seeds and announces it afresh."""
+        for memo in (self._states, self._announced, self._device):
+            memo.pop(vid, None)
+
     def on_ingested(self, vid: str, samples: list[Sample], received_ms: int) -> None:
         first = vid not in self._states
         state = self._states.setdefault(vid, live.LiveState())

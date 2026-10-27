@@ -118,3 +118,17 @@ def test_default_capacity_until_learned(env):
     feed(conn, pub, [Sample(1, 1, "battery_wh", 46_550.0)])
     state = [json.loads(p) for t, p in mqtt.batches[-1] if t == "car_insights/car1/state"][0]
     assert state["soc"] == 77.6
+
+
+def test_forget_reannounces_on_next_ingest_and_leaves_other_vehicles(env):
+    conn, mqtt, pub = env
+    feed(conn, pub, [Sample(1, 1, "speed", 1.0)])
+    feed(conn, pub, [Sample(2, 1, "speed", 2.0)], vid="car2")
+    pub.forget("car1")
+    pub.forget("nobody")  # a vehicle never published is no error
+    feed(conn, pub, [Sample(3, 3, "speed", 3.0)])
+    feed(conn, pub, [Sample(4, 4, "speed", 4.0)], vid="car2")
+    topics = mqtt.topics
+    assert topics.count("homeassistant/sensor/car1_speed_kmh/config") == 2  # announced again
+    assert topics.count("homeassistant/sensor/car2_speed_kmh/config") == 1  # car2 kept its announced state
+    assert mqtt.on("car_insights/car1/state")[-1][0]["speed_kmh"] == 10.8  # 3 m/s

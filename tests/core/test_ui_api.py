@@ -202,12 +202,17 @@ async def test_settings_admin_only(conn):
     c, _ = client(conn)
     r = await c.get("/settings")
     assert (r.status_code, r.json()) == (403, {"detail": "forbidden"})
-    assert (await c.get("/settings", ADMIN)).json() == access.settings(conn) | {"prices": prices.settings(conn)}
+    assert (await c.get("/settings", ADMIN)).json() == access.settings(conn, frozenset()) | {"prices": prices.settings(conn)}
     for r in (await c.post("/groups", {"name": "x"}, VIEWER), await c.put("/groups/g", {"name": "x"}, VIEWER),
               await c.delete("/groups/g", VIEWER),
               await c.put("/vehicles/car1", {"group_id": None, "viewers": ["u-viewer"]}, VIEWER)):
         assert r.status_code == 403
     assert conn.execute("SELECT COUNT(*) FROM cost_groups").fetchone()[0] == 0
+
+
+async def test_settings_marks_vehicles_without_a_config_entry_archived(conn):
+    c, _ = client(conn, entry_vehicles=lambda: frozenset({"car1", "car3"}))
+    assert [(v["id"], v["archived"]) for v in (await c.get("/settings", ADMIN)).json()["vehicles"]] == [("car1", False), ("car2", True), ("car3", False)]
 
 
 async def test_admin_check_comes_before_validation_and_before_the_user_is_noted(conn):
@@ -225,11 +230,11 @@ async def test_create_group_and_assign_vehicle_calls_on_settings(conn):
     assert (await c.put("/vehicles/car3", {"group_id": gid, "viewers": ["u-viewer"]})).json() == {}
     assert (await c.put(f"/groups/{gid}", {"name": "Renamed"})).json() == {}
     assert len(calls) == 3
-    st = access.settings(conn)
+    st = access.settings(conn, frozenset())
     assert st["groups"] == [{"id": gid, "name": "Renamed"}]
     assert [v for v in st["vehicles"] if v["id"] == "car3"][0]["group_id"] == gid
     assert (await c.delete(f"/groups/{gid}")).json() == {} and len(calls) == 4
-    assert access.settings(conn)["groups"] == []
+    assert access.settings(conn, frozenset())["groups"] == []
 
 
 async def test_unknown_targets_404_and_no_on_settings(conn):
