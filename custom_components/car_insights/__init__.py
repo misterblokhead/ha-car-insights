@@ -56,6 +56,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if (service := hass.data.get(DOMAIN)) is not None:  # an entry that is retried never reaches configure: it is still the page's car, not an archived one
         service.refresh_entry_vehicles()
     vehicle_id = entry.data["vehicle_id"]
+    ir.async_delete_issue(hass, DOMAIN, vehicles.issue_id(vehicle_id))  # the car is back, even while its setup is retried: nobody needs to answer
     secret = entry.data.get("secret")
     webhook_id = entry.data.get("webhook_id")
 
@@ -209,5 +210,5 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         _LOGGER.exception("Could not look up the stored history of %s", vid)
         stored = True  # a repair that finds nothing to delete is harmless, a history nobody is asked about is not
     if stored:  # HA cannot ask in Devices & services, so the history is kept and a repair asks
-        ir.async_create_issue(hass, DOMAIN, f"vehicle_removed_{vid}", is_fixable=True, severity=ir.IssueSeverity.WARNING,
+        ir.async_create_issue(hass, DOMAIN, vehicles.issue_id(vid), is_fixable=True, is_persistent=True, severity=ir.IssueSeverity.WARNING,
                               translation_key="vehicle_removed", translation_placeholders={"vehicle": entry.title}, data={"vehicle_id": vid})

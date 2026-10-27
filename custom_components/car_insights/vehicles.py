@@ -3,12 +3,18 @@ import logging
 import os
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 
 from .const import DOMAIN
 from .core import db
 
 log = logging.getLogger(__name__)
 REMOVING = "car_insights_removing"  # hass.data: the vehicle ids the page is removing now (a removal in Devices & services is not in it)
+
+
+def issue_id(vid: str) -> str:
+    """The repair that asks whether to delete the history of a car removed in Devices & services."""
+    return f"vehicle_removed_{vid}"
 
 
 def has_entry(hass: HomeAssistant, vid: str) -> bool:
@@ -48,10 +54,12 @@ async def purge(hass: HomeAssistant, vid: str) -> None:
     """Delete a vehicle's stored history: through the running service, else (the last car's removal stopped it) with a connection of its own."""
     if (service := hass.data.get(DOMAIN)) is not None:
         try:
-            return await service.forget(vid)
+            await service.forget(vid)
         except RuntimeError:  # the worker stopped meanwhile
-            pass
-    await hass.async_add_executor_job(_delete_directly, hass.config.path("car_insights", "car_insights.db"), vid)
+            service = None
+    if service is None:
+        await hass.async_add_executor_job(_delete_directly, hass.config.path("car_insights", "car_insights.db"), vid)
+    ir.async_delete_issue(hass, DOMAIN, issue_id(vid))  # its question is answered
 
 
 async def remove_vehicle(hass: HomeAssistant, vid: str, delete_history: bool) -> tuple[int, dict]:

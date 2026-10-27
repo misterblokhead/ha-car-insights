@@ -369,6 +369,7 @@ async def test_removal_in_devices_and_services_raises_the_repair(hass):
 
     issue = issue_of(hass, "car1")
     assert (issue.is_fixable, issue.severity, issue.translation_key) == (True, ir.IssueSeverity.WARNING, "vehicle_removed")
+    assert issue.is_persistent  # nothing raises it again, so it must outlive a restart
     assert issue.translation_placeholders == {"vehicle": "Car car1"} and issue.data == {"vehicle_id": "car1"}
     assert issue_of(hass, "car2") is None
     assert await rows(hass, "car1") == (1, 1, 1)  # the history is kept until someone answers
@@ -438,6 +439,31 @@ async def test_readding_clears_the_repair(hass):
     await hass.async_block_till_done()
 
     assert issue_of(hass, "car1") is None
+
+
+async def test_readding_a_car_whose_setup_is_retried_clears_the_repair(hass):
+    entry = await add_car(hass, "car1")
+    await add_car(hass, "car2")
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+    hass.config.external_url = "http://ci.example.test"  # not https: the setup of a car app entry is retried
+
+    entry = add_entry(hass, "car1")
+    assert not await hass.config_entries.async_setup(entry.entry_id)
+
+    assert entry.state is ConfigEntryState.SETUP_RETRY and issue_of(hass, "car1") is None
+
+
+async def test_delete_history_on_the_page_clears_the_repair(hass, hass_admin_client):
+    entry = await add_car(hass, "car1")
+    await add_car(hass, "car2")
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+    assert issue_of(hass, "car1") is not None
+
+    assert (await hass_admin_client.delete(f"{UI}/vehicles/car1/history")).status == 200
+
+    assert issue_of(hass, "car1") is None  # it asked about a history that is gone
 
 
 async def test_an_open_repair_cannot_delete_a_car_added_again(hass, repairs_client):

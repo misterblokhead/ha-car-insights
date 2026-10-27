@@ -187,7 +187,6 @@ class Service:
         vid, capacity = entry.data["vehicle_id"], (entry.options.get("cloud") or {}).get("capacity_kwh")
         self._live[vid] = entry.title
         self.refresh_entry_vehicles()
-        ir.async_delete_issue(self.hass, DOMAIN, f"vehicle_removed_{vid}")  # the car is back: nobody needs to answer any more
         await asyncio.wrap_future(self.worker.call(self._configure, vid, entry.title, not has_car_app(entry), capacity, source_conf(entry)))
 
     def _configure(self, vid: str, title: str, cloud_only: bool, capacity_kwh: float | None, conf: SourceConf | None) -> None:
