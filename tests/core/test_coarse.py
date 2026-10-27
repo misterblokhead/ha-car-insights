@@ -39,7 +39,7 @@ def test_ignition_trip_uses_odometer_distance_and_battery_energy():
 def test_ignition_trip_stays_open_until_the_odometer_can_settle():
     assert find_cloud_trips(ign_trace(on=T0, off=T0 + 20 * MIN), {}, True, 60_000, T0 + 21 * MIN)[0].end is None
     assert find_cloud_trips(ign_trace(on=T0, off=T0 + 20 * MIN), {}, True, 60_000, None)[0].end is None
-    assert find_cloud_trips(ign_trace(on=T0, off=T0 + 20 * MIN), {}, True, 60_000, T0 + 22 * MIN)[0].end == T0 + 20 * MIN
+    assert find_cloud_trips(ign_trace(on=T0, off=T0 + 20 * MIN), {}, True, 60_000, T0 + 30 * MIN)[0].end == T0 + 20 * MIN
 
 
 def test_ignition_trip_without_off_is_open():
@@ -155,3 +155,17 @@ def test_an_ignition_trip_whose_off_never_comes_closes_at_its_last_change_after_
     assert open_.end is None
     (t,) = find_cloud_trips(samples, {}, True, 60_000, T0 + 20 * MIN + 4 * 3_600_000)
     assert (t.start, t.end) == (T0, T0 + 20 * MIN) and t.distance_m == pytest.approx(10_000)
+
+
+def test_an_ignition_trip_closes_only_ten_minutes_after_its_off():
+    samples = ign_trace(on=T0, off=T0 + 20 * MIN)
+    assert find_cloud_trips(samples, {}, True, 60_000, T0 + 29 * MIN)[0].end is None
+    assert find_cloud_trips(samples, {}, True, 60_000, T0 + 30 * MIN)[0].end == T0 + 20 * MIN
+
+
+def test_a_restart_after_the_old_close_time_but_inside_ten_minutes_is_one_trip_in_live_polling():
+    first = [s(T0 - MIN, "odometer_km", 1000.0), s(T0, "ignition", 4), s(T0 + 10 * MIN, "odometer_km", 1006.0), s(T0 + 20 * MIN, "ignition", 2)]
+    assert find_cloud_trips(first, {}, True, 60_000, T0 + 23 * MIN)[0].end is None  # the poll that used to close it
+    both = [*first, s(T0 + 25 * MIN, "ignition", 4), s(T0 + 30 * MIN, "odometer_km", 1010.0), s(T0 + 40 * MIN, "odometer_km", 1012.4), s(T0 + 40 * MIN, "ignition", 2)]
+    (t,) = find_cloud_trips(both, {}, True, 60_000, T0 + 51 * MIN)
+    assert (t.start, t.end) == (T0, T0 + 40 * MIN) and t.distance_m == pytest.approx(12_400)

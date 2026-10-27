@@ -975,3 +975,14 @@ def test_purge_deletes_the_rows_of_every_kind_and_forgets_the_vehicle():
         d.purge("car1")
     assert store.closed(conn, TRIP, "car1") == [] and store.closed(conn, CHARGE, "car1") == [] and d.horizon == {}
     assert len(store.closed(conn, TRIP, "car2")) == 1
+
+
+def test_a_cloud_restart_a_few_minutes_after_an_off_is_one_trip_across_live_polls():
+    conn, d = cloud_setup(ignition_drive(T0, T0 + 20 * MIN))
+    d.horizon["car9"] = T0 + 23 * MIN
+    assert d.update("car9", None, T0 + 23 * MIN)[0] == []  # off 3 min ago: the trip may still go on
+    db.ingest(conn, "car9", CLOUD, [s(T0 + 25 * MIN, "ignition", 4), s(T0 + 39 * MIN, "odometer_km", 1018.0), s(T0 + 40 * MIN, "ignition", 2)], 0)
+    d.horizon["car9"] = T0 + 51 * MIN
+    d.update("car9", None, T0 + 51 * MIN)
+    assert [(t["start"], t["end"]) for t in store.closed(conn, TRIP, "car9")] == [(T0, T0 + 40 * MIN)]
+    assert store.current_trip(conn, "car9") is None

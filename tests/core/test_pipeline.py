@@ -634,7 +634,7 @@ def test_rebuild_without_a_horizon_derives_every_cloud_trip(env):
     app, _ = cloud_app(env)
     db.set_vehicle(conn, "car9", "Invented", True)
     drive = lambda on, lo, hi: [s(on - MIN, "odometer_km", lo), s(on, "ignition", 4), s(on + 20 * MIN, "ignition", 2), s(on + 21 * MIN, "odometer_km", hi)]
-    db.ingest(conn, "car9", CLOUD, [*drive(T0, 1000.0, 1010.0), *drive(T0 + 3_600_000, 1010.0, 1020.0), s(T0 + 5_000_000, "odometer_km", 1020.0)], T0 + 6_000_000)
+    db.ingest(conn, "car9", CLOUD, [*drive(T0, 1000.0, 1010.0), *drive(T0 + 3_600_000, 1010.0, 1020.0), s(T0 + 5_500_000, "odometer_km", 1020.0)], T0 + 6_000_000)
     rebuild(app, T0 + 6_000_000, ["car9"])
     assert [t["start"] for t in store.closed(conn, TRIP, "car9")] == [T0 + 3_600_000, T0] and store.current_trip(conn, "car9") is None
 

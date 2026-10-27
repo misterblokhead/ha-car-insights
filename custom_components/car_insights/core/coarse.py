@@ -6,7 +6,7 @@ from .zones import _haversine_m
 
 # the coarse rules, in one place: a car without the car app is only known from its cloud entities, polled about once a minute
 MOVE_M = 200  # a gps fix this far from where the car stood is motion; the car stands where its last motion fix was, so parked jitter never adds up
-END_QUIET_MS = 600_000  # without ignition, a trip ends after this long without motion
+END_QUIET_MS = 600_000  # a trip ends after this long without motion, or without an ignition on after the off
 MIN_DISTANCE_M = 500  # a closed trip shorter than this is noise
 ODO_SETTLE_MS = 120_000  # the cloud odometer lags the ignition: end values are read this long after the end
 IGNITION_STALE_MS = 3 * 3_600_000  # an ignition trip whose off never came is closed at its last change once this long passes without another
@@ -55,9 +55,8 @@ def _moves(samples: list[Sample], seed: dict[str, Any]) -> list[int]:
 
 
 def _ignition_spans(samples: list[Sample], seed: dict[str, Any], horizon: int | None) -> list[Span]:
-    """An off and an on less than END_QUIET_MS later (the car restarted at a stop) are one trip.
-    shortcut: a trip already closed by the horizon (ODO_SETTLE_MS after its off) is not reopened by an on that a later poll brings;
-    only samples read together merge. Hold the close back to END_QUIET_MS if that splits real trips."""
+    """An off and an on less than END_QUIET_MS later (the car restarted at a stop) are one trip, so a trip closes only once the horizon
+    is END_QUIET_MS past its off (by then no such on can still be unread, and the odometer has settled)."""
     out: list[Span] = []
     start = end = None  # the open trip's ignition on, and its ignition off once seen
     for s in samples:
@@ -67,7 +66,7 @@ def _ignition_spans(samples: list[Sample], seed: dict[str, Any], horizon: int | 
             end = s.t if start is not None and end is None else end
         elif v != 0:  # 0 is UNDEFINED: no sign of a trip
             if start is not None and end is not None and s.t - end >= END_QUIET_MS:  # too late to be the same trip
-                if horizon is None or horizon < end + ODO_SETTLE_MS:
+                if horizon is None or horizon < end + END_QUIET_MS:
                     return [*out, (start, end, False)]  # whatever follows waits until this one can close
                 out.append((start, end, True))
                 start = end = None
@@ -78,7 +77,7 @@ def _ignition_spans(samples: list[Sample], seed: dict[str, Any], horizon: int | 
     if start is None:
         return out
     if end is not None:
-        return [*out, (start, end, horizon is not None and horizon >= end + ODO_SETTLE_MS)]
+        return [*out, (start, end, horizon is not None and horizon >= end + END_QUIET_MS)]
     # no off yet: the trip ends at its last sample, or, with its off lost, at its last change once nothing has changed for IGNITION_STALE_MS
     last = max((t for t in _moves(samples, seed) if t >= start), default=start)
     if horizon is not None and horizon - last >= IGNITION_STALE_MS:
