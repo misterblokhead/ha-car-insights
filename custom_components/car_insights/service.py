@@ -187,6 +187,7 @@ class Service:
         vid, capacity = entry.data["vehicle_id"], (entry.options.get("cloud") or {}).get("capacity_kwh")
         self._live[vid] = entry.title
         self.refresh_entry_vehicles()
+        ir.async_delete_issue(self.hass, DOMAIN, f"vehicle_removed_{vid}")  # the car is back: nobody needs to answer any more
         await asyncio.wrap_future(self.worker.call(self._configure, vid, entry.title, not has_car_app(entry), capacity, source_conf(entry)))
 
     def _configure(self, vid: str, title: str, cloud_only: bool, capacity_kwh: float | None, conf: SourceConf | None) -> None:
@@ -270,6 +271,11 @@ class Service:
         """Delete a vehicle's stored history (see pipeline.forget_vehicle)."""
         await asyncio.shield(self._ready)
         await asyncio.wrap_future(self.worker.call(pipeline.forget_vehicle, self.app, self.publisher, vid))
+
+    async def has_vehicle(self, vid: str) -> bool:
+        """Whether the database has a vehicles row for the car (its history, even when no entry is left)."""
+        await asyncio.shield(self._ready)
+        return await asyncio.wrap_future(self.worker.call(lambda: self.conn.execute("SELECT 1 FROM vehicles WHERE vehicle_id=?", (vid,)).fetchone() is not None))
 
     async def ui(self, method: str, path: str, query: dict[str, str], body: Any, viewer: Viewer) -> tuple[int, Any]:
         await asyncio.shield(self._ready)

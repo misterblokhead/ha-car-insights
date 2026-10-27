@@ -9,6 +9,7 @@ from homeassistant.components import cloud, persistent_notification, webhook
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.network import NoURLAvailableError
 
 from .bridge import PLATFORMS
@@ -16,7 +17,7 @@ from .cloud_setup import convert_legacy, has_car_app
 from .const import DOMAIN, MAX_BODY
 from .receiver import body_vehicle_matches, config_file_text, is_https_url, read_limited, verify_signature, write_conf
 from .panel import async_register_http, async_register_panel, remove_panel
-from . import service as service_module
+from . import service as service_module, vehicles
 from .service import Service
 
 _LOGGER = logging.getLogger(__name__)
@@ -197,3 +198,14 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
             await cloud.async_delete_cloudhook(hass, entry.data["webhook_id"])
         except (cloud.CloudNotAvailable, ValueError):
             pass  # cloud gone or hook already deleted
+    vid = entry.data["vehicle_id"]
+    if vid in hass.data.get(vehicles.REMOVING, ()):  # the page asked, and it asks about the history itself
+        return
+    try:
+        stored = await vehicles.has_history(hass, vid)
+    except Exception:
+        _LOGGER.exception("Could not look up the stored history of %s", vid)
+        stored = True  # a repair that finds nothing to delete is harmless, a history nobody is asked about is not
+    if stored:  # HA cannot ask in Devices & services, so the history is kept and a repair asks
+        ir.async_create_issue(hass, DOMAIN, f"vehicle_removed_{vid}", is_fixable=True, severity=ir.IssueSeverity.WARNING,
+                              translation_key="vehicle_removed", translation_placeholders={"vehicle": entry.title}, data={"vehicle_id": vid})

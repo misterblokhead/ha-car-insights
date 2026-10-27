@@ -6,7 +6,7 @@ import time
 
 import pytest
 from homeassistant.config_entries import ConfigEntryDisabler, ConfigEntryState
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er, issue_registry as ir
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -295,3 +295,141 @@ async def test_a_retrying_entry_is_not_archived(hass, hass_admin_client):
     assert (await settings_of(hass_admin_client))["car1"]["archived"] is False
     assert (await hass_admin_client.delete(f"{UI}/vehicles/car1/history")).status == 409
     assert await rows(hass, "car1") == (1, 1, 1)
+
+
+# --- a removal in Devices & services asks through a repair -------------------------------------------------------------------------------
+
+def issue_of(hass, vid):
+    return ir.async_get(hass).async_get_issue(DOMAIN, f"vehicle_removed_{vid}")
+
+
+@pytest.fixture
+async def repairs_client(hass, hass_admin_client):
+    assert await async_setup_component(hass, "repairs", {})
+    return hass_admin_client
+
+
+async def answer(client, vid, choice):
+    """what the repair dialog does: open the fix flow, check its menu, pick an option"""
+    resp = await client.post("/api/repairs/issues/fix", json={"handler": DOMAIN, "issue_id": f"vehicle_removed_{vid}"})
+    assert resp.status == 200
+    menu = await resp.json()
+    assert (menu["type"], menu["step_id"], menu["menu_options"]) == ("menu", "init", ["delete", "keep"])
+    resp = await client.post(f"/api/repairs/issues/fix/{menu['flow_id']}", json={"next_step_id": choice})
+    assert resp.status == 200
+    return await resp.json()
+
+
+async def test_removal_in_devices_and_services_raises_the_repair(hass):
+    entry = await add_car(hass, "car1")
+    await add_car(hass, "car2")
+
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+
+    issue = issue_of(hass, "car1")
+    assert (issue.is_fixable, issue.severity, issue.translation_key) == (True, ir.IssueSeverity.WARNING, "vehicle_removed")
+    assert issue.translation_placeholders == {"vehicle": "Car car1"} and issue.data == {"vehicle_id": "car1"}
+    assert issue_of(hass, "car2") is None
+    assert await rows(hass, "car1") == (1, 1, 1)  # the history is kept until someone answers
+
+
+async def test_repair_delete_deletes_the_history(hass, repairs_client):
+    entry = await add_car(hass, "car1")  # its removal stops the service: the check and the deletion use their own connection
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+    assert DOMAIN not in hass.data and issue_of(hass, "car1") is not None
+
+    result = await answer(repairs_client, "car1", "delete")
+
+    assert result["type"] == "create_entry"
+    assert await rows(hass, "car1") == (0, 0, 0) and issue_of(hass, "car1") is None
+
+
+async def test_repair_delete_with_a_running_service_deletes_through_it(hass, repairs_client):
+    entry = await add_car(hass, "car1")
+    await add_car(hass, "car2")
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert (await answer(repairs_client, "car1", "delete"))["type"] == "create_entry"
+
+    assert await rows(hass, "car1") == (0, 0, 0) and await rows(hass, "car2") == (1, 1, 1) and issue_of(hass, "car1") is None
+
+
+async def test_repair_keep_keeps_it(hass, repairs_client):
+    entry = await add_car(hass, "car1")
+    await add_car(hass, "car2")
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await answer(repairs_client, "car1", "keep")
+
+    assert result["type"] == "create_entry"
+    assert await rows(hass, "car1") == (1, 1, 1) and issue_of(hass, "car1") is None
+
+
+@pytest.mark.parametrize("history", ["keep", "delete"])
+async def test_page_removal_raises_no_repair(hass, hass_admin_client, history):
+    await add_car(hass, "car1")
+    await add_car(hass, "car2")
+    assert (await hass_admin_client.delete(f"{UI}/vehicles/car1?history={history}")).status == 200
+    await hass.async_block_till_done()
+
+    assert issue_of(hass, "car1") is None
+
+
+async def test_page_removal_of_the_last_car_raises_no_repair(hass, hass_admin_client):
+    await add_car(hass, "car1")
+    assert (await hass_admin_client.delete(f"{UI}/vehicles/car1?history=keep")).status == 200
+    await hass.async_block_till_done()
+
+    assert DOMAIN not in hass.data and issue_of(hass, "car1") is None
+
+
+async def test_readding_clears_the_repair(hass):
+    entry = await add_car(hass, "car1")
+    await add_car(hass, "car2")
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+    assert issue_of(hass, "car1") is not None
+
+    assert await hass.config_entries.async_setup(add_entry(hass, "car1").entry_id)
+    await hass.async_block_till_done()
+
+    assert issue_of(hass, "car1") is None
+
+
+async def test_an_open_repair_cannot_delete_a_car_added_again(hass, repairs_client):
+    entry = await add_car(hass, "car1")
+    await add_car(hass, "car2")
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+    resp = await repairs_client.post("/api/repairs/issues/fix", json={"handler": DOMAIN, "issue_id": "vehicle_removed_car1"})
+    flow_id = (await resp.json())["flow_id"]  # the dialog is open ...
+    assert await hass.config_entries.async_setup(add_entry(hass, "car1").entry_id)  # ... when the car is added again
+    await hass.async_block_till_done()
+
+    resp = await repairs_client.post(f"/api/repairs/issues/fix/{flow_id}", json={"next_step_id": "delete"})
+
+    assert (await resp.json())["type"] == "abort"
+    assert await rows(hass, "car1") == (1, 1, 1)
+
+
+async def test_removed_car_without_data_raises_no_repair(hass):
+    entry = await add_car(hass, "car1")
+    await add_car(hass, "car2")
+    await vehicles.purge(hass, "car1")  # nothing stored for it any more
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert issue_of(hass, "car1") is None
+
+
+async def test_last_removed_car_without_data_raises_no_repair(hass):
+    entry = await add_car(hass, "car1")
+    await vehicles.purge(hass, "car1")
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert DOMAIN not in hass.data and issue_of(hass, "car1") is None
