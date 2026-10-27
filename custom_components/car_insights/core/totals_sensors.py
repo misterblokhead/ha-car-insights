@@ -57,6 +57,10 @@ class TotalsSensors:
         """Drop that a vehicle was announced (its entry was removed), so a vehicle added again is announced again."""
         self._announced.discard(vid)
 
+    def clear(self, vid: str) -> None:
+        """Empty the retained states of a vehicle whose history was deleted, so the entities of one added again show none of it."""
+        self._mqtt.publish([(ha_mqtt.topic(vid, leaf), "") for leaf in ("totals",)])
+
     def publish_vehicle(self, vid: str) -> None:
         if vid not in self._announced:
             self._mqtt.publish(self._discovery(vid, ha_mqtt.device(vid, *db.device_info(self._conn, vid))))

@@ -4,6 +4,7 @@ from typing import Callable
 
 from . import live
 from . import db
+from . import ha_mqtt
 from .ha_mqtt import Sink
 from .protocol import FUTURE_SLACK_MS, Sample
 
@@ -23,6 +24,10 @@ class Publisher:
         """Drop a vehicle's live state and what was announced for it, so a later ingest seeds and announces it afresh."""
         for memo in (self._states, self._announced, self._device):
             memo.pop(vid, None)
+
+    def clear(self, vid: str) -> None:
+        """Empty the retained states of a vehicle whose history was deleted, so the entities of one added again show none of it."""
+        self._mqtt.publish([(ha_mqtt.topic(vid, leaf), "") for leaf in ("state", "location")])
 
     def on_ingested(self, vid: str, samples: list[Sample], received_ms: int) -> None:
         first = vid not in self._states

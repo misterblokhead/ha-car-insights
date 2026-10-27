@@ -5,7 +5,7 @@ import sqlite3
 import time
 
 import pytest
-from homeassistant.config_entries import ConfigEntryDisabler
+from homeassistant.config_entries import ConfigEntryDisabler, ConfigEntryState
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -234,11 +234,11 @@ async def test_readding_after_keep_continues_history_and_after_delete_starts_emp
     await add_car(hass, "car2")
     service, announced = hass.data[DOMAIN], []
     sink = bridge.async_get(hass)
-    publish = sink.publish
+    real_publish = sink.publish
 
     def spy(messages, retain=True):
         announced.extend(t for t, _ in messages)
-        publish(messages, retain)
+        real_publish(messages, retain)
 
     monkeypatch.setattr(sink, "publish", spy)
 
@@ -250,21 +250,48 @@ async def test_readding_after_keep_continues_history_and_after_delete_starts_emp
         assert "car1" not in service.app.totals._announced and "car1" not in service.app.sensors._announced
         assert "car1" not in service.publisher._announced
 
-    async def readd(publish_trip):
-        """the entry again; then what a closed trip does: publish the last trip and the totals"""
+    async def add_back():
         assert await hass.config_entries.async_setup(add_entry(hass, "car1").entry_id)
+        await hass.async_block_till_done()
         announced.clear()
+
+    def last_trip_state():
+        eid = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, "car_insights_car1_last_trip_distance")
+        return hass.states.get(eid).state
+
+    async def publish(publish_trip):
+        """what a closed trip does: publish the last trip and the totals"""
         await on_worker(hass, publish_trip, service.app, "car1")
         await hass.async_block_till_done()
         assert {"homeassistant/sensor/car1_month_distance/config", "homeassistant/sensor/car1_last_trip_distance/config"} <= set(announced)
         assert {"car_insights_car1_month_distance", "car_insights_car1_last_trip_distance"} <= car_entities(hass, "car1")
 
     await remove("keep")
-    await readd(lambda app, vid: pipeline.republish(app, [vid]))
+    await add_back()
+    assert last_trip_state() == "5.0"  # the kept history shows at once
+    await publish(lambda app, vid: pipeline.republish(app, [vid]))
     assert await rows(hass, "car1") == (1, 1, 1)  # the history continues
 
     await remove("delete")
     assert await rows(hass, "car1") == (0, 0, 0)
     assert await rows(hass, "car2") == (1, 1, 1)
-    await readd(seed_trip)  # it starts empty: its first trip is the only one
+    await add_back()
+    assert last_trip_state() in ("unknown", "unavailable")  # not the deleted trip's distance, before any new trip
+    await publish(seed_trip)  # it starts empty: its first trip is the only one
     assert await rows(hass, "car1") == (0, 1, 1)
+    assert last_trip_state() == "5.0"
+
+
+async def test_a_retrying_entry_is_not_archived(hass, hass_admin_client):
+    await add_car(hass, "car1")
+    await add_car(hass, "car2")
+    assert (await hass_admin_client.delete(f"{UI}/vehicles/car1?history=keep")).status == 200
+    hass.config.external_url = "http://ci.example.test"  # not https: the setup of a car app entry is retried
+
+    entry = add_entry(hass, "car1")  # the car added again, with its history, while car2's service runs
+    assert not await hass.config_entries.async_setup(entry.entry_id)
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+
+    assert (await settings_of(hass_admin_client))["car1"]["archived"] is False
+    assert (await hass_admin_client.delete(f"{UI}/vehicles/car1/history")).status == 409
+    assert await rows(hass, "car1") == (1, 1, 1)

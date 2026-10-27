@@ -52,6 +52,8 @@ async def _release(hass: HomeAssistant) -> None:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    if (service := hass.data.get(DOMAIN)) is not None:  # an entry that is retried never reaches configure: it is still the page's car, not an archived one
+        service.refresh_entry_vehicles()
     vehicle_id = entry.data["vehicle_id"]
     secret = entry.data.get("secret")
     webhook_id = entry.data.get("webhook_id")
