@@ -1,7 +1,7 @@
 <script>
   import { tick } from "svelte";
   import { get, latest, send } from "../lib/api.js";
-  import { ADD_CAR_PATH, CONFIGURE_PATH, navigateHa, removalMessage, splitCars } from "../lib/cars.js";
+  import { ADD_CAR_PATH, CONFIGURE_PATH, STOPPED, navigateHa, removalMessage, splitCars, stoppedWithLastCar } from "../lib/cars.js";
   import { dateTime } from "../lib/time.js";
   import FixedCosts from "./settings/FixedCosts.svelte";
   import Prices from "./settings/Prices.svelte";
@@ -12,6 +12,9 @@
   let newName = $state("");
   let names = $state({});
   let removing = $state(null); // id of the car whose Remove car choice is open
+  let removed = false; // a removal answered: the reload after it may find Car Insights stopped with its last car
+  let stopped = $state(false);
+  let addCar = $state(); // where focus goes when the control that had it went with its car
   let pending = $state(0); // changes still running; the controls stay disabled until the last one is done
   const busy = $derived(pending > 0);
   const request = latest();
@@ -20,13 +23,20 @@
 
   async function load() {
     const ticket = request.next();
+    const afterRemoval = removed;
+    removed = false;
     try {
       const d = await get("settings");
       if (!ticket.current) return;
       data = d;
+      stopped = false;
       names = Object.fromEntries(d.groups.map((g) => [g.id, g.name]));
     } catch (e) {
-      if (ticket.current) error = `Could not load (${e.message})`;
+      if (!ticket.current) return;
+      if (stoppedWithLastCar(e, afterRemoval)) {
+        stopped = true;
+        data = { ...data, vehicles: [] };
+      } else error = `Could not load (${e.message})`;
     }
   }
 
@@ -54,12 +64,13 @@
     el.focus(); // disabling while busy dropped focus
   }
 
-  // Disabling the buttons while busy drops focus: give it back to whatever had it (the input on Enter, the button on click).
-  async function keepFocus(fn) {
+  // Disabling the buttons while busy drops focus: give it back to whatever had it (the input on Enter, the button on click),
+  // or to `gone` when that left the page.
+  async function keepFocus(fn, gone) {
     const el = document.activeElement;
     await fn();
     await tick();
-    el?.focus();
+    (el?.isConnected ? el : gone)?.focus();
   }
 
   const addGroup = () => keepFocus(async () => {
@@ -71,12 +82,15 @@
   const setVehicle = (v, group_id, viewers) => () => send("PUT", `vehicles/${v.id}`, { group_id, viewers });
   const removeCar = (v, history) => {
     removing = null;
-    return change(async () => {
+    return keepFocus(() => change(async () => {
       const reply = await send("DELETE", `vehicles/${v.id}?history=${history}`);
+      removed = true;
       error = removalMessage(reply) ?? "";
-    });
+    }), addCar);
   };
-  const deleteHistory = (v) => confirm(`Delete the stored history of "${v.name}"? This cannot be undone.`) && change(() => send("DELETE", `vehicles/${v.id}/history`));
+  const deleteEverything = (v) => confirm(`Remove "${v.name}" and delete everything stored for it? This cannot be undone.`) && removeCar(v, "delete");
+  const deleteHistory = (v) => confirm(`Delete the stored history of "${v.name}"? This cannot be undone.`) && keepFocus(() => change(() => send("DELETE", `vehicles/${v.id}/history`)), addCar);
+  const focus = (el) => el.focus();
   // the card fields are sent together; a blank one counts as 0
   const setCard = (v, card) => () => send("PUT", `vehicles/${v.id}/card`, card);
 
@@ -86,6 +100,7 @@
 <div class="page settings">
 <h1 class="page-title">Settings</h1>
 {#if error}<p class="err" role="alert">{error}</p>{/if}
+{#if stopped}<p class="note" role="status">{STOPPED}</p>{/if}
 {#if data}
   <h2>Cost groups</h2>
   <div class="list card">
@@ -109,7 +124,7 @@
   {@const cars = splitCars(data.vehicles)}
   <h2>Cars</h2>
   <p class="note caption">Users appear here after they open this page once. Administrators always see every car.</p>
-  <div class="row"><button class="press" type="button" disabled={busy} onclick={() => navigateHa(ADD_CAR_PATH)}>Add car</button></div>
+  <div class="row"><button class="press" type="button" disabled={busy} bind:this={addCar} onclick={() => navigateHa(ADD_CAR_PATH)}>Add car</button></div>
   {#each cars.active as v (v.id)}
     <section>
       <h3>{v.name}</h3>
@@ -117,8 +132,8 @@
         <button class="press" type="button" disabled={busy} onclick={() => navigateHa(CONFIGURE_PATH)}>Configure</button>
         {#if removing === v.id}
           <button class="danger press" type="button" disabled={busy} onclick={() => removeCar(v, "keep")}>Keep its history</button>
-          <button class="danger press" type="button" disabled={busy} onclick={() => removeCar(v, "delete")}>Delete everything</button>
-          <button class="press" type="button" onclick={() => (removing = null)}>Cancel</button>
+          <button class="danger press" type="button" disabled={busy} onclick={() => deleteEverything(v)}>Delete everything</button>
+          <button class="press" type="button" {@attach focus} onclick={() => (removing = null)}>Cancel</button>
         {:else}
           <button class="danger press" type="button" disabled={busy} onclick={() => (removing = v.id)}>Remove car</button>
         {/if}

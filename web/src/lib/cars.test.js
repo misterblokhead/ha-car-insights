@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { splitCars, removalMessage, navigateHa } from "./cars.js";
+import { splitCars, removalMessage, navigateHa, stoppedWithLastCar } from "./cars.js";
 
 test("splitCars keeps order and splits on archived", () => {
   const cars = [{ id: "a", archived: false }, { id: "b", archived: true }, { id: "c", archived: false }, { id: "d", archived: true }];
@@ -12,6 +12,12 @@ test("splitCars keeps order and splits on archived", () => {
 test("removalMessage reports a history that could not be deleted", () => {
   assert.equal(removalMessage({ removed: true, history_deleted: false }), "Its history could not be deleted; try Delete history again.");
   assert.equal(removalMessage({ removed: true, history_deleted: true }), null);
+});
+
+test("stoppedWithLastCar takes only a 503 right after a removal for Car Insights stopping", () => {
+  assert.equal(stoppedWithLastCar({ status: 503 }, true), true);
+  assert.equal(stoppedWithLastCar({ status: 503 }, false), false); // at any other time it is a failure to load
+  assert.equal(stoppedWithLastCar({ status: 500 }, true), false);
 });
 
 test("navigateHa pushes the path on the top window and fires location-changed", () => {

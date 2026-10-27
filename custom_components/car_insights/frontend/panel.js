@@ -11560,13 +11560,13 @@ Fr(["click"]);
 var Cm = "/_my_redirect/config_flow_start?domain=car_insights", wm = "/config/integrations/integration/car_insights", Tm = (e) => ({
 	active: e.filter((e) => !e.archived),
 	archived: e.filter((e) => e.archived)
-}), Em = (e) => e.history_deleted === !1 ? "Its history could not be deleted; try Delete history again." : null;
-function Dm(e) {
+}), Em = (e) => e.history_deleted === !1 ? "Its history could not be deleted; try Delete history again." : null, Dm = "Car Insights stopped with its last car.", Om = (e, t) => t && e.status === 503;
+function km(e) {
 	window.top.history.pushState(null, "", e), window.top.dispatchEvent(new CustomEvent("location-changed"));
 }
 // src/pages/settings/FixedCosts.svelte
-var Om = /* @__PURE__ */ X("<div class=\"row split\"><span> <br/><span class=\"muted\"> </span></span> <button type=\"button\" class=\"danger press\">Delete</button></div> <form class=\"row split\"><label class=\"grow inline\">End date <input name=\"end\" type=\"date\"/></label> <button class=\"press\" type=\"submit\">Save</button></form>", 1), km = /* @__PURE__ */ X("<p class=\"row muted\">No fixed costs.</p>"), Am = /* @__PURE__ */ X("<option> </option>"), jm = /* @__PURE__ */ X("<form class=\"row fields\"><label class=\"field wide\">Name<input required=\"\" maxlength=\"40\"/></label> <label class=\"field\">Amount (€)<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" required=\"\"/></label> <label class=\"field\">Period<select></select></label> <label class=\"field\">Start<input type=\"date\" required=\"\"/></label> <label class=\"field\">End (optional)<input type=\"date\"/></label> <button class=\"press\" type=\"submit\">Add</button> <button class=\"press\" type=\"button\">Cancel</button></form>"), Mm = /* @__PURE__ */ X("<div class=\"row\"><button class=\"press\" type=\"button\">Add fixed cost</button></div>"), Nm = /* @__PURE__ */ X("<h3> </h3> <div class=\"list card\"><!> <!></div>", 1), Pm = /* @__PURE__ */ X("<h2>Fixed costs</h2> <p class=\"note caption\">Monthly card fees, insurance and the like. Empty the end date to run a cost on.</p> <!>", 1);
-function Fm(e, t) {
+var Am = /* @__PURE__ */ X("<div class=\"row split\"><span> <br/><span class=\"muted\"> </span></span> <button type=\"button\" class=\"danger press\">Delete</button></div> <form class=\"row split\"><label class=\"grow inline\">End date <input name=\"end\" type=\"date\"/></label> <button class=\"press\" type=\"submit\">Save</button></form>", 1), jm = /* @__PURE__ */ X("<p class=\"row muted\">No fixed costs.</p>"), Mm = /* @__PURE__ */ X("<option> </option>"), Nm = /* @__PURE__ */ X("<form class=\"row fields\"><label class=\"field wide\">Name<input required=\"\" maxlength=\"40\"/></label> <label class=\"field\">Amount (€)<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" required=\"\"/></label> <label class=\"field\">Period<select></select></label> <label class=\"field\">Start<input type=\"date\" required=\"\"/></label> <label class=\"field\">End (optional)<input type=\"date\"/></label> <button class=\"press\" type=\"submit\">Add</button> <button class=\"press\" type=\"button\">Cancel</button></form>"), Pm = /* @__PURE__ */ X("<div class=\"row\"><button class=\"press\" type=\"button\">Add fixed cost</button></div>"), Fm = /* @__PURE__ */ X("<h3> </h3> <div class=\"list card\"><!> <!></div>", 1), Im = /* @__PURE__ */ X("<h2>Fixed costs</h2> <p class=\"note caption\">Monthly card fees, insurance and the like. Empty the end date to run a cost on.</p> <!>", 1);
+function Lm(e, t) {
 	nt(t, !0);
 	let n = [
 		"month",
@@ -11600,11 +11600,11 @@ function Fm(e, t) {
 		r.value !== (n.end ?? "") && (await t.change(() => p("PUT", `fixed_costs/${n.id}`, { end: r.value || null })) || (r.value = n.end ?? ""));
 	}
 	let d = (e) => confirm(`Delete "${e.name}"?`) && t.change(() => p("DELETE", `fixed_costs/${e.id}`)), f = (e) => e.focus();
-	var m = Pm();
+	var m = Im();
 	mi(q(G(m), 4), 17, () => t.data.vehicles, (e) => e.id, (e, t) => {
-		var r = Nm(), p = G(r), m = K(p, !0), h = q(p, 2), g = W(h);
+		var r = Fm(), p = G(r), m = K(p, !0), h = q(p, 2), g = W(h);
 		mi(g, 17, () => s(Y(t).id), (e) => e.id, (e, t) => {
-			var n = Om(), r = G(n), i = W(r), a = W(i, !0), o = K(q(a, 2));
+			var n = Am(), r = G(n), i = W(r), a = W(i, !0), o = K(q(a, 2));
 			I(i);
 			var s = q(i, 2);
 			I(r);
@@ -11615,16 +11615,16 @@ function Fm(e, t) {
 				Q(a, Y(t).name), Q(o, `${e ?? ""} · ${Y(t).period ?? ""} · from ${Y(t).start ?? ""}${Y(t).end ? ` to ${Y(t).end}` : ""}`), na(s, "aria-label", `Delete ${Y(t).name}`), na(f, "aria-label", `End date of ${Y(t).name}`), na(f, "min", Y(t).start), ea(f, Y(t).end ?? ""), na(p, "aria-label", `Save end date of ${Y(t).name}`);
 			}, [() => ds(Y(t).amount)]), Pr("click", s, () => d(Y(t))), Nr("submit", c, (e) => u(e, Y(t))), Z(e, n);
 		}, (e) => {
-			Z(e, km());
+			Z(e, jm());
 		});
 		var _ = q(g, 2), v = (e) => {
-			var t = jm(), r = W(t), s = q(W(r));
+			var t = Nm(), r = W(t), s = q(W(r));
 			$i(s), Ni(s, () => f), I(r);
 			var c = q(r, 2), u = q(W(c));
 			$i(u), I(c);
 			var d = q(c, 2), p = q(W(d));
 			mi(p, 21, () => n, ui, (e, t) => {
-				var n = Am(), r = K(n, !0), i = {};
+				var n = Mm(), r = K(n, !0), i = {};
 				J(() => {
 					Q(r, Y(t)), i !== (i = Y(t)) && (n.value = (n.__value = i) ?? "");
 				}), Z(e, n);
@@ -11638,7 +11638,7 @@ function Fm(e, t) {
 				na(_, "min", Y(a).start), v.disabled = Y(o);
 			}), Nr("submit", t, l), oa(s, () => Y(a).name, (e) => Y(a).name = e), oa(u, () => Y(a).amount, (e) => Y(a).amount = e), Ki(p, () => Y(a).period, (e) => Y(a).period = e), oa(h, () => Y(a).start, (e) => Y(a).start = e), oa(_, () => Y(a).end, (e) => Y(a).end = e), Pr("click", y, () => U(i, null)), Z(e, t);
 		}, y = (e) => {
-			var n = Mm();
+			var n = Pm();
 			Pr("click", K(n), () => c(Y(t).id)), Z(e, n);
 		};
 		$(_, (e) => {
@@ -11648,12 +11648,12 @@ function Fm(e, t) {
 }
 Fr(["click"]);
 // src/pages/settings/Prices.svelte
-var Im = /* @__PURE__ */ X("<form class=\"row fields\"><label class=\"field\">€/kWh<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" required=\"\"/></label> <label class=\"field\">Start fee<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" placeholder=\"0\"/></label> <label class=\"field\">€/min<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" placeholder=\"0\"/></label> <label class=\"field\">Valid from<input type=\"date\" required=\"\"/></label> <button class=\"press\" type=\"submit\">Save</button> <button class=\"press\" type=\"button\">Cancel</button></form>"), Lm = /* @__PURE__ */ X("<div class=\"row split\"><span> <br/><span class=\"muted\"> </span></span> <button class=\"press\" type=\"button\">Change</button></div> <!>", 1), Rm = /* @__PURE__ */ X("<form class=\"row\"><label class=\"grow\"><span class=\"sr\">Location name</span><input required=\"\" maxlength=\"40\"/></label> <button class=\"press\" type=\"submit\">Rename</button> <button type=\"button\" class=\"danger press\">Delete</button></form> <div class=\"row split\"><span class=\"muted\"> </span> <button class=\"press\" type=\"button\">Change</button></div> <!>", 1), zm = /* @__PURE__ */ X("<h3>Charge locations</h3> <div class=\"list card\"></div>", 1), Bm = /* @__PURE__ */ X("<h2>Prices</h2> <p class=\"note caption\">A new price counts from its date.</p> <div class=\"list card\"></div> <!>", 1);
-function Vm(e, t) {
+var Rm = /* @__PURE__ */ X("<form class=\"row fields\"><label class=\"field\">€/kWh<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" required=\"\"/></label> <label class=\"field\">Start fee<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" placeholder=\"0\"/></label> <label class=\"field\">€/min<input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" placeholder=\"0\"/></label> <label class=\"field\">Valid from<input type=\"date\" required=\"\"/></label> <button class=\"press\" type=\"submit\">Save</button> <button class=\"press\" type=\"button\">Cancel</button></form>"), zm = /* @__PURE__ */ X("<div class=\"row split\"><span> <br/><span class=\"muted\"> </span></span> <button class=\"press\" type=\"button\">Change</button></div> <!>", 1), Bm = /* @__PURE__ */ X("<form class=\"row\"><label class=\"grow\"><span class=\"sr\">Location name</span><input required=\"\" maxlength=\"40\"/></label> <button class=\"press\" type=\"submit\">Rename</button> <button type=\"button\" class=\"danger press\">Delete</button></form> <div class=\"row split\"><span class=\"muted\"> </span> <button class=\"press\" type=\"button\">Change</button></div> <!>", 1), Vm = /* @__PURE__ */ X("<h3>Charge locations</h3> <div class=\"list card\"></div>", 1), Hm = /* @__PURE__ */ X("<h2>Prices</h2> <p class=\"note caption\">A new price counts from its date.</p> <div class=\"list card\"></div> <!>", 1);
+function Um(e, t) {
 	nt(t, !0);
 	let n = (e, t = O) => {
 		var n = Kr(), a = G(n), s = (e) => {
-			var t = Im(), n = W(t), a = q(W(n));
+			var t = Rm(), n = W(t), a = q(W(n));
 			$i(a), Ni(a, () => g), I(n);
 			var s = q(n, 2), c = q(W(s));
 			$i(c), I(s);
@@ -11706,9 +11706,9 @@ function Vm(e, t) {
 		U(r, !0), await t.change(() => p("PUT", `prices/${Y(i)}`, n)) && U(i, null), U(r, !1);
 	}
 	let m = (e) => t.change(() => p("PUT", `spots/${e.id}`, { name: Y(s)[e.id] })), h = (e) => confirm(`Delete "${e.name}"? Its charges go back to the default price.`) && t.change(() => p("DELETE", `spots/${e.id}`)), g = (e) => e.focus();
-	var _ = Bm(), v = q(G(_), 4);
+	var _ = Hm(), v = q(G(_), 4);
 	mi(v, 21, () => Y(u), (e) => e.id, (e, t) => {
-		var r = Lm(), i = G(r), a = W(i), o = W(a, !0), s = K(q(o, 2), !0);
+		var r = zm(), i = G(r), a = W(i), o = W(a, !0), s = K(q(o, 2), !0);
 		I(a);
 		var u = q(a, 2);
 		I(i);
@@ -11718,9 +11718,9 @@ function Vm(e, t) {
 		}, [() => l(vs(Y(t).list, c()))]), Pr("click", u, () => d(Y(t).id, Y(t).list)), Z(e, r);
 	}), I(v);
 	var y = q(v, 2), b = (e) => {
-		var r = zm(), i = q(G(r), 2);
+		var r = Vm(), i = q(G(r), 2);
 		mi(i, 21, () => t.data.prices.spots, (e) => e.id, (e, t) => {
-			var r = Rm(), i = G(r), a = W(i), o = q(W(a));
+			var r = Bm(), i = G(r), a = W(i), o = q(W(a));
 			$i(o), I(a);
 			var u = q(a, 2), f = q(u, 2);
 			I(i);
@@ -11740,167 +11740,181 @@ function Vm(e, t) {
 }
 Fr(["click"]);
 // src/pages/Settings.svelte
-var Hm = /* @__PURE__ */ X("<p class=\"err svelte-1ozf5k3\" role=\"alert\"> </p>"), Um = /* @__PURE__ */ X("<form class=\"row\"><label class=\"grow\"><span class=\"sr\">Group name</span><input required=\"\" maxlength=\"40\"/></label> <button class=\"press\" type=\"submit\">Rename</button> <button type=\"button\" class=\"danger press\">Delete</button></form>"), Wm = /* @__PURE__ */ X("<p class=\"row muted\">No groups yet.</p>"), Gm = /* @__PURE__ */ X("<button class=\"danger press\" type=\"button\">Keep its history</button> <button class=\"danger press\" type=\"button\">Delete everything</button> <button class=\"press\" type=\"button\">Cancel</button>", 1), Km = /* @__PURE__ */ X("<button class=\"danger press\" type=\"button\">Remove car</button>"), qm = /* @__PURE__ */ X("<option> </option>"), Jm = /* @__PURE__ */ X("<label class=\"row split\"> <input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\"/></label>"), Ym = /* @__PURE__ */ X("<label class=\"row split\"><span> <span class=\"muted\"> </span></span> <input type=\"checkbox\"/></label>"), Xm = /* @__PURE__ */ X("<p class=\"row muted\">No users yet.</p>"), Zm = /* @__PURE__ */ X("<section><h3> </h3> <div class=\"row\"><button class=\"press\" type=\"button\">Configure</button> <!></div> <div class=\"list card\"><label class=\"row split\">Cost group <select><option>No group</option><!></select></label> <!></div> <fieldset><legend>Viewers</legend> <div class=\"list card\"></div></fieldset></section>"), Qm = /* @__PURE__ */ X("<div class=\"row split\"><span> <span class=\"muted\">Archived</span></span> <button class=\"danger press\" type=\"button\">Delete history</button></div>"), $m = /* @__PURE__ */ X("<h2>Archived</h2> <div class=\"list card\"></div>", 1), eh = /* @__PURE__ */ X("<h2>Cost groups</h2> <div class=\"list card\"><!> <form class=\"row\"><label class=\"grow\"><span class=\"sr\">New group</span><input required=\"\" maxlength=\"40\" placeholder=\"New group\"/></label> <button class=\"press\" type=\"submit\">Add group</button></form></div> <!> <h2>Cars</h2> <p class=\"note caption\">Users appear here after they open this page once. Administrators always see every car.</p> <div class=\"row\"><button class=\"press\" type=\"button\">Add car</button></div> <!> <!> <!>", 1), th = /* @__PURE__ */ X("<p class=\"msg\">Loading…</p>"), nh = /* @__PURE__ */ X("<div class=\"page settings svelte-1ozf5k3\"><h1 class=\"page-title\">Settings</h1> <!> <!></div>");
-function rh(e, t) {
+var Wm = /* @__PURE__ */ X("<p class=\"err svelte-1ozf5k3\" role=\"alert\"> </p>"), Gm = /* @__PURE__ */ X("<p class=\"note\" role=\"status\"> </p>"), Km = /* @__PURE__ */ X("<form class=\"row\"><label class=\"grow\"><span class=\"sr\">Group name</span><input required=\"\" maxlength=\"40\"/></label> <button class=\"press\" type=\"submit\">Rename</button> <button type=\"button\" class=\"danger press\">Delete</button></form>"), qm = /* @__PURE__ */ X("<p class=\"row muted\">No groups yet.</p>"), Jm = /* @__PURE__ */ X("<button class=\"danger press\" type=\"button\">Keep its history</button> <button class=\"danger press\" type=\"button\">Delete everything</button> <button class=\"press\" type=\"button\">Cancel</button>", 1), Ym = /* @__PURE__ */ X("<button class=\"danger press\" type=\"button\">Remove car</button>"), Xm = /* @__PURE__ */ X("<option> </option>"), Zm = /* @__PURE__ */ X("<label class=\"row split\"> <input type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\"/></label>"), Qm = /* @__PURE__ */ X("<label class=\"row split\"><span> <span class=\"muted\"> </span></span> <input type=\"checkbox\"/></label>"), $m = /* @__PURE__ */ X("<p class=\"row muted\">No users yet.</p>"), eh = /* @__PURE__ */ X("<section><h3> </h3> <div class=\"row\"><button class=\"press\" type=\"button\">Configure</button> <!></div> <div class=\"list card\"><label class=\"row split\">Cost group <select><option>No group</option><!></select></label> <!></div> <fieldset><legend>Viewers</legend> <div class=\"list card\"></div></fieldset></section>"), th = /* @__PURE__ */ X("<div class=\"row split\"><span> <span class=\"muted\">Archived</span></span> <button class=\"danger press\" type=\"button\">Delete history</button></div>"), nh = /* @__PURE__ */ X("<h2>Archived</h2> <div class=\"list card\"></div>", 1), rh = /* @__PURE__ */ X("<h2>Cost groups</h2> <div class=\"list card\"><!> <form class=\"row\"><label class=\"grow\"><span class=\"sr\">New group</span><input required=\"\" maxlength=\"40\" placeholder=\"New group\"/></label> <button class=\"press\" type=\"submit\">Add group</button></form></div> <!> <h2>Cars</h2> <p class=\"note caption\">Users appear here after they open this page once. Administrators always see every car.</p> <div class=\"row\"><button class=\"press\" type=\"button\">Add car</button></div> <!> <!> <!>", 1), ih = /* @__PURE__ */ X("<p class=\"msg\">Loading…</p>"), ah = /* @__PURE__ */ X("<div class=\"page settings svelte-1ozf5k3\"><h1 class=\"page-title\">Settings</h1> <!> <!> <!></div>");
+function oh(e, t) {
 	nt(t, !0);
-	let n = /* @__PURE__ */ H(null), r = /* @__PURE__ */ H(""), i = /* @__PURE__ */ H(""), a = /* @__PURE__ */ H(sn({})), o = /* @__PURE__ */ H(null), s = /* @__PURE__ */ H(0), c = /* @__PURE__ */ z(() => Y(s) > 0), l = h(), u = (e) => U(r, e.detail || `Could not save (${e.message})`, !0);
-	async function d() {
-		let e = l.next();
+	let n = /* @__PURE__ */ H(null), r = /* @__PURE__ */ H(""), i = /* @__PURE__ */ H(""), a = /* @__PURE__ */ H(sn({})), o = /* @__PURE__ */ H(null), s = !1, c = /* @__PURE__ */ H(!1), l = /* @__PURE__ */ H(void 0), u = /* @__PURE__ */ H(0), d = /* @__PURE__ */ z(() => Y(u) > 0), f = h(), g = (e) => U(r, e.detail || `Could not save (${e.message})`, !0);
+	async function _() {
+		let e = f.next(), t = s;
+		s = !1;
 		try {
 			let t = await m("settings");
 			if (!e.current) return;
-			U(n, t, !0), U(a, Object.fromEntries(t.groups.map((e) => [e.id, e.name])), !0);
-		} catch (t) {
-			e.current && U(r, `Could not load (${t.message})`);
+			U(n, t, !0), U(c, !1), U(a, Object.fromEntries(t.groups.map((e) => [e.id, e.name])), !0);
+		} catch (i) {
+			if (!e.current) return;
+			Om(i, t) ? (U(c, !0), U(n, {
+				...Y(n),
+				vehicles: []
+			}, !0)) : U(r, `Could not load (${i.message})`);
 		}
 	}
-	async function f(e) {
-		U(r, ""), rn(s);
+	async function v(e) {
+		U(r, ""), rn(u);
 		let t = !0;
 		try {
 			await e();
 		} catch (e) {
-			t = !1, u(e);
+			t = !1, g(e);
 		}
-		return await d(), rn(s, -1), t;
+		return await _(), rn(u, -1), t;
 	}
-	async function g(e, t, n) {
+	async function y(e, t, n) {
 		let r = e.currentTarget;
-		await f(t) || n(r), await xr(), r.focus();
+		await v(t) || n(r), await xr(), r.focus();
 	}
-	async function _(e) {
-		let t = document.activeElement;
-		await e(), await xr(), t?.focus();
+	async function b(e, t) {
+		let n = document.activeElement;
+		await e(), await xr(), (n?.isConnected ? n : t)?.focus();
 	}
-	let v = () => _(async () => {
-		await f(() => p("POST", "groups", { name: Y(i) })), Y(r) || U(i, "");
-	}), y = (e) => _(() => f(() => p("PUT", `groups/${e.id}`, { name: Y(a)[e.id] }))), b = (e) => confirm(`Delete group "${e.name}"?`) && f(() => p("DELETE", `groups/${e.id}`)), x = (e, t, n) => () => p("PUT", `vehicles/${e.id}`, {
+	let x = () => b(async () => {
+		await v(() => p("POST", "groups", { name: Y(i) })), Y(r) || U(i, "");
+	}), S = (e) => b(() => v(() => p("PUT", `groups/${e.id}`, { name: Y(a)[e.id] }))), C = (e) => confirm(`Delete group "${e.name}"?`) && v(() => p("DELETE", `groups/${e.id}`)), w = (e, t, n) => () => p("PUT", `vehicles/${e.id}`, {
 		group_id: t,
 		viewers: n
-	}), S = (e, t) => (U(o, null), f(async () => {
+	}), T = (e, t) => (U(o, null), b(() => v(async () => {
 		let n = await p("DELETE", `vehicles/${e.id}?history=${t}`);
-		U(r, Em(n) ?? "", !0);
-	})), C = (e) => confirm(`Delete the stored history of "${e.name}"? This cannot be undone.`) && f(() => p("DELETE", `vehicles/${e.id}/history`)), w = (e, t) => () => p("PUT", `vehicles/${e.id}/card`, t);
-	d();
-	var T = nh(), E = q(W(T), 2), D = (e) => {
-		var t = Hm(), n = K(t, !0);
+		s = !0, U(r, Em(n) ?? "", !0);
+	}), Y(l))), E = (e) => confirm(`Remove "${e.name}" and delete everything stored for it? This cannot be undone.`) && T(e, "delete"), D = (e) => confirm(`Delete the stored history of "${e.name}"? This cannot be undone.`) && b(() => v(() => p("DELETE", `vehicles/${e.id}/history`)), Y(l)), O = (e) => e.focus(), ee = (e, t) => () => p("PUT", `vehicles/${e.id}/card`, t);
+	_();
+	var te = ah(), k = q(W(te), 2), ne = (e) => {
+		var t = Wm(), n = K(t, !0);
 		J(() => Q(n, Y(r))), Z(e, t);
 	};
-	$(E, (e) => {
-		Y(r) && e(D);
+	$(k, (e) => {
+		Y(r) && e(ne);
 	});
-	var O = q(E, 2), ee = (e) => {
+	var j = q(k, 2), re = (e) => {
+		var t = Gm(), n = K(t, !0);
+		J(() => Q(n, Dm)), Z(e, t);
+	};
+	$(j, (e) => {
+		Y(c) && e(re);
+	});
+	var ie = q(j, 2), ae = (e) => {
 		let t = /* @__PURE__ */ z(() => Tm(Y(n).vehicles));
-		var r = eh(), s = q(G(r), 2), l = W(s);
-		mi(l, 17, () => Y(n).groups, (e) => e.id, (e, t) => {
-			var n = Um(), r = W(n), i = q(W(r));
+		var r = rh(), s = q(G(r), 2), c = W(s);
+		mi(c, 17, () => Y(n).groups, (e) => e.id, (e, t) => {
+			var n = Km(), r = W(n), i = q(W(r));
 			$i(i), I(r);
 			var o = q(r, 2), s = q(o, 2);
 			I(n), J(() => {
-				o.disabled = Y(c), na(o, "aria-label", `Rename ${Y(t).name}`), s.disabled = Y(c), na(s, "aria-label", `Delete ${Y(t).name}`);
+				o.disabled = Y(d), na(o, "aria-label", `Rename ${Y(t).name}`), s.disabled = Y(d), na(s, "aria-label", `Delete ${Y(t).name}`);
 			}), Nr("submit", n, (e) => {
-				e.preventDefault(), y(Y(t));
-			}), oa(i, () => Y(a)[Y(t).id], (e) => Y(a)[Y(t).id] = e), Pr("click", s, () => b(Y(t))), Z(e, n);
+				e.preventDefault(), S(Y(t));
+			}), oa(i, () => Y(a)[Y(t).id], (e) => Y(a)[Y(t).id] = e), Pr("click", s, () => C(Y(t))), Z(e, n);
 		}, (e) => {
-			Z(e, Wm());
+			Z(e, qm());
 		});
-		var u = q(l, 2), d = W(u), p = q(W(d));
-		$i(p), I(d);
-		var m = q(d, 2);
+		var u = q(c, 2), f = W(u), p = q(W(f));
+		$i(p), I(f);
+		var m = q(f, 2);
 		I(u), I(s);
 		var h = q(s, 2);
-		Vm(h, {
+		Um(h, {
 			get data() {
 				return Y(n);
 			},
-			change: f
+			change: v
 		});
-		var _ = q(h, 6), T = K(_), E = q(_, 2);
-		mi(E, 17, () => Y(t).active, (e) => e.id, (e, t) => {
-			var r = Zm(), i = W(r), a = K(i, !0), s = q(i, 2), l = W(s), u = q(l, 2), d = (e) => {
-				var n = Gm(), r = G(n), i = q(r, 2), a = q(i, 2);
-				J(() => {
-					r.disabled = Y(c), i.disabled = Y(c);
-				}), Pr("click", r, () => S(Y(t), "keep")), Pr("click", i, () => S(Y(t), "delete")), Pr("click", a, () => U(o, null)), Z(e, n);
+		var g = q(h, 6), _ = W(g);
+		ha(_, (e) => U(l, e), () => Y(l)), I(g);
+		var b = q(g, 2);
+		mi(b, 17, () => Y(t).active, (e) => e.id, (e, t) => {
+			var r = eh(), i = W(r), a = K(i, !0), s = q(i, 2), c = W(s), l = q(c, 2), u = (e) => {
+				var n = Jm(), r = G(n), i = q(r, 2), a = q(i, 2);
+				Ni(a, () => O), J(() => {
+					r.disabled = Y(d), i.disabled = Y(d);
+				}), Pr("click", r, () => T(Y(t), "keep")), Pr("click", i, () => E(Y(t))), Pr("click", a, () => U(o, null)), Z(e, n);
 			}, f = (e) => {
-				var n = Km();
-				J(() => n.disabled = Y(c)), Pr("click", n, () => U(o, Y(t).id, !0)), Z(e, n);
+				var n = Ym();
+				J(() => n.disabled = Y(d)), Pr("click", n, () => U(o, Y(t).id, !0)), Z(e, n);
 			};
-			$(u, (e) => {
-				Y(o) === Y(t).id ? e(d) : e(f, -1);
+			$(l, (e) => {
+				Y(o) === Y(t).id ? e(u) : e(f, -1);
 			}), I(s);
-			var p = q(s, 2), m = W(p), h = q(W(m)), _ = W(h);
-			_.value = _.__value = "", mi(q(_), 17, () => Y(n).groups, ui, (e, t) => {
-				var n = qm(), r = K(n, !0), i = {};
+			var p = q(s, 2), m = W(p), h = q(W(m)), g = W(h);
+			g.value = g.__value = "", mi(q(g), 17, () => Y(n).groups, ui, (e, t) => {
+				var n = Xm(), r = K(n, !0), i = {};
 				J(() => {
 					Q(r, Y(t).name), i !== (i = Y(t).id) && (n.value = (n.__value = i) ?? "");
 				}), Z(e, n);
 			}), I(h);
-			var v;
+			var _;
 			Gi(h), I(m), mi(q(m, 2), 16, () => [["markup_pct", "Card markup %"], ["start_fee", "Card start fee"]], ui, (e, r) => {
 				var i = /* @__PURE__ */ z(() => A(r, 2));
 				let a = () => Y(i)[0], o = () => Y(i)[1], s = /* @__PURE__ */ z(() => Y(n).prices.cards[Y(t).id] ?? {
 					markup_pct: 0,
 					start_fee: 0
 				});
-				var l = Jm(), u = W(l), d = q(u);
-				$i(d), I(l), J(() => {
-					Q(u, `${o() ?? ""} `), d.disabled = Y(c), ea(d, Y(s)[a()]);
-				}), Pr("change", d, (e) => g(e, w(Y(t), {
+				var c = Zm(), l = W(c), u = q(l);
+				$i(u), I(c), J(() => {
+					Q(l, `${o() ?? ""} `), u.disabled = Y(d), ea(u, Y(s)[a()]);
+				}), Pr("change", u, (e) => y(e, ee(Y(t), {
 					...Y(s),
 					[a()]: Number(e.currentTarget.value)
-				}), (e) => e.value = Y(s)[a()])), Z(e, l);
+				}), (e) => e.value = Y(s)[a()])), Z(e, c);
 			}), I(p);
-			var y = q(p, 2), b = q(W(y), 2);
+			var v = q(p, 2), b = q(W(v), 2);
 			mi(b, 21, () => Y(n).users, (e) => e.id, (e, n) => {
-				var r = Ym(), i = W(r), a = W(i), o = K(q(a));
+				var r = Qm(), i = W(r), a = W(i), o = K(q(a));
 				I(i);
 				var s = q(i, 2);
 				$i(s), I(r), J((e, t) => {
-					Q(a, `${(Y(n).name || Y(n).id) ?? ""} `), Q(o, `(last seen ${e ?? ""})`), s.disabled = Y(c), ta(s, t);
+					Q(a, `${(Y(n).name || Y(n).id) ?? ""} `), Q(o, `(last seen ${e ?? ""})`), s.disabled = Y(d), ta(s, t);
 				}, [() => $a(Y(n).last_seen), () => Y(t).viewers.includes(Y(n).id)]), Pr("change", s, (e) => {
 					let r = e.currentTarget.checked;
-					g(e, x(Y(t), Y(t).group_id, r ? [...Y(t).viewers, Y(n).id] : Y(t).viewers.filter((e) => e !== Y(n).id)), (e) => e.checked = !r);
+					y(e, w(Y(t), Y(t).group_id, r ? [...Y(t).viewers, Y(n).id] : Y(t).viewers.filter((e) => e !== Y(n).id)), (e) => e.checked = !r);
 				}), Z(e, r);
 			}, (e) => {
-				Z(e, Xm());
-			}), I(b), I(y), I(r), J(() => {
-				Q(a, Y(t).name), l.disabled = Y(c), h.disabled = Y(c), v !== (v = Y(t).group_id ?? "") && (h.value = (h.__value = v) ?? "", Wi(h, v));
-			}), Pr("click", l, () => Dm(wm)), Pr("change", h, (e) => g(e, x(Y(t), e.currentTarget.value || null, Y(t).viewers), (e) => e.value = Y(t).group_id ?? "")), Z(e, r);
+				Z(e, $m());
+			}), I(b), I(v), I(r), J(() => {
+				Q(a, Y(t).name), c.disabled = Y(d), h.disabled = Y(d), _ !== (_ = Y(t).group_id ?? "") && (h.value = (h.__value = _) ?? "", Wi(h, _));
+			}), Pr("click", c, () => km(wm)), Pr("change", h, (e) => y(e, w(Y(t), e.currentTarget.value || null, Y(t).viewers), (e) => e.value = Y(t).group_id ?? "")), Z(e, r);
 		});
-		var D = q(E, 2), O = (e) => {
-			var n = $m(), r = q(G(n), 2);
+		var te = q(b, 2), k = (e) => {
+			var n = nh(), r = q(G(n), 2);
 			mi(r, 21, () => Y(t).archived, (e) => e.id, (e, t) => {
-				var n = Qm(), r = W(n), i = W(r);
+				var n = th(), r = W(n), i = W(r);
 				Le(), I(r);
 				var a = q(r, 2);
 				I(n), J(() => {
-					Q(i, `${Y(t).name ?? ""} `), a.disabled = Y(c);
-				}), Pr("click", a, () => C(Y(t))), Z(e, n);
+					Q(i, `${Y(t).name ?? ""} `), a.disabled = Y(d);
+				}), Pr("click", a, () => D(Y(t))), Z(e, n);
 			}), I(r), Z(e, n);
 		};
-		$(D, (e) => {
-			Y(t).archived.length && e(O);
-		}), Fm(q(D, 2), {
+		$(te, (e) => {
+			Y(t).archived.length && e(k);
+		}), Lm(q(te, 2), {
 			get data() {
 				return Y(n);
 			},
-			change: f
+			change: v
 		}), J(() => {
-			m.disabled = Y(c), T.disabled = Y(c);
+			m.disabled = Y(d), _.disabled = Y(d);
 		}), Nr("submit", u, (e) => {
-			e.preventDefault(), v();
-		}), oa(p, () => Y(i), (e) => U(i, e)), Pr("click", T, () => Dm(Cm)), Z(e, r);
-	}, te = (e) => {
-		Z(e, th());
+			e.preventDefault(), x();
+		}), oa(p, () => Y(i), (e) => U(i, e)), Pr("click", _, () => km(Cm)), Z(e, r);
+	}, oe = (e) => {
+		Z(e, ih());
 	};
-	$(O, (e) => {
-		Y(n) ? e(ee) : Y(r) || e(te, 1);
-	}), I(T), Z(e, T), rt();
+	$(ie, (e) => {
+		Y(n) ? e(ae) : Y(r) || e(oe, 1);
+	}), I(te), Z(e, te), rt();
 }
 Fr(["click", "change"]);
 // src/lib/stats.js
-var ih = [
+var sh = [
 	"January",
 	"February",
 	"March",
@@ -11913,8 +11927,8 @@ var ih = [
 	"October",
 	"November",
 	"December"
-], ah = (e) => (t, n, r) => `${e}?view=${encodeURIComponent(t)}&period=${n}${r ? `&at=${r}` : ""}`, oh = ah("stats"), sh = ah("map"), ch = (e, t) => e == null || !t ? null : (e - t) / t, lh = (e) => ih[e - 1].slice(0, 3);
-function uh(e) {
+], ch = (e) => (t, n, r) => `${e}?view=${encodeURIComponent(t)}&period=${n}${r ? `&at=${r}` : ""}`, lh = ch("stats"), uh = ch("map"), dh = (e, t) => e == null || !t ? null : (e - t) / t, fh = (e) => sh[e - 1].slice(0, 3);
+function ph(e) {
 	let [t, n, r] = Ka(e), i = new Date(Date.UTC(t, n - 1, r - 1));
 	return [
 		i.getUTCFullYear(),
@@ -11922,18 +11936,18 @@ function uh(e) {
 		i.getUTCDate()
 	];
 }
-function dh(e, t, n) {
+function mh(e, t, n) {
 	let [r, i, a] = Ka(t);
 	if (e === "year") return String(r);
-	if (e === "month") return `${ih[i - 1]} ${r}`;
-	let [o, s, c] = uh(n);
-	return o === r ? i === s ? `${a} – ${c} ${lh(i)}` : `${a} ${lh(i)} – ${c} ${lh(s)}` : `${a} ${lh(i)} ${r} – ${c} ${lh(s)} ${o}`;
+	if (e === "month") return `${sh[i - 1]} ${r}`;
+	let [o, s, c] = ph(n);
+	return o === r ? i === s ? `${a} – ${c} ${fh(i)}` : `${a} ${fh(i)} – ${c} ${fh(s)}` : `${a} ${fh(i)} ${r} – ${c} ${fh(s)} ${o}`;
 }
-function fh(e, t) {
+function hh(e, t) {
 	let [, n, r] = Ka(t);
-	return e === "year" ? lh(n) : String(r);
+	return e === "year" ? fh(n) : String(r);
 }
-function ph(e, t = 5) {
+function gh(e, t = 5) {
 	let n = e.filter((e) => e.place != null && e.wh > 0).sort((e, t) => t.wh - e.wh), r = n.slice(t).reduce((e, t) => e + t.wh, 0) + e.filter((e) => e.place == null).reduce((e, t) => e + t.wh, 0), i = n.slice(0, t).map((e) => ({
 		name: e.place,
 		wh: e.wh,
@@ -11950,7 +11964,7 @@ function ph(e, t = 5) {
 		share: e.wh / a
 	}));
 }
-function mh(e, t) {
+function _h(e, t) {
 	let n = t?.km > 0 ? t : null, r = (e, t) => e.km > 0 ? e[t] / e.km * 10 : null, i = Object.values(e.bands).map((e) => e.kwh_per_100km), a = Math.max(0, ...i.filter((e) => e != null));
 	return {
 		points: e.score != null && n?.score != null ? e.score - n.score : null,
@@ -11959,7 +11973,7 @@ function mh(e, t) {
 			return {
 				k: t,
 				name: i,
-				change: n ? ch(a, r(n, t)) : null
+				change: n ? dh(a, r(n, t)) : null
 			};
 		}),
 		bands: Object.entries(e.bands).map(([e, t]) => ({
@@ -11969,12 +11983,12 @@ function mh(e, t) {
 		}))
 	};
 }
-var hh = (e) => e == null ? null : {
+var vh = (e) => e == null ? null : {
 	dir: Math.sign(e),
 	text: e ? String(Math.abs(e)) : "same",
 	hint: !1
-}, gh = /* @__PURE__ */ X("<div class=\"msg\" role=\"alert\"><p>Couldn't load the map.</p> <button class=\"d-btn\">Retry</button></div>"), _h = /* @__PURE__ */ X("<p class=\"d-msg\"> </p>"), vh = /* @__PURE__ */ X("<section class=\"d-card\"><div class=\"d-head\"><h2>Map</h2></div> <!></section>");
-function yh(e, t) {
+}, yh = /* @__PURE__ */ X("<div class=\"msg\" role=\"alert\"><p>Couldn't load the map.</p> <button class=\"d-btn\">Retry</button></div>"), bh = /* @__PURE__ */ X("<p class=\"d-msg\"> </p>"), xh = /* @__PURE__ */ X("<section class=\"d-card\"><div class=\"d-head\"><h2>Map</h2></div> <!></section>");
+function Sh(e, t) {
 	nt(t, !0);
 	let n = /* @__PURE__ */ H(void 0), r = /* @__PURE__ */ H(!1), i = /* @__PURE__ */ H(null), a = /* @__PURE__ */ H(!1), o = h();
 	kn(() => {
@@ -11985,7 +11999,7 @@ function yh(e, t) {
 		let e = o.next();
 		U(a, !1);
 		try {
-			let n = await m(sh(t.view, t.period, t.at));
+			let n = await m(uh(t.view, t.period, t.at));
 			if (!e.current) return;
 			U(i, {
 				lines: n.trips.map((e) => ({
@@ -12016,16 +12030,16 @@ function yh(e, t) {
 	kn(() => {
 		if (Y(r)) return s(), o.reset;
 	});
-	var c = vh(), l = q(W(c), 2), u = (e) => {
-		var t = gh(), n = q(W(t), 2);
+	var c = xh(), l = q(W(c), 2), u = (e) => {
+		var t = yh(), n = q(W(t), 2);
 		I(t), Pr("click", n, s), Z(e, t);
 	}, d = (e) => {
-		var t = _h(), n = K(t, !0);
+		var t = bh(), n = K(t, !0);
 		J(() => {
 			na(t, "aria-busy", Y(r)), Q(n, Y(r) ? "Loading…" : "");
 		}), Z(e, t);
 	}, f = (e) => {
-		var n = _h(), r = K(n);
+		var n = bh(), r = K(n);
 		J(() => Q(r, `Nothing to map this ${t.period ?? ""}`)), Z(e, n);
 	}, p = (e) => {
 		Np(e, {
@@ -12044,11 +12058,11 @@ function yh(e, t) {
 }
 Fr(["click"]);
 // src/pages/Stats.svelte
-var bh = (e, t = O) => {
-	var n = Sh();
+var Ch = (e, t = O) => {
+	var n = Th();
 	let r;
 	var i = W(n), a = (e) => {
-		var n = xh(), r = G(n), i = K(r, !0), a = K(q(r), !0);
+		var n = wh(), r = G(n), i = K(r, !0), a = K(q(r), !0);
 		J(() => {
 			Q(i, t().dir > 0 ? "▲" : "▼"), Q(a, t().dir > 0 ? "up" : "down");
 		}), Z(e, n);
@@ -12063,8 +12077,8 @@ var bh = (e, t = O) => {
 			down: t().hint && t().dir < 0
 		}), Q(o, ` ${t().text ?? ""}`);
 	}), Z(e, n);
-}, xh = /* @__PURE__ */ X("<span aria-hidden=\"true\"> </span><span class=\"sr\"> </span>", 1), Sh = /* @__PURE__ */ X("<span><!> </span>"), Ch = /* @__PURE__ */ X("<div class=\"msg svelte-qardfz\" role=\"alert\"><p>Couldn't load your statistics.</p> <button class=\"d-btn\">Retry</button></div>"), wh = /* @__PURE__ */ X("<p class=\"msg svelte-qardfz\" aria-busy=\"true\">Loading…</p>"), Th = /* @__PURE__ */ X("<span> </span>"), Eh = /* @__PURE__ */ X("<span class=\"sub caption svelte-qardfz\"><!> <!></span>"), Dh = /* @__PURE__ */ X("<p class=\"d-note\"> </p>"), Oh = /* @__PURE__ */ X("<li class=\"svelte-qardfz\"><b> </b> <span class=\"d-note facts svelte-qardfz\"><span class=\"svelte-qardfz\"> </span><span class=\"svelte-qardfz\"> </span><span class=\"svelte-qardfz\"> </span><span class=\"svelte-qardfz\"> </span><span class=\"svelte-qardfz\"> </span></span></li>"), kh = /* @__PURE__ */ X("<section class=\"d-card pv svelte-qardfz\"><h2>By car</h2> <ul class=\"svelte-qardfz\"></ul></section>"), Ah = /* @__PURE__ */ X("<a class=\"press svelte-qardfz\"><span class=\"k svelte-qardfz\">Longest trip</span><span class=\"v svelte-qardfz\"> </span> <span class=\"d-note svelte-qardfz\"> </span></a>"), jh = /* @__PURE__ */ X("<div class=\"svelte-qardfz\"><span class=\"k svelte-qardfz\">Longest trip</span><span class=\"v svelte-qardfz\"> </span></div>"), Mh = /* @__PURE__ */ X("<a class=\"press svelte-qardfz\"><span class=\"k svelte-qardfz\">Most efficient trip</span><span class=\"v svelte-qardfz\"> </span> <span class=\"d-note svelte-qardfz\"> </span></a>"), Nh = /* @__PURE__ */ X("<div class=\"svelte-qardfz\"><span class=\"k svelte-qardfz\">Most efficient trip</span><span class=\"v svelte-qardfz\"> </span><span class=\"d-note svelte-qardfz\">Trips of at least 5 km</span></div>"), Ph = /* @__PURE__ */ X("<span class=\"d-note svelte-qardfz\"> </span>"), Fh = /* @__PURE__ */ X("<span class=\"d-note\"> </span>"), Ih = /* @__PURE__ */ X("<span class=\"d-note pts svelte-qardfz\"><!></span>"), Lh = /* @__PURE__ */ X("<div class=\"big\"> <small>/ 100</small><!></div>"), Rh = /* @__PURE__ */ X(" <!>", 1), zh = /* @__PURE__ */ X("<div><dt> </dt><dd> <!></dd></div>"), Bh = /* @__PURE__ */ X("<li class=\"svelte-qardfz\"><span class=\"bn svelte-qardfz\"> </span><span class=\"track svelte-qardfz\"><i class=\"meter svelte-qardfz\"></i></span><span class=\"bv svelte-qardfz\"> </span></li>"), Vh = /* @__PURE__ */ X("<dl class=\"d-rows\"><div><dt>Standing</dt><dd> </dd></div></dl>"), Hh = /* @__PURE__ */ X("<!> <dl class=\"d-rows\"></dl> <div class=\"d-head bandhead\"><h2>Consumption by speed</h2><span class=\"d-note\">km/h · kWh/100 km</span></div> <ul class=\"bands svelte-qardfz\"></ul> <!>", 1), Uh = /* @__PURE__ */ X("<p class=\"d-msg\"> </p>"), Wh = /* @__PURE__ */ X("<i></i>"), Gh = /* @__PURE__ */ X("<li class=\"svelte-qardfz\"><i class=\"dot svelte-qardfz\"></i><span class=\"n svelte-qardfz\"> </span><span> </span><span class=\"pc svelte-qardfz\"> </span></li>"), Kh = /* @__PURE__ */ X("<div class=\"share-bar\" role=\"img\"></div> <ul class=\"svelte-qardfz\"></ul>", 1), qh = /* @__PURE__ */ X("<div><div class=\"col svelte-qardfz\"><div class=\"tiles svelte-qardfz\"><div class=\"d-figs svelte-qardfz\"></div> <!></div> <!> <section class=\"d-card hl svelte-qardfz\"><h2>Highlights</h2> <ul class=\"svelte-qardfz\"><li class=\"svelte-qardfz\"><!></li> <li class=\"svelte-qardfz\"><!></li> <li class=\"svelte-qardfz\"><div class=\"svelte-qardfz\"><span class=\"k svelte-qardfz\">Recuperated</span><span class=\"v svelte-qardfz\"> </span> <!></div></li> <li class=\"svelte-qardfz\"><div class=\"svelte-qardfz\"><span class=\"k svelte-qardfz\">Cost</span><span class=\"v svelte-qardfz\"> </span> <span class=\"d-note cost svelte-qardfz\"> <!><!> <!></span></div></li></ul></section> <section class=\"d-card sty svelte-qardfz\"><div class=\"d-head\"><h2>Driving style</h2><!></div> <!></section></div> <div class=\"col svelte-qardfz\"><section class=\"d-card chartcard svelte-qardfz\"><div class=\"d-head\"><h2>Distance</h2><span class=\"d-note\"> </span></div> <!></section> <section class=\"d-card places svelte-qardfz\"><div class=\"d-head\"><h2>Charged by place</h2><span class=\"d-note\"> </span></div> <!></section></div></div> <div class=\"mapcard svelte-qardfz\"><!></div>", 1), Jh = /* @__PURE__ */ X("<div class=\"page svelte-qardfz\"><h1 class=\"page-title\">Statistics</h1> <div class=\"seg svelte-qardfz\"><!></div> <div class=\"nav svelte-qardfz\"><button class=\"press svelte-qardfz\"><svg class=\"icon svelte-qardfz\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M15 5l-7 7 7 7\"></path></svg></button> <h2 aria-live=\"polite\" class=\"svelte-qardfz\"> </h2> <button class=\"press svelte-qardfz\"><svg class=\"icon svelte-qardfz\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M9 5l7 7-7 7\"></path></svg></button></div> <!></div>");
-function Yh(e, t) {
+}, wh = /* @__PURE__ */ X("<span aria-hidden=\"true\"> </span><span class=\"sr\"> </span>", 1), Th = /* @__PURE__ */ X("<span><!> </span>"), Eh = /* @__PURE__ */ X("<div class=\"msg svelte-qardfz\" role=\"alert\"><p>Couldn't load your statistics.</p> <button class=\"d-btn\">Retry</button></div>"), Dh = /* @__PURE__ */ X("<p class=\"msg svelte-qardfz\" aria-busy=\"true\">Loading…</p>"), Oh = /* @__PURE__ */ X("<span> </span>"), kh = /* @__PURE__ */ X("<span class=\"sub caption svelte-qardfz\"><!> <!></span>"), Ah = /* @__PURE__ */ X("<p class=\"d-note\"> </p>"), jh = /* @__PURE__ */ X("<li class=\"svelte-qardfz\"><b> </b> <span class=\"d-note facts svelte-qardfz\"><span class=\"svelte-qardfz\"> </span><span class=\"svelte-qardfz\"> </span><span class=\"svelte-qardfz\"> </span><span class=\"svelte-qardfz\"> </span><span class=\"svelte-qardfz\"> </span></span></li>"), Mh = /* @__PURE__ */ X("<section class=\"d-card pv svelte-qardfz\"><h2>By car</h2> <ul class=\"svelte-qardfz\"></ul></section>"), Nh = /* @__PURE__ */ X("<a class=\"press svelte-qardfz\"><span class=\"k svelte-qardfz\">Longest trip</span><span class=\"v svelte-qardfz\"> </span> <span class=\"d-note svelte-qardfz\"> </span></a>"), Ph = /* @__PURE__ */ X("<div class=\"svelte-qardfz\"><span class=\"k svelte-qardfz\">Longest trip</span><span class=\"v svelte-qardfz\"> </span></div>"), Fh = /* @__PURE__ */ X("<a class=\"press svelte-qardfz\"><span class=\"k svelte-qardfz\">Most efficient trip</span><span class=\"v svelte-qardfz\"> </span> <span class=\"d-note svelte-qardfz\"> </span></a>"), Ih = /* @__PURE__ */ X("<div class=\"svelte-qardfz\"><span class=\"k svelte-qardfz\">Most efficient trip</span><span class=\"v svelte-qardfz\"> </span><span class=\"d-note svelte-qardfz\">Trips of at least 5 km</span></div>"), Lh = /* @__PURE__ */ X("<span class=\"d-note svelte-qardfz\"> </span>"), Rh = /* @__PURE__ */ X("<span class=\"d-note\"> </span>"), zh = /* @__PURE__ */ X("<span class=\"d-note pts svelte-qardfz\"><!></span>"), Bh = /* @__PURE__ */ X("<div class=\"big\"> <small>/ 100</small><!></div>"), Vh = /* @__PURE__ */ X(" <!>", 1), Hh = /* @__PURE__ */ X("<div><dt> </dt><dd> <!></dd></div>"), Uh = /* @__PURE__ */ X("<li class=\"svelte-qardfz\"><span class=\"bn svelte-qardfz\"> </span><span class=\"track svelte-qardfz\"><i class=\"meter svelte-qardfz\"></i></span><span class=\"bv svelte-qardfz\"> </span></li>"), Wh = /* @__PURE__ */ X("<dl class=\"d-rows\"><div><dt>Standing</dt><dd> </dd></div></dl>"), Gh = /* @__PURE__ */ X("<!> <dl class=\"d-rows\"></dl> <div class=\"d-head bandhead\"><h2>Consumption by speed</h2><span class=\"d-note\">km/h · kWh/100 km</span></div> <ul class=\"bands svelte-qardfz\"></ul> <!>", 1), Kh = /* @__PURE__ */ X("<p class=\"d-msg\"> </p>"), qh = /* @__PURE__ */ X("<i></i>"), Jh = /* @__PURE__ */ X("<li class=\"svelte-qardfz\"><i class=\"dot svelte-qardfz\"></i><span class=\"n svelte-qardfz\"> </span><span> </span><span class=\"pc svelte-qardfz\"> </span></li>"), Yh = /* @__PURE__ */ X("<div class=\"share-bar\" role=\"img\"></div> <ul class=\"svelte-qardfz\"></ul>", 1), Xh = /* @__PURE__ */ X("<div><div class=\"col svelte-qardfz\"><div class=\"tiles svelte-qardfz\"><div class=\"d-figs svelte-qardfz\"></div> <!></div> <!> <section class=\"d-card hl svelte-qardfz\"><h2>Highlights</h2> <ul class=\"svelte-qardfz\"><li class=\"svelte-qardfz\"><!></li> <li class=\"svelte-qardfz\"><!></li> <li class=\"svelte-qardfz\"><div class=\"svelte-qardfz\"><span class=\"k svelte-qardfz\">Recuperated</span><span class=\"v svelte-qardfz\"> </span> <!></div></li> <li class=\"svelte-qardfz\"><div class=\"svelte-qardfz\"><span class=\"k svelte-qardfz\">Cost</span><span class=\"v svelte-qardfz\"> </span> <span class=\"d-note cost svelte-qardfz\"> <!><!> <!></span></div></li></ul></section> <section class=\"d-card sty svelte-qardfz\"><div class=\"d-head\"><h2>Driving style</h2><!></div> <!></section></div> <div class=\"col svelte-qardfz\"><section class=\"d-card chartcard svelte-qardfz\"><div class=\"d-head\"><h2>Distance</h2><span class=\"d-note\"> </span></div> <!></section> <section class=\"d-card places svelte-qardfz\"><div class=\"d-head\"><h2>Charged by place</h2><span class=\"d-note\"> </span></div> <!></section></div></div> <div class=\"mapcard svelte-qardfz\"><!></div>", 1), Zh = /* @__PURE__ */ X("<div class=\"page svelte-qardfz\"><h1 class=\"page-title\">Statistics</h1> <div class=\"seg svelte-qardfz\"><!></div> <div class=\"nav svelte-qardfz\"><button class=\"press svelte-qardfz\"><svg class=\"icon svelte-qardfz\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M15 5l-7 7 7 7\"></path></svg></button> <h2 aria-live=\"polite\" class=\"svelte-qardfz\"> </h2> <button class=\"press svelte-qardfz\"><svg class=\"icon svelte-qardfz\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M9 5l7 7-7 7\"></path></svg></button></div> <!></div>");
+function Qh(e, t) {
 	nt(t, !0);
 	let n = [
 		{
@@ -12090,7 +12104,7 @@ function Yh(e, t) {
 		let e = l.next();
 		U(c, !0), U(s, !1);
 		try {
-			let n = await m(oh(t.view, Y(i), Y(a)));
+			let n = await m(lh(t.view, Y(i), Y(a)));
 			e.current && U(o, n, !0);
 		} catch {
 			e.current && U(s, !0);
@@ -12107,7 +12121,7 @@ function Yh(e, t) {
 			text: `${Math.abs(n)} %`,
 			hint: t
 		};
-	}, p = (e, t, n = !1) => f(ch(e, t), n), g = (e) => Na(e.wh_per_100km), _ = /* @__PURE__ */ z(() => Y(o)?.totals), v = /* @__PURE__ */ z(() => {
+	}, p = (e, t, n = !1) => f(dh(e, t), n), g = (e) => Na(e.wh_per_100km), _ = /* @__PURE__ */ z(() => Y(o)?.totals), v = /* @__PURE__ */ z(() => {
 		if (!Y(_)) return [];
 		let e = Y(o).previous, [t, n] = [g(Y(_)), e.trips ? g(e) : null], r = t != null && n ? Number((t - n).toFixed(1)) : null;
 		return [
@@ -12138,7 +12152,7 @@ function Yh(e, t) {
 				trend: p(Y(_).charged_wh, e.charged_wh)
 			}
 		];
-	}), y = /* @__PURE__ */ z(() => Y(o)?.buckets ?? []), b = /* @__PURE__ */ z(() => Y(y).map((e) => fh(Y(i), e.start))), x = /* @__PURE__ */ z(() => Y(y).map((e) => Na(e.wh_per_100km))), S = /* @__PURE__ */ z(() => ({
+	}), y = /* @__PURE__ */ z(() => Y(o)?.buckets ?? []), b = /* @__PURE__ */ z(() => Y(y).map((e) => hh(Y(i), e.start))), x = /* @__PURE__ */ z(() => Y(y).map((e) => Na(e.wh_per_100km))), S = /* @__PURE__ */ z(() => ({
 		splits: Y(b).map((e, t) => t).filter((e) => Y(i) !== "month" || Y(b)[e] === "1" || Number(Y(b)[e]) % 5 == 0),
 		values: (e, t) => t.map((e) => Y(b)[e])
 	})), C = /* @__PURE__ */ z(() => [{
@@ -12151,12 +12165,12 @@ function Yh(e, t) {
 		values: Y(x),
 		scale: "y2",
 		color: "--energy"
-	}] : []]), w = /* @__PURE__ */ z(() => Y(i) === "year" ? "month" : "day"), T = /* @__PURE__ */ z(() => Y(_) ? `Distance per ${Y(w)}: ${Da(Y(_).distance_m)} in total, average ${Pa(Y(_).wh_per_100km)}` : ""), E = /* @__PURE__ */ z(() => Y(o) ? ph(Y(o).by_place) : []), D = (e, t) => e.other ? "--muted" : r[t % r.length], O = /* @__PURE__ */ z(() => Y(_) ? p(Y(_).cost.total, Y(o).previous.cost.total, !0) : null), ee = /* @__PURE__ */ z(() => Y(o)?.highlights), te = /* @__PURE__ */ z(() => Y(ee)?.gross_wh > 0 ? Math.round(Y(ee).recup_wh / Y(ee).gross_wh * 100) : null), k = /* @__PURE__ */ z(() => Y(o)?.style), A = /* @__PURE__ */ z(() => Y(k)?.km > 0 ? mh(Y(k), Y(o).previous_style) : null), ne = /* @__PURE__ */ z(() => hh(Y(A)?.points)), j = (e) => Qa(qa(e), Ja()), re = (e) => jo({
+	}] : []]), w = /* @__PURE__ */ z(() => Y(i) === "year" ? "month" : "day"), T = /* @__PURE__ */ z(() => Y(_) ? `Distance per ${Y(w)}: ${Da(Y(_).distance_m)} in total, average ${Pa(Y(_).wh_per_100km)}` : ""), E = /* @__PURE__ */ z(() => Y(o) ? gh(Y(o).by_place) : []), D = (e, t) => e.other ? "--muted" : r[t % r.length], O = /* @__PURE__ */ z(() => Y(_) ? p(Y(_).cost.total, Y(o).previous.cost.total, !0) : null), ee = /* @__PURE__ */ z(() => Y(o)?.highlights), te = /* @__PURE__ */ z(() => Y(ee)?.gross_wh > 0 ? Math.round(Y(ee).recup_wh / Y(ee).gross_wh * 100) : null), k = /* @__PURE__ */ z(() => Y(o)?.style), A = /* @__PURE__ */ z(() => Y(k)?.km > 0 ? _h(Y(k), Y(o).previous_style) : null), ne = /* @__PURE__ */ z(() => vh(Y(A)?.points)), j = (e) => Qa(qa(e), Ja()), re = (e) => jo({
 		kind: "trip",
 		vehicle_id: e.vehicle_id,
 		start: e.start
 	});
-	var ie = Jh(), ae = q(W(ie), 2), oe = W(ae), M = () => Y(i), N = u;
+	var ie = Zh(), ae = q(W(ie), 2), oe = W(ae), M = () => Y(i), N = u;
 	Rs(oe, {
 		get options() {
 			return n;
@@ -12172,12 +12186,12 @@ function Yh(e, t) {
 	var se = q(ae, 2), ce = W(se), le = q(ce, 2), ue = K(le, !0), de = q(le, 2);
 	I(se);
 	var fe = q(se, 2), pe = (e) => {
-		var t = Ch(), n = q(W(t), 2);
+		var t = Eh(), n = q(W(t), 2);
 		I(t), Pr("click", n, d), Z(e, t);
 	}, me = (e) => {
-		Z(e, wh());
+		Z(e, Dh());
 	}, he = (e) => {
-		var n = qh(), r = G(n);
+		var n = Xh(), r = G(n);
 		let s;
 		var l = W(r), u = W(l), d = W(u);
 		mi(d, 21, () => Y(v), (e) => e.label, (e, t) => {
@@ -12193,15 +12207,15 @@ function Yh(e, t) {
 				},
 				children: (e, n) => {
 					var r = Kr(), i = G(r), a = (e) => {
-						var n = Eh(), r = W(n), i = (e) => {
-							var n = Th(), r = K(n, !0);
+						var n = kh(), r = W(n), i = (e) => {
+							var n = Oh(), r = K(n, !0);
 							J(() => Q(r, Y(t).count)), Z(e, n);
 						};
 						$(r, (e) => {
 							Y(t).count && e(i);
 						});
 						var a = q(r, 2), o = (e) => {
-							bh(e, () => Y(t).trend);
+							Ch(e, () => Y(t).trend);
 						};
 						$(a, (e) => {
 							Y(t).trend && e(o);
@@ -12215,16 +12229,16 @@ function Yh(e, t) {
 			});
 		}), I(d);
 		var p = q(d, 2), m = (e) => {
-			var t = Dh(), n = K(t);
+			var t = Ah(), n = K(t);
 			J(() => Q(n, `Change against the previous ${Y(i) ?? ""}`)), Z(e, t);
 		}, h = /* @__PURE__ */ z(() => Y(v).some((e) => e.trend));
 		$(p, (e) => {
 			Y(h) && e(m);
 		}), I(u);
 		var g = q(u, 2), b = (e) => {
-			var t = kh(), n = q(W(t), 2);
+			var t = Mh(), n = q(W(t), 2);
 			mi(n, 21, () => Y(o).per_vehicle, (e) => e.id, (e, t) => {
-				var n = Oh(), r = W(n), i = K(r, !0), a = q(r, 2), o = W(a), s = K(o, !0), c = q(o), l = K(c, !0), u = q(c), d = K(u), f = q(u), p = K(f), m = K(q(f));
+				var n = jh(), r = W(n), i = K(r, !0), a = q(r, 2), o = W(a), s = K(o, !0), c = q(o), l = K(c, !0), u = q(c), d = K(u), f = q(u), p = K(f), m = K(q(f));
 				I(a), I(n), J((e, n, r, a, o) => {
 					Q(i, Y(t).name), Q(s, e), Q(l, n), Q(d, `${r ?? ""} used`), Q(p, `${a ?? ""} charged`), Q(m, `${o ?? ""} cost`);
 				}, [
@@ -12240,7 +12254,7 @@ function Yh(e, t) {
 			Y(o).per_vehicle && e(b);
 		});
 		var x = q(g, 2), ie = q(W(x), 2), ae = W(ie), oe = W(ae), M = (e) => {
-			var t = Ah(), n = q(W(t)), r = K(n, !0), i = K(q(n, 2));
+			var t = Nh(), n = q(W(t)), r = K(n, !0), i = K(q(n, 2));
 			I(t), J((e, n, a, o) => {
 				na(t, "href", e), Q(r, n), Q(i, `${a ?? ""} · ${o ?? ""}`);
 			}, [
@@ -12250,14 +12264,14 @@ function Yh(e, t) {
 				() => j(Y(ee).longest.start)
 			]), Z(e, t);
 		}, N = (e) => {
-			var t = jh(), n = K(q(W(t)), !0);
+			var t = Ph(), n = K(q(W(t)), !0);
 			I(t), J(() => Q(n, "–")), Z(e, t);
 		};
 		$(oe, (e) => {
 			Y(ee).longest ? e(M) : e(N, -1);
 		}), I(ae);
 		var se = q(ae, 2), ce = W(se), le = (e) => {
-			var t = Mh(), n = q(W(t)), r = K(n), i = K(q(n, 2));
+			var t = Fh(), n = q(W(t)), r = K(n), i = K(q(n, 2));
 			I(t), J((e, n, a) => {
 				na(t, "href", e), Q(r, `${n ?? ""} kWh/100 km`), Q(i, `${a ?? ""} · trips of at least 5 km`);
 			}, [
@@ -12266,14 +12280,14 @@ function Yh(e, t) {
 				() => j(Y(ee).most_efficient.start)
 			]), Z(e, t);
 		}, ue = (e) => {
-			var t = Nh(), n = K(q(W(t)), !0);
+			var t = Ih(), n = K(q(W(t)), !0);
 			Le(), I(t), J(() => Q(n, "–")), Z(e, t);
 		};
 		$(ce, (e) => {
 			Y(ee).most_efficient ? e(le) : e(ue, -1);
 		}), I(se);
 		var de = q(se, 2), fe = W(de), pe = q(W(fe)), me = K(pe, !0), he = q(pe, 2), ge = (e) => {
-			var t = Ph(), n = K(t);
+			var t = Lh(), n = K(t);
 			J((e) => Q(n, `${Y(te) ?? ""} % of the ${e ?? ""} used before recuperation`), [() => Oa(Y(ee).gross_wh)]), Z(e, t);
 		};
 		$(he, (e) => {
@@ -12294,23 +12308,23 @@ function Yh(e, t) {
 			Y(_).cost.uncosted > 0 && e(P);
 		});
 		var Ee = q(Te, 2), De = (e) => {
-			bh(e, () => Y(O));
+			Ch(e, () => Y(O));
 		};
 		$(Ee, (e) => {
 			Y(O) && e(De);
 		}), I(xe), I(ve), I(_e), I(ie), I(x);
 		var Oe = q(x, 2), ke = W(Oe), Ae = q(W(ke)), je = (e) => {
-			var t = Fh(), n = K(t, !0);
+			var t = Rh(), n = K(t, !0);
 			J((e) => Q(n, e), [() => Y(k).score == null ? "No trips of 2 km or more" : ss(Y(k).score)]), Z(e, t);
 		};
 		$(Ae, (e) => {
 			Y(A) && e(je);
 		}), I(ke);
 		var Me = q(ke, 2), F = (e) => {
-			var t = Hh(), n = G(t), r = (e) => {
-				var t = Lh(), n = W(t, !0), r = q(n, 2), i = (e) => {
-					var t = Ih();
-					bh(W(t), () => Y(ne)), I(t), Z(e, t);
+			var t = Gh(), n = G(t), r = (e) => {
+				var t = Bh(), n = W(t, !0), r = q(n, 2), i = (e) => {
+					var t = zh();
+					Ch(W(t), () => Y(ne)), I(t), Z(e, t);
 				};
 				$(r, (e) => {
 					Y(ne) && e(i);
@@ -12322,9 +12336,9 @@ function Yh(e, t) {
 			var i = q(n, 2);
 			mi(i, 21, () => Y(A).events, (e) => e.k, (e, t) => {
 				let n = /* @__PURE__ */ z(() => f(Y(t).change, !0));
-				var r = zh(), i = W(r), a = K(i, !0), o = q(i), s = W(o, !0), c = q(s), l = (e) => {
-					var t = Rh(), r = G(t, !0);
-					r.nodeValue = " ", bh(q(r), () => Y(n)), Z(e, t);
+				var r = Hh(), i = W(r), a = K(i, !0), o = q(i), s = W(o, !0), c = q(s), l = (e) => {
+					var t = Vh(), r = G(t, !0);
+					r.nodeValue = " ", Ch(q(r), () => Y(n)), Z(e, t);
 				};
 				$(c, (e) => {
 					Y(n) && e(l);
@@ -12334,7 +12348,7 @@ function Yh(e, t) {
 			}), I(i);
 			var a = q(i, 4);
 			mi(a, 21, () => Y(A).bands, (e) => e.name, (e, t) => {
-				var n = Bh(), r = W(n), i = K(r, !0), a = q(r), o = W(a);
+				var n = Uh(), r = W(n), i = K(r, !0), a = q(r), o = W(a);
 				let s;
 				I(a);
 				var c = K(q(a), !0);
@@ -12343,14 +12357,14 @@ function Yh(e, t) {
 				}, [() => Y(t).value == null ? "–" : Y(t).value.toFixed(1)]), Z(e, n);
 			}), I(a);
 			var o = q(a, 2), s = (e) => {
-				var t = Vh(), n = W(t), r = K(q(W(n)), !0);
+				var t = Wh(), n = W(t), r = K(q(W(n)), !0);
 				I(n), I(t), J((e) => Q(r, e), [() => Oa(Y(k).standing_kwh * 1e3)]), Z(e, t);
 			};
 			$(o, (e) => {
 				Y(k).standing_kwh != null && e(s);
 			}), Z(e, t);
 		}, Ne = (e) => {
-			var t = Uh(), n = K(t);
+			var t = Kh(), n = K(t);
 			J(() => Q(n, `No trips in this ${Y(i) ?? ""}.`)), Z(e, t);
 		};
 		$(Me, (e) => {
@@ -12378,7 +12392,7 @@ function Yh(e, t) {
 				});
 			}
 		}, Ve = (e) => {
-			var t = Uh(), n = K(t);
+			var t = Kh(), n = K(t);
 			J(() => Q(n, `No trips in this ${Y(i) ?? ""}.`)), Z(e, t);
 		};
 		$(ze, (e) => {
@@ -12387,9 +12401,9 @@ function Yh(e, t) {
 		var He = q(Fe, 2), Ue = W(He), We = K(q(W(Ue)), !0);
 		I(Ue);
 		var Ge = q(Ue, 2), Ke = (e) => {
-			var t = Kh(), n = G(t);
+			var t = Yh(), n = G(t);
 			mi(n, 23, () => Y(E), (e) => e.name, (e, t, n) => {
-				var r = Wh();
+				var r = qh();
 				let i;
 				J((e) => i = Vi(r, "", i, {
 					flex: `${Y(t).wh ?? ""} 1 0`,
@@ -12398,7 +12412,7 @@ function Yh(e, t) {
 			}), I(n);
 			var r = q(n, 2);
 			mi(r, 23, () => Y(E), (e) => e.name, (e, t, n) => {
-				var r = Gh(), i = W(r);
+				var r = Jh(), i = W(r);
 				let a;
 				var o = q(i), s = K(o, !0), c = q(o), l = K(c, !0), u = K(q(c));
 				I(r), J((e, n, r) => {
@@ -12410,14 +12424,14 @@ function Yh(e, t) {
 				]), Z(e, r);
 			}), I(r), J((e) => na(n, "aria-label", `Charged by place: ${e ?? ""}`), [() => Y(E).map((e) => `${e.name} ${Oa(e.wh)}`).join(", ")]), Z(e, t);
 		}, qe = (e) => {
-			var t = Uh(), n = K(t);
+			var t = Kh(), n = K(t);
 			J(() => Q(n, `No charging in this ${Y(i) ?? ""}.`)), Z(e, t);
 		};
 		$(Ge, (e) => {
 			Y(E).length ? e(Ke) : e(qe, -1);
 		}), I(He), I(Pe), I(r);
 		var Je = q(r, 2);
-		yh(W(Je), {
+		Sh(W(Je), {
 			get view() {
 				return t.view;
 			},
@@ -12441,12 +12455,12 @@ function Yh(e, t) {
 		Y(s) ? e(pe) : Y(o) ? e(he, -1) : e(me, 1);
 	}), I(ie), J((e) => {
 		ce.disabled = !Y(o) || Y(c), na(ce, "aria-label", `Previous ${Y(i) ?? ""}`), Q(ue, e), de.disabled = Y(c) || !Y(o)?.period.next_at, na(de, "aria-label", `Next ${Y(i) ?? ""}`);
-	}, [() => Y(o) ? dh(Y(i), Y(o).period.start, Y(o).period.end) : ""]), Pr("click", ce, () => U(a, Y(o).period.prev_at, !0)), Pr("click", de, () => U(a, Y(o).period.next_at, !0)), Z(e, ie), rt();
+	}, [() => Y(o) ? mh(Y(i), Y(o).period.start, Y(o).period.end) : ""]), Pr("click", ce, () => U(a, Y(o).period.prev_at, !0)), Pr("click", de, () => U(a, Y(o).period.next_at, !0)), Z(e, ie), rt();
 }
 Fr(["click"]);
 // src/App.svelte
-var Xh = /* @__PURE__ */ X("<p class=\"msg svelte-1n46o8q\"> </p>"), Zh = /* @__PURE__ */ X("<p class=\"msg svelte-1n46o8q\">Loading…</p>"), Qh = /* @__PURE__ */ X("<p class=\"msg svelte-1n46o8q\">No vehicles available to you.</p>");
-function $h(e, t) {
+var $h = /* @__PURE__ */ X("<p class=\"msg svelte-1n46o8q\"> </p>"), eg = /* @__PURE__ */ X("<p class=\"msg svelte-1n46o8q\">Loading…</p>"), tg = /* @__PURE__ */ X("<p class=\"msg svelte-1n46o8q\">No vehicles available to you.</p>");
+function ng(e, t) {
 	nt(t, !0);
 	let n = /* @__PURE__ */ H(null), r = /* @__PURE__ */ H(sn({
 		vehicles: [],
@@ -12498,10 +12512,10 @@ function $h(e, t) {
 		}
 	})();
 	var g = Kr(), _ = G(g), v = (e) => {
-		var t = Xh(), n = K(t, !0);
+		var t = $h(), n = K(t, !0);
 		J(() => Q(n, Y(s))), Z(e, t);
 	}, y = (e) => {
-		Z(e, Zh());
+		Z(e, eg());
 	}, b = (e) => {
 		ko(e, {
 			get page() {
@@ -12521,13 +12535,13 @@ function $h(e, t) {
 			},
 			children: (e, t) => {
 				var r = Kr(), a = G(r), s = (e) => {
-					rh(e, {});
+					oh(e, {});
 				}, c = (e) => {
-					Z(e, Qh());
+					Z(e, tg());
 				}, l = (e) => {
 					var t = Kr();
 					li(G(t), () => Y(i), (e) => {
-						Yh(e, { get view() {
+						Qh(e, { get view() {
 							return Y(i);
 						} });
 					}), Z(e, t);
@@ -12559,7 +12573,7 @@ function $h(e, t) {
 	}), Z(e, g), rt();
 }
 // src/main.js
-var eg = (e) => $r($h, { target: e }), tg = () => new Promise((e) => {
+var rg = (e) => $r(ng, { target: e }), ig = () => new Promise((e) => {
 	let t = new URL(
 		/* @vite-ignore */
 		"panel.css",
@@ -12575,9 +12589,9 @@ var eg = (e) => $r($h, { target: e }), tg = () => new Promise((e) => {
 customElements.define("car-insights-panel", class extends HTMLElement {
 	#e = !1;
 	set hass(e) {
-		d(e), !this.#e && (this.#e = !0, this.style.display = "block", this.style.height = "100%", tg().then(() => {
+		d(e), !this.#e && (this.#e = !0, this.style.display = "block", this.style.height = "100%", ig().then(() => {
 			let e = this.appendChild(document.createElement("div"));
-			e.id = "app", eg(e);
+			e.id = "app", rg(e);
 		}));
 	}
 });

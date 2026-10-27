@@ -5,6 +5,10 @@ export const splitCars = (vehicles) => ({ active: vehicles.filter((v) => !v.arch
 
 export const removalMessage = (reply) => (reply.history_deleted === false ? "Its history could not be deleted; try Delete history again." : null);
 
+// Removing the last car stops Car Insights, so the reload after that removal answers 503: no failure, and no car is left.
+export const STOPPED = "Car Insights stopped with its last car.";
+export const stoppedWithLastCar = (e, afterRemoval) => afterRemoval && e.status === 503;
+
 // The panel runs in an iframe; HA's frontend (window.top) navigates on pushState plus a location-changed event.
 export function navigateHa(path) {
   window.top.history.pushState(null, "", path);
