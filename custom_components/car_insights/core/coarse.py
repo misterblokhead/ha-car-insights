@@ -11,7 +11,7 @@ MIN_DISTANCE_M = 500  # a closed trip shorter than this is noise
 ODO_SETTLE_MS = 120_000  # the cloud odometer lags the ignition: end values are read this long after the end
 KEYS = ("ignition", "odometer_km", "gps", "battery_wh", "soc_percent", "speed")  # the sample keys find_cloud_trips reads
 
-Span = tuple[int, int, bool]  # start, last evidence (or ignition off) and whether the trip is closed
+Span = tuple[int, int, bool]  # start, last evidence (the ignition off; for an open ignition trip the last sample) and whether the trip is closed
 
 
 def find_cloud_trips(samples: list[Sample], seed: dict[str, Any], has_ignition: bool, capacity_wh: float, horizon: int | None) -> list[Trip]:
@@ -27,7 +27,7 @@ def _ignition_spans(samples: list[Sample], horizon: int | None) -> list[Span]:
     for s in samples:
         if s.k != "ignition" or (v := num(s.v)) is None:
             continue
-        if start is None and v not in IGNITION_ENDS_TRIP:
+        if start is None and v not in (0, *IGNITION_ENDS_TRIP):  # 0 is UNDEFINED: no sign of a trip
             start = s.t
         elif start is not None and v in IGNITION_ENDS_TRIP:
             if horizon is None or horizon < s.t + ODO_SETTLE_MS:
@@ -38,7 +38,7 @@ def _ignition_spans(samples: list[Sample], horizon: int | None) -> list[Span]:
 
 
 def _motion_spans(samples: list[Sample], seed: dict[str, Any], horizon: int | None) -> list[Span]:
-    odo, pos = num(seed.get("odometer_km")), fix(seed.get("gps"))  # the previous reading, from the seed first
+    odo, pos = num(seed.get("odometer_km")), fix(seed.get("gps"))  # the previous odometer; pos anchors where the car stood, from the seed first
     moves: list[int] = []
     for s in samples:
         if s.k == "odometer_km" and (v := num(s.v)) is not None:
@@ -46,9 +46,11 @@ def _motion_spans(samples: list[Sample], seed: dict[str, Any], horizon: int | No
                 moves.append(s.t)
             odo = v
         elif s.k == "gps" and (f := fix(s.v)):
-            if pos and _haversine_m(*pos, *f) > MOVE_M:
+            if pos is None:
+                pos = f
+            elif _haversine_m(*pos, *f) > MOVE_M:  # the anchor only moves with the car, so parked jitter never adds up
                 moves.append(s.t)
-            pos = f
+                pos = f
     runs: list[list[int]] = []
     for t in moves:
         if runs and t - runs[-1][1] < END_QUIET_MS:

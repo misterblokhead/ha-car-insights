@@ -100,8 +100,17 @@ def test_short_open_trip_is_kept():
 
 
 def test_parked_gps_jitter_opens_no_trip():
-    samples = [s(T0 + i * MIN, "gps", [LAT0 + (0.0005 if i % 2 else -0.0005), LON0]) for i in range(60)]  # 55 m from the seed, 111 m apart
-    assert find_cloud_trips(samples, {"gps": [LAT0, LON0]}, False, 60_000, T0 + 120 * MIN) == []
+    # 150 m either side of the seed fix: 300 m between neighbours, but never more than MOVE_M from where the car stood
+    jitter = [s(T0 + i * MIN, "gps", [LAT0 + (0.00135 if i % 2 else -0.00135), LON0]) for i in range(60)]
+    flat = odo_trace(T0, [1000] * 60)
+    seed = {"gps": [LAT0, LON0], "odometer_km": 1000}
+    for samples in (jitter, sorted(jitter + flat, key=lambda x: (x.t, x.seq))):
+        for horizon in (None, T0 + 120 * MIN):
+            assert find_cloud_trips(samples, seed, False, 60_000, horizon) == []
+
+
+def test_ignition_undefined_opens_no_trip():
+    assert find_cloud_trips([s(T0, "ignition", 0), s(T0 + MIN, "odometer_km", 1000.0)], {}, True, 60_000, T0 + 60 * MIN) == []
 
 
 def test_two_trips_with_a_long_stop_between():
