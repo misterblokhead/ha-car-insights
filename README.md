@@ -25,6 +25,24 @@ The **Car Insights** sidebar page (`/car_insights`) has Activity (one timeline o
 
 All data lives in `/config/car_insights/car_insights.db`, so it is included in Home Assistant backups.
 
+## Cars without the car app
+
+A car that has no car app (or whose app you do not want) can still be added, from its own Home Assistant integration.
+
+1. Settings > Devices & services > Add integration > **Car Insights**, enter the car's name, then under "How does Car Insights get this car's data?" choose **Car app (Android Automotive)**, **My car's Home Assistant integration** or **Both**.
+2. For the integration, pick the car's device and confirm the entities. **Charge level** and **Odometer** are required; **Location**, **Charging**, **Plugged in**, **Battery energy**, **Range**, **Speed**, **Driving / ignition** and **Report time** are optional. Then enter the car's usable battery capacity in kWh.
+   - Renault and Stellantis devices are recognized and their entities are filled in for you. For any other car, pick the entities yourself. The entity lists show matching entities from every device, so check the preset's choices.
+3. The integration's **Configure** button adds, changes or removes the car's integration source later.
+
+What you get:
+
+- **A car with the car app** takes trips only from the car app. Its integration source adds charge level, charging, plug and odometer.
+- **A car with the integration only** gets approximate trips: distance, times, battery used, cost and a rough route. There is no driving style, and no speed or consumption curves. The trip page says "From your car's cloud data, approximate".
+- **Missing entities.** If an entity is removed or renamed, a repair says "some car data is missing". If Charge level or Odometer is missing, the car's cloud data is paused until you fix it. Nothing is lost: it catches up on up to 10 days.
+- **No data.** A car with only the integration and no new data for 7 days shows "No data since <date>" on its page. Stellantis cars stop being connected after 7 days without a trip of more than 15 minutes, so a parked Stellantis car shows this until you drive it.
+
+Upgrading from 1.0.0: a car-app vehicle's Renault cloud options are converted on the first start. The converted source keeps the same id, so nothing is read twice, and entity ids and stored data are unchanged.
+
 ## Moving from the add-on
 
 1. Update the add-on to 0.11.0.

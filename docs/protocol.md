@@ -80,7 +80,7 @@ When a trip ends: an ignition off/lock sample ends it; without proof it stays op
 
 ## Cloud source
 
-A vehicle can also be read from a cloud-connected car integration in Home Assistant, as a second source next to the car. The source is set in the vehicle's config entry options (`cloud: {mapping, entity_stem}`; there is no page for it yet, a later release makes it editable); `mapping` is `renault` and `entity_stem` is the shared prefix of the car's entities (`sensor.<stem>_battery`, `sensor.<stem>_mileage`, ...). The integration polls their history every 60 s and stores the changes as samples of their own source (`ha_entities-<hex>`) with these keys:
+A vehicle can also be read from a cloud-connected car integration in Home Assistant: as a second source next to the car, or as the only source of a car without the car app. The source is set when adding the car and in the integration's Configure, and stored in the vehicle's config entry options (`cloud: {preset, device_id, entities, source_id, capacity_kwh}`). `entities` maps each reading (required: `charge_level`, `odometer`; optional: `location`, `charging`, `plugged`, `battery_energy`, `range`, `speed`, `ignition`, `report_time`) to an entity id; `preset` (`renault`, `stellantis` or none) only pre-fills the pickers. The integration polls their history every 60 s and stores the changes as samples of their own source (`ha_entities-<hex>`) with these keys (the first three are the ones the car's own data also uses; the rest are stored only for a cloud source):
 
 | `k` | `v` | Used for |
 |---|---|---|
@@ -88,11 +88,11 @@ A vehicle can also be read from a cloud-connected car integration in Home Assist
 | `soc_percent` | number, % | energy estimate for a charge |
 | `odometer_km` | number, km | trip odometer values |
 
-`charging_state` and `soc_percent` are stamped with the cloud's own report time (Renault `last_battery_activity`) when it is at most 30 min older than, and not after, the time Home Assistant noticed the change; otherwise with that change time. `odometer_km` always uses the change time. Only the car sends `battery_wh`.
+`charging_state` and `soc_percent` are stamped with the cloud's own report time (the `report_time` reading, e.g. Renault `last_battery_activity`) when it is at most 30 min older than, and not after, the time Home Assistant noticed the change; otherwise with that change time. `odometer_km` always uses the change time. Only the car app sends `battery_wh` for a car that has one; for such a car the cloud's `battery_energy`, `range`, `speed`, `location` and `ignition` readings are ignored.
 
 A cloud charge session may start and end while the car sleeps, so its energy is the car's `battery_wh` before and after when available (`energy_source` `"car"`), otherwise an estimate from `soc_percent` and the usable capacity learned from the car's own samples (`"soc_estimate"`). An estimated charge is held up to 7 days (only when the car reported `battery_wh` before it started; otherwise it can never be refined) and refined in place when the car's value arrives; no second `ended` event is sent. After that it stays an estimate.
 
-`plug_state` (cloud key, boolean, from `sensor.<stem>_plug_state`: `plugged`/`unplugged` only) is stored with the other cloud samples but is not a car key: it never opens a car span. It is used only to draw plugged periods in the detail curves.
+`plug_state` (cloud key, boolean, from the `plugged` reading: `plugged`/`unplugged` only) is stored with the other cloud samples but is not a car key: it never opens a car span. It is used only to draw plugged periods in the detail curves.
 
 ## UI API
 
