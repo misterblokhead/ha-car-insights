@@ -61,6 +61,7 @@
         {#if tripCostLine(data.cost)}<span class="d-note">{tripCostLine(data.cost)}</span>{/if}
       </Figure>
     </div>
+    {#if t.approx}<p class="d-note">From your car's cloud data, approximate</p>{/if}
 
     {#if style}
       <section class="d-card">
@@ -84,6 +85,7 @@
       </section>
     {/if}
 
+    {#if !t.approx}
     <section class="d-card">
       <div class="d-head"><h2>Consumption</h2><span class="d-note">kWh per 0.5 km</span></div>
       {#if buckets}
@@ -120,6 +122,7 @@
         <p class="d-msg">No speed data</p>
       {/if}
     </section>
+    {/if}
 
     {#if rows.length}
       <section class="d-card">

@@ -1,10 +1,11 @@
 <script>
   import { km, pct, NA } from "../format.js";
+  import { noDataLine } from "../detail.js";
 
   let { vehicles } = $props();
 
-  const STATE = { driving: "Driving", charging: "Charging", parked: "Parked" };
-  const COLOR = { driving: "var(--trip)", charging: "var(--charge)", parked: "var(--muted)" };
+  const STATE = { driving: "Driving", charging: "Charging", parked: "Parked", no_data: "No data" };
+  const COLOR = { driving: "var(--trip)", charging: "var(--charge)", parked: "var(--muted)", no_data: "var(--muted)" };
 </script>
 
 {#if vehicles.length}
