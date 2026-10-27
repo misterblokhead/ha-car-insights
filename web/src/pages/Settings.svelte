@@ -1,6 +1,7 @@
 <script>
   import { tick } from "svelte";
   import { get, latest, send } from "../lib/api.js";
+  import { ADD_CAR_PATH, CONFIGURE_PATH, navigateHa, removalMessage, splitCars } from "../lib/cars.js";
   import { dateTime } from "../lib/time.js";
   import FixedCosts from "./settings/FixedCosts.svelte";
   import Prices from "./settings/Prices.svelte";
@@ -10,6 +11,7 @@
   let error = $state("");
   let newName = $state("");
   let names = $state({});
+  let removing = $state(null); // id of the car whose Remove car choice is open
   let pending = $state(0); // changes still running; the controls stay disabled until the last one is done
   const busy = $derived(pending > 0);
   const request = latest();
@@ -67,6 +69,14 @@
   const rename = (g) => keepFocus(() => change(() => send("PUT", `groups/${g.id}`, { name: names[g.id] })));
   const remove = (g) => confirm(`Delete group "${g.name}"?`) && change(() => send("DELETE", `groups/${g.id}`));
   const setVehicle = (v, group_id, viewers) => () => send("PUT", `vehicles/${v.id}`, { group_id, viewers });
+  const removeCar = (v, history) => {
+    removing = null;
+    return change(async () => {
+      const reply = await send("DELETE", `vehicles/${v.id}?history=${history}`);
+      error = removalMessage(reply) ?? "";
+    });
+  };
+  const deleteHistory = (v) => confirm(`Delete the stored history of "${v.name}"? This cannot be undone.`) && change(() => send("DELETE", `vehicles/${v.id}/history`));
   // the card fields are sent together; a blank one counts as 0
   const setCard = (v, card) => () => send("PUT", `vehicles/${v.id}/card`, card);
 
@@ -96,11 +106,23 @@
 
   <Prices {data} {change} />
 
-  <h2>Vehicles</h2>
-  <p class="note caption">Users appear here after they open this page once. Administrators always see every vehicle.</p>
-  {#each data.vehicles as v (v.id)}
+  {@const cars = splitCars(data.vehicles)}
+  <h2>Cars</h2>
+  <p class="note caption">Users appear here after they open this page once. Administrators always see every car.</p>
+  <div class="row"><button class="press" type="button" disabled={busy} onclick={() => navigateHa(ADD_CAR_PATH)}>Add car</button></div>
+  {#each cars.active as v (v.id)}
     <section>
       <h3>{v.name}</h3>
+      <div class="row">
+        <button class="press" type="button" disabled={busy} onclick={() => navigateHa(CONFIGURE_PATH)}>Configure</button>
+        {#if removing === v.id}
+          <button class="danger press" type="button" disabled={busy} onclick={() => removeCar(v, "keep")}>Keep its history</button>
+          <button class="danger press" type="button" disabled={busy} onclick={() => removeCar(v, "delete")}>Delete everything</button>
+          <button class="press" type="button" onclick={() => (removing = null)}>Cancel</button>
+        {:else}
+          <button class="danger press" type="button" disabled={busy} onclick={() => (removing = v.id)}>Remove car</button>
+        {/if}
+      </div>
       <div class="list card">
         <label class="row split">Cost group
           <select disabled={busy} value={v.group_id ?? ""} onchange={(e) => control(e, setVehicle(v, e.currentTarget.value || null, v.viewers), (el) => (el.value = v.group_id ?? ""))}>
@@ -131,6 +153,17 @@
       </fieldset>
     </section>
   {/each}
+  {#if cars.archived.length}
+    <h2>Archived</h2>
+    <div class="list card">
+      {#each cars.archived as v (v.id)}
+        <div class="row split">
+          <span>{v.name} <span class="muted">Archived</span></span>
+          <button class="danger press" type="button" disabled={busy} onclick={() => deleteHistory(v)}>Delete history</button>
+        </div>
+      {/each}
+    </div>
+  {/if}
   <FixedCosts {data} {change} />
 {:else if !error}
   <p class="msg">Loading…</p>
