@@ -79,3 +79,6 @@ export function bandRows(bands, minKm) {
   const total = Object.values(bands).reduce((a, [m]) => a + m, 0);
   return Object.entries(bands).map(([name, [m, wh]]) => ({ name, share: total ? m / total : 0, kwhPer100: m >= minKm * 1000 && m > 0 && wh != null ? (wh / m) * 100 : null }));
 }
+
+// "No data since Thu 1 Oct": the last update of a car that has been silent
+export const noDataLine = (updatedMs, now = Date.now()) => `No data since ${dayLabel(dayKey(updatedMs), dayKey(now))}`;
