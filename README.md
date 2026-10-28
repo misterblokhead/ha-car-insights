@@ -45,6 +45,10 @@ Then follow [Getting started](docs/getting-started.md).
 
 Found a bug or have a question? [Open an issue](https://github.com/misterblokhead/ha-car-insights/issues).
 
+## Support
+
+Car Insights is free. If it is useful to you, you can support its development through [GitHub Sponsors](https://github.com/sponsors/misterblokhead).
+
 ## License
 
 MIT
