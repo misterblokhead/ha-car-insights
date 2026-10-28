@@ -129,10 +129,11 @@
     },
     "vehicle_removed": {
       "title": "{vehicle} was removed",
-      "description": "Car Insights kept the trips, charges and costs of {vehicle}. Delete its stored history?",
       "fix_flow": {
         "step": {
           "init": {
+            "title": "{vehicle} was removed",
+            "description": "Car Insights kept the trips, charges and costs of {vehicle}. Delete its stored history?",
             "menu_options": {
               "delete": "Delete its history (cannot be undone)",
               "keep": "Keep its history"

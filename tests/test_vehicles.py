@@ -5,6 +5,7 @@ import hmac
 import json
 import sqlite3
 import time
+from pathlib import Path
 
 import pytest
 from homeassistant.config_entries import ConfigEntryDisabler, ConfigEntryState
@@ -402,6 +403,7 @@ async def answer(client, vid, choice):
     assert resp.status == 200
     menu = await resp.json()
     assert (menu["type"], menu["step_id"], menu["menu_options"]) == ("menu", "init", ["delete", "keep"])
+    assert menu["description_placeholders"] == {"vehicle": f"Car {vid}"}  # the dialog's text names the car
     resp = await client.post(f"/api/repairs/issues/fix/{menu['flow_id']}", json={"next_step_id": choice})
     assert resp.status == 200
     return await resp.json()
@@ -574,3 +576,10 @@ async def test_car_sources_names_the_missing_entity_repair(hass):
                           translation_key="cloud_entity_missing_required", translation_placeholders={"vehicle": "Car car1", "readings": "x"})
 
     assert {vid: c["missing_entities"] for vid, c in vehicles.car_sources(hass).items()} == {"car1": True, "car2": False}
+
+
+def test_a_fixable_issue_keeps_its_text_in_the_fix_flow():
+    """hassfest: an issue has either a description or a fix_flow, never both"""
+    for f in ("strings.json", "translations/en.json"):
+        issue = json.loads((Path(vehicles.__file__).parent / f).read_text(encoding="utf-8"))["issues"]["vehicle_removed"]
+        assert "description" not in issue and "{vehicle}" in issue["fix_flow"]["step"]["init"]["description"]

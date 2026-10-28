@@ -2,13 +2,16 @@
 from homeassistant.components.repairs import RepairsFlow
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import issue_registry as ir
 
 from . import vehicles
 
 
 class VehicleRemovedFlow(RepairsFlow):
     async def async_step_init(self, user_input: dict[str, str] | None = None) -> FlowResult:
-        return self.async_show_menu(step_id="init", menu_options=["delete", "keep"])
+        issue = ir.async_get(self.hass).async_get_issue(self.handler, self.issue_id)  # as HA's own confirm flow does
+        return self.async_show_menu(step_id="init", menu_options=["delete", "keep"],
+                                    description_placeholders=issue.translation_placeholders if issue else None)
 
     async def async_step_delete(self, user_input: dict[str, str] | None = None) -> FlowResult:
         vid = self.data["vehicle_id"]
