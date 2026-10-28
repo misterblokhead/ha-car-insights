@@ -123,6 +123,9 @@
 {#if error}<p class="err" role="alert">{error}</p>{/if}
 {#if stopped}<p class="note" role="status">{STOPPED}</p>{/if}
 {#if data}
+  {@const cars = splitCars(data.vehicles)}
+  <div class="blocks">
+  <div class="block">
   <h2>Cost groups</h2>
   <div class="list card">
     {#each data.groups as g (g.id)}
@@ -139,10 +142,11 @@
       <button class="press" type="submit" disabled={busy}>Add group</button>
     </form>
   </div>
+  </div>
 
-  <Prices {data} {change} />
+  <div class="block"><Prices {data} {change} /></div>
 
-  {@const cars = splitCars(data.vehicles)}
+  <div class="block">
   <h2 id="cars" tabindex="-1">Cars</h2>
   <p class="note caption">Users appear here after they open this page once. Administrators always see every car.</p>
   <div class="row"><button class="press" type="button" disabled={busy} bind:this={addCar} onclick={() => navigateHa(ADD_CAR_PATH)}>Add car</button></div>
@@ -189,7 +193,9 @@
       </fieldset>
     </section>
   {/each}
+  </div>
   {#if cars.archived.length}
+    <div class="block">
     <h2>Archived</h2>
     <div class="list card">
       {#each cars.archived as v (v.id)}
@@ -199,11 +205,13 @@
         </div>
       {/each}
     </div>
+    </div>
   {/if}
-  <FixedCosts {data} {change} />
+  <div class="block"><FixedCosts {data} {change} /></div>
   {#if onboarding && canShowAgain(onboarding, hasPlaces())}
-    <div class="row"><button class="press" type="button" disabled={busy} onclick={showGettingStarted}>Show getting started</button></div>
+    <div class="block row"><button class="press" type="button" disabled={busy} onclick={showGettingStarted}>Show getting started</button></div>
   {/if}
+  </div>
 {:else if !error}
   <p class="msg">Loading…</p>
 {/if}
@@ -211,5 +219,11 @@
 
 <style>
   .page { max-width: 640px; }
+  /* a wide screen: the sections flow into two columns, each still a readable width */
+  @media (min-width: 1200px) {
+    .page { max-width: 1320px; }
+    .blocks { columns: 2; column-gap: 24px; }
+    .block { break-inside: avoid; display: flow-root; } /* its heading margin stays inside, also at the top of the second column */
+  }
   .err { margin: 0 0 8px; padding: 8px 14px; color: var(--warn-text); }
 </style>

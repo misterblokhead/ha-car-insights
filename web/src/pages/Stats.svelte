@@ -256,7 +256,6 @@
 </div>
 
 <style>
-  .page { max-width: 1000px; }
   .seg { max-width: 400px; }
   .nav { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; margin: 8px 0 4px; }
   .nav h2 { margin: 0; text-align: center; font-size: 17px; font-weight: 600; }
@@ -267,7 +266,7 @@
   svg { width: 20px; height: 20px; stroke-width: 2.4; }
   .msg { --accent: var(--trip-text); } /* the Retry button, as on the detail pages */
 
-  /* one column on a phone, in reading order; two columns of cards from 768 px */
+  /* one column on a phone, in reading order; two columns of cards from 768 px; three from 1600 px */
   .grid { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; transition: opacity var(--fade); }
   .mapcard { margin-top: 12px; }
   .grid.busy { opacity: 0.5; }
@@ -281,6 +280,12 @@
   @media (min-width: 768px) {
     .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
     .col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  }
+  /* a wide screen: the first column's cards flow into two, beside the charts (three columns in all) */
+  @media (min-width: 1600px) {
+    .grid { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+    .col:first-child { display: block; columns: 2; column-gap: 12px; }
+    .col:first-child > * { break-inside: avoid; margin-bottom: 12px; }
   }
   .d-figs { grid-template-columns: repeat(auto-fill, minmax(max(160px, 8em), 1fr)); }
 

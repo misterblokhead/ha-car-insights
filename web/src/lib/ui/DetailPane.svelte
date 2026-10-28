@@ -7,7 +7,7 @@
 </script>
 
 <script>
-  import { onMount } from "svelte";
+  import { onMount, setContext } from "svelte";
   import { fade } from "svelte/transition";
   import { createSpring } from "../spring.js";
   import { animate, cssMs } from "../motion.js";
@@ -17,7 +17,9 @@
   // `id` names the shown item: a new id cross-fades the content. prev and next are the hashes of the neighbouring items, or null.
   // Phone: a layer that slides in from the right and back out with an edge swipe. From 768 px: the same layer beside the sidebar, or
   // (from 1080 px) a column beside the list; those two only cross-fade. Reduced motion: opacity only.
-  let { id, onclose, prev = null, next = null, children } = $props();
+  // Without `onclose` (the column showing the newest item while none is open) it has no Close and leaves the keys alone.
+  let { id, onclose = null, prev = null, next = null, children } = $props();
+  setContext("detail-focus", () => !!onclose); // an item the reader opened takes focus; the newest one standing in does not
 
   const EDGE = 24, SLOP = 8, FADE = cssMs("--fade");
   const overlay = $derived(!screen.split);
@@ -68,7 +70,7 @@
   const go = (hash) => hash && location.replace(hash); // replaces, so back still returns to the list
 
   function key(e) {
-    if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (!onclose || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
     if (e.key === "Escape") {
       e.preventDefault();
       close();
@@ -140,10 +142,14 @@
 
 {#snippet body()}
   <header class="bar chrome">
-    <button class="back press" onclick={close}>
-      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg>
-      {screen.wide ? "Close" : "Activity"}
-    </button>
+    {#if onclose}
+      <button class="back press" onclick={close}>
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg>
+        {screen.wide ? "Close" : "Activity"}
+      </button>
+    {:else}
+      <span></span>
+    {/if}
     <span class="steps">
       <button class="press" aria-label="Previous activity" disabled={!prev} onclick={() => go(prev)}>
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 15 7-7 7 7" /></svg>

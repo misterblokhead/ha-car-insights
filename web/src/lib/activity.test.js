@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { visible, neighbours, hashOf, replaceDays, linkAction } from "./activity.js";
+import { visible, neighbours, hashOf, replaceDays, linkAction, shownDetail } from "./activity.js";
 
 const trip = (start, vid = "a") => ({ kind: "trip", vehicle_id: vid, start });
 const charge = (start, vid = "a") => ({ kind: "charge", vehicle_id: vid, start });
@@ -68,4 +68,14 @@ test("replaceDays: fresh days replace the same dates, older days stay, newest fi
 test("linkAction replaces the open detail, else pushes from the list", () => {
   assert.equal(linkAction({ detailOpen: true }), "replace");
   assert.equal(linkAction({ detailOpen: false }), "push");
+});
+
+test("shownDetail: the routed detail wins; a split screen without one shows the newest item the filter shows", () => {
+  const routed = { kind: "charge", vid: "b/c", start: 200 };
+  assert.equal(shownDetail(routed, days, "all", true), routed);
+  assert.equal(shownDetail(routed, days, "all", false), routed);
+  assert.deepEqual(shownDetail(null, days, "all", true), { kind: "trip", vid: "a", start: 300 });
+  assert.deepEqual(shownDetail(null, days, "charges", true), { kind: "charge", vid: "a", start: 250 });
+  assert.equal(shownDetail(null, days, "all", false), null); // a phone or tablet keeps the plain list
+  assert.equal(shownDetail(null, [], "all", true), null); // nothing yet
 });

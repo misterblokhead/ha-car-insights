@@ -5,7 +5,7 @@
 <script>
   import { untrack } from "svelte";
   import { get, hasPlaces, latest } from "../lib/api.js";
-  import { feed, hashOf, linkAction, load, more, neighbours, refresh, visible } from "../lib/activity.svelte.js";
+  import { feed, hashOf, linkAction, load, more, neighbours, refresh, shownDetail, visible } from "../lib/activity.svelte.js";
   import { daySummary } from "../lib/format.js";
   import { showCard } from "../lib/onboarding.js";
   import { dayLabel } from "../lib/time.js";
@@ -36,8 +36,10 @@
   let listEl;
   const days = $derived(visible(feed.days, shown));
   const open = $derived(detail && hashOf({ kind: detail.kind, vehicle_id: detail.vid, start: detail.start }));
-  const around = $derived(detail ? neighbours(feed.days, feed.filter, detail.kind, detail.vid, detail.start) : { prev: null, next: null });
-  const isOpen = (item) => detail?.kind === item.kind && detail.vid === item.vehicle_id && detail.start === item.start;
+  // beside the list on a split screen, the newest item stands in until one is opened
+  const pane = $derived(shownDetail(detail, feed.days, shown, screen.split));
+  const around = $derived(pane ? neighbours(feed.days, feed.filter, pane.kind, pane.vid, pane.start) : { prev: null, next: null });
+  const isOpen = (item) => pane?.kind === item.kind && pane.vid === item.vehicle_id && pane.start === item.start;
 
   // a card clicked while a detail is open replaces it, so closing is still one step back to the list
   const picked = (e) => {
@@ -126,7 +128,7 @@
   });
 </script>
 
-<div class="split" class:two={screen.split && detail}>
+<div class="split" class:two={screen.split && pane}>
 <div class="page" class:wide={screen.wide}>
   <h1 class="page-title" tabindex="-1" bind:this={title}>Activity</h1>
   {#if onboarding && showCard(isAdmin, onboarding, hasPlaces())}
@@ -170,19 +172,21 @@
   {/if}
 </div>
 
-{#if detail}
-  <DetailPane id={open} onclose={close} prev={around.prev} next={around.next}>
-    {#if detail.kind === "trip"}
-      <TripDetail vid={detail.vid} start={detail.start} />
+{#if pane}
+  {#key !!detail} <!-- closing fades the pane out; the newest item comes back in a fresh one -->
+  <DetailPane id={hashOf({ kind: pane.kind, vehicle_id: pane.vid, start: pane.start })} onclose={detail ? close : null} prev={around.prev} next={around.next}>
+    {#if pane.kind === "trip"}
+      <TripDetail vid={pane.vid} start={pane.start} />
     {:else}
-      <ChargeDetail vid={detail.vid} start={detail.start} {isAdmin} />
+      <ChargeDetail vid={pane.vid} start={pane.start} {isAdmin} />
     {/if}
   </DetailPane>
+  {/key}
 {/if}
 </div>
 
 <style>
-  .split.two { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 24px; align-items: start; } /* only while a detail is open; the list is a single column otherwise */
+  .split.two { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 24px; align-items: start; } /* a split screen always (the newest item stands in), else only while a detail is open */
   .page { --bleed: 16px; max-width: 760px; }
   .page.wide { --bleed: 24px; }
   .filter { margin: 12px 0 4px; }

@@ -1,16 +1,18 @@
 <script>
-  import { onMount, tick } from "svelte";
+  import { getContext, onMount, tick } from "svelte";
   import { get, latest } from "../api.js";
 
   // The frame of a trip or charge detail: loads `url`, owns the heading fallbacks and the loading / not-found / retry messages, and
-  // focuses the heading after the first load. The page gives snippets: title(data) and subtitle(data) for the header (subtitle
-  // optional), body(data, reload) for the content (reload fetches again, e.g. after a save); onloaded(data) runs after each fetch.
+  // focuses the heading after the first load (unless its pane only stands in the newest item). The page gives snippets: title(data)
+  // and subtitle(data) for the header (subtitle optional), body(data, reload) for the content (reload fetches again, e.g. after a
+  // save); onloaded(data) runs after each fetch.
   // `accent` is the token (--trip-text or --charge-text) for the buttons and the focus ring. The page is remounted for another
   // item (the pane keys it), so `url` is read once.
   let { url, noun, accent, title, subtitle, body, onloaded } = $props();
   let data = $state(null);
   let error = $state(null);
   let h1 = $state();
+  const takesFocus = getContext("detail-focus") ?? (() => true);
 
   const request = latest(); // the first load, Retry and a reload after a save: the newest reply wins
 
@@ -29,7 +31,7 @@
 
   onMount(() => {
     load();
-    tick().then(() => h1?.focus({ preventScroll: true })); // after the pane has moved to <body>
+    if (takesFocus()) tick().then(() => h1?.focus({ preventScroll: true })); // after the pane has moved to <body>
     return request.reset;
   });
 </script>

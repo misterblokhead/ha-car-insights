@@ -16,6 +16,14 @@ export function neighbours(days, filter, kind, vid, start) {
   return { prev: at > 0 ? hashOf(items[at - 1]) : null, next: at < items.length - 1 ? hashOf(items[at + 1]) : null };
 }
 
+// The detail to show ({kind, vid, start} or null): the routed one, else on a split screen the newest item the filter shows, so the
+// column beside the list is never empty there.
+export function shownDetail(detail, days, filter, split) {
+  if (detail || !split) return detail;
+  const item = visible(days, filter)[0]?.items[0];
+  return item ? { kind: item.kind, vid: item.vehicle_id, start: item.start } : null;
+}
+
 // A fresh first page replaces the loaded days of the same dates; older loaded days stay.
 export const replaceDays = (have, fresh) =>
   [...fresh, ...have.filter((d) => !fresh.some((f) => f.date === d.date))].sort((a, b) => (a.date < b.date ? 1 : -1));

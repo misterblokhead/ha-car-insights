@@ -1,7 +1,7 @@
 import { get, latest } from "./api.js";
 import { replaceDays } from "./activity.js";
 
-export { visible, neighbours, hashOf, linkAction } from "./activity.js";
+export { visible, neighbours, hashOf, linkAction, shownDetail } from "./activity.js";
 
 export const feed = $state({ view: "", filter: "all", today: "", days: [], next: null, loading: false, error: "" });
 
