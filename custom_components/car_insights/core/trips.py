@@ -3,7 +3,7 @@ from typing import Any, Iterator
 
 from .protocol import IGNITION_LOCK, IGNITION_OFF, PARK_GEAR, Sample, fix, num
 
-KEYS = ("gear", "ignition", "speed", "battery_wh", "outside_temp", "gps")  # the sample keys find_trips reads
+KEYS = ("gear", "ignition", "plugged", "speed", "battery_wh", "outside_temp", "gps")  # the sample keys find_trips reads
 IGNITION_ENDS_TRIP = (IGNITION_LOCK, IGNITION_OFF)
 MERGE_GAP_MS = 180_000
 # no batch from the car for this long with the trip's tail in P (server side: the car switched off and its last batch was lost),
@@ -39,7 +39,8 @@ class Trip:
 
 def find_trips(samples: list[Sample], seed: dict[str, Any], has_ignition: bool, quiet: bool = False) -> list[Trip]:
     """samples are sorted by (t, seq); seed holds the latest value per key before the first sample.
-    A trip closes only on evidence in the samples (ignition off/lock, a stop in P proven by a later sample, or a QUIET_MS silence between samples):
+    A trip closes only on evidence in the samples (ignition off/lock, plugged in while in P, a stop in P proven by a later sample, or a
+    QUIET_MS silence between samples):
     arrival time proves nothing, as a backlog arrives late. A tail without proof stays open, unless `quiet` (the car's
     senders delivered nothing for QUIET_MS, so no backlog is draining) and the tail is in P: it then ends at its first P sample."""
     gear, wh, temp = num(seed.get("gear")), num(seed.get("battery_wh")), num(seed.get("outside_temp"))
@@ -75,6 +76,8 @@ def find_trips(samples: list[Sample], seed: dict[str, Any], has_ignition: bool, 
                 temp = v
             elif s.k == "speed" and not cur and abs(v) > MOVING_MPS and gear != PARK_GEAR:
                 cur, p = (i, wh, temp), None
+        elif s.k == "plugged" and s.v is True and cur and p is not None:
+            close(p + 1, True)  # a charging stop with the car left on (heating) sends on and never switches off
         prev_t = s.t
     if cur and quiet and p is not None:
         close(p + 1, True)

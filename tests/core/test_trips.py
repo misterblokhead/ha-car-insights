@@ -176,6 +176,20 @@ def test_no_battery_before_start_gives_null_energy():
     assert t.net_wh is t.gross_wh is t.recup_wh is t.start_wh is t.end_wh is None
 
 
+def test_plugging_in_while_in_p_ends_the_trip_at_the_first_p_sample():
+    """a fast-charge stop: the car stays on (ignition 3/4) and keeps sending, so only the plug proves the trip stopped
+    (2026-10-26: one 26 km trip spanned a 2.9 kWh DC charge, which counted as recuperation)"""
+    samples = [*STOP, s(0, "ignition", 4.0), s(61_000, "ignition", 3.0), s(70_000, "plugged", True), s(100_000, "ignition", 4.0),
+               s(0, "battery_wh", 8000), s(59_000, "battery_wh", 7900), s(200_000, "battery_wh", 10800),  # +2.9 kWh while charging
+               s(300_000, "plugged", False), s(320_000, "gear", 1.0), *drive(320_000, 400_000), s(390_000, "battery_wh", 10600),
+               s(500_000, "ignition", 2.0)]
+    a, b = trips(samples)
+    assert (a.start, a.end, a.net_wh, a.recup_wh) == (0, 60_000, 100, 0)
+    assert (b.start, b.end, b.start_wh, b.net_wh, b.recup_wh) == (320_000, 500_000, 10800, 200, 0)
+    (t,) = trips([s(0, "gear", 1.0), *drive(0, 100_000), s(50_000, "plugged", True), s(200_000, "ignition", 2.0)])
+    assert t.end == 200_000  # a plug reading while not in P is no stop
+
+
 def test_ignition_undefined_does_not_end_trip():
     samples = [s(0, "gear", 1.0), *drive(0, 100_000), s(50_000, "ignition", 0.0), s(200_000, "ignition", 1.0)]
     (t,) = trips(samples)

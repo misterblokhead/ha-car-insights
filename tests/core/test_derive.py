@@ -179,7 +179,7 @@ def _unplug_after_charge():
 def test_charge_plugged_before_ignition_off_survives():
     conn, d = setup(_plug_before_ignition_off())
     trips, charges, _ = d.update("car1", None, DAY)
-    assert trips[0]["end"] == 150_000 and charges == []
+    assert trips[0]["end"] == 100_000 and charges == []  # plugged in while in P: the trip ends where it parked
     db.ingest(conn, "car1", SRC, _unplug_after_charge(), 0)
     _, charges, _ = d.update("car1", None, DAY)
     (c,) = bare(store.closed(conn, CHARGE, "car1", 10))
@@ -666,7 +666,7 @@ def test_algo_bump_rebuilds():
     conn.execute("UPDATE charges SET algo=1")
     d2 = Deriver(conn, lambda la, lo: "Home")
     d2.purge_stale()
-    assert store.closed(conn, CHARGE, "car1") == [] and ALGO == 11
+    assert store.closed(conn, CHARGE, "car1") == [] and ALGO == 12
     _, charges, _ = d2.update("car1", None, at("11:30:00"))
     assert len(charges) == 1
 
