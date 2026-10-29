@@ -21,6 +21,10 @@ Home Assistant 2026.9 or newer.
 
 ## Install
 
+[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=misterblokhead&repository=ha-car-insights&category=integration)
+
+Or by hand:
+
 1. In HACS, open the menu (three dots, top right) > **Custom repositories**, add `https://github.com/misterblokhead/ha-car-insights` with type **Integration**, then download **Car Insights**.
 2. Restart Home Assistant.
 3. Click the button to add your first car:
