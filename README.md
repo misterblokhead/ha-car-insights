@@ -85,8 +85,8 @@ It registers no actions, runs no shell commands, and has no `eval` or `exec`.
 
 I build Car Insights with [Claude Code](https://claude.com/claude-code), Anthropic's AI coding tool. I read and test the
 changes before they go into a release, and I use it every day with my own car. The repository has unit tests for the
-integration and the page; GitHub runs the HACS and hassfest checks on every push.
-[TODO maintainer: confirm this wording, and whether you also run the unit tests before each release.]
+integration and the page; GitHub runs them, plus the HACS and hassfest checks, on every push, so every release has
+passed them.
 
 ## Help
 
