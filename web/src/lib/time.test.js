@@ -17,8 +17,7 @@ test("today is HA's today", () => {
 
 test("clock is HH:MM in HA's zone, a dash without a time", () => {
   const c = clock(Date.UTC(2026, 9, 24, 21, 30));
-  assert.match(c, /23/);
-  assert.match(c, /30/);
+  assert.match(c, /^(23:30|11:30\s?PM)$/i); // the browser's locale picks 24 h or 12 h; the hour is Amsterdam's either way
   assert.equal(clock(null), "–");
 });
 
