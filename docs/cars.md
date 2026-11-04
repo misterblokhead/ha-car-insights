@@ -4,7 +4,7 @@ Car Insights can get a car's data from three places. You choose when you add the
 
 | Source | Use it when |
 |---|---|
-| **My car's Home Assistant integration** | Your car already shows up in Home Assistant (Renault, Peugeot, Kia and more). |
+| **My car's Home Assistant integration** | Your car already shows up in Home Assistant. Experimental: not yet tried with a real car. |
 | **Car app** | You have an Android Automotive car with the Car Insights app. It is not publicly available yet. |
 | **Both** | You have the car app and want the integration's charge level, plug and odometer too. |
 
@@ -12,7 +12,7 @@ Car Insights can get a car's data from three places. You choose when you add the
 
 ### Pick the device
 
-Choose the device of your car's own integration, for example "My car" under the Renault integration. Car Insights then fills in the entities it knows. Renault and Stellantis devices are recognized. For any other car you pick the entities yourself.
+Choose the device of your car's own integration, for example "My car" under the Renault integration. Car Insights then fills in the entities it knows. Presets exist for Renault and Stellantis devices; they have not yet been tried with a real car. For any other car you pick the entities yourself.
 
 ### Readings
 
