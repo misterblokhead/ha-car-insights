@@ -178,6 +178,16 @@ def set_default_capacity_kwh(conn, kwh: float) -> None:
     conn.execute("INSERT INTO settings VALUES('default_capacity_kwh',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(float(kwh)),))
 
 
+def address_lookup(conn) -> bool:
+    """Whether unnamed points are sent to Nominatim for an address; off until an admin turns it on in Settings."""
+    r = conn.execute("SELECT value FROM settings WHERE key='address_lookup'").fetchone()
+    return r is not None and r[0] == "1"
+
+
+def set_address_lookup(conn, on: bool) -> None:
+    conn.execute("INSERT INTO settings VALUES('address_lookup',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", ("1" if on else "0",))
+
+
 def device_info(conn, vehicle_id: str) -> tuple[str, str | None, str | None]:
     """(name, make, model) of the HA device for a vehicle; the name falls back to the stored name, then the vehicle id."""
     meta = (vehicle(conn, vehicle_id) or {}).get("meta") or {}

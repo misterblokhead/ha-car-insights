@@ -1,11 +1,12 @@
-"""Looks up the address of every unnamed point at Nominatim (OpenStreetMap), one at a time, and keeps the answers in `addresses`."""
+"""Looks up the address of every unnamed point at Nominatim (OpenStreetMap), one at a time, and keeps the answers in `addresses`.
+Off by default: nothing is sent until an admin turns on address lookup in Settings (db.address_lookup)."""
 import asyncio
 import json
 import logging
 import urllib.request
 from typing import Callable
 
-from . import store
+from . import db, store
 
 log = logging.getLogger(__name__)
 SPACING_S = 15  # Nominatim's usage policy for a scheduled job allows 4 requests a minute
@@ -53,12 +54,12 @@ def fetch(lat: float, lon: float, language: str, timeout: float = 10, version: s
 
 async def run(conn, fetch: Callable[[float, float], dict], now_ms: Callable[[], int], ready: Callable[[], bool],
               protected: Callable[[float, float], bool], sleep=asyncio.sleep) -> None:
-    """Forever: look up the newest point without an address, wait SPACING_S; idle IDLE_S when none is left or `ready` is False
-    (nothing is sent before the zones are known); BACKOFF_S after a failure. A `protected` point (in a zone or a charge location)
+    """Forever: look up the newest point without an address, wait SPACING_S; idle IDLE_S when none is left, address lookup is off
+    or `ready` is False (nothing is sent before the zones are known); BACKOFF_S after a failure. A `protected` point (in a zone or a charge location)
     is stored without an address and never sent."""
     while True:
         try:
-            key = store.unaddressed(conn) if ready() else None
+            key = store.unaddressed(conn) if db.address_lookup(conn) and ready() else None
             if key is None:
                 wait = IDLE_S
             else:

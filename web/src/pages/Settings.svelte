@@ -208,6 +208,18 @@
     </div>
   {/if}
   <div class="block"><FixedCosts {data} {change} /></div>
+  <div class="block">
+  <h2>Street names</h2>
+  <div class="list card">
+    <label class="row split">Look up street names
+      <input type="checkbox" disabled={busy} checked={data.address_lookup}
+        onchange={(e) => { const on = e.currentTarget.checked; control(e, () => send("PUT", "address_lookup", { enabled: on }), (el) => (el.checked = !on)); }} />
+    </label>
+  </div>
+  <p class="note caption">When on, the start and end of trips and charges outside your zones and charge locations are sent,
+    rounded to about 11 m, to OpenStreetMap's Nominatim service to find their street name. Off by default; when off,
+    nothing is sent and places show their zone or charge location name, or "Unknown".</p>
+  </div>
   {#if onboarding && canShowAgain(onboarding, hasPlaces())}
     <div class="block row"><button class="press" type="button" disabled={busy} onclick={showGettingStarted}>Show getting started</button></div>
   {/if}

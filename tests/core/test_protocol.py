@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from custom_components.car_insights.core.protocol import ProtocolError, Sample, parse_batch
+from custom_components.car_insights.core.protocol import MAX_DEPTH, ProtocolError, Sample, parse_batch
 
 S = "car_app-0000abcd"
 
@@ -75,8 +75,18 @@ def test_huge_numbers_rejected():
     assert top.samples[0].seq == 2**62 - 1
 
 
-def test_deep_json_rejected():
-    with pytest.raises(ProtocolError):
-        parse_batch(b'{"v":1,"x":' + b'[' * 5000 + b']' * 5000 + b'}')
-    with pytest.raises(ProtocolError):  # deep enough to blow the stack even with a valid envelope
-        parse_batch(b'{"v":1,"vehicle_id":"car1","source_id":"' + S.encode() + b'","samples":[],"x":' + b'[' * 100000 + b']' * 100000 + b'}')
+def _nested(n: int) -> bytes:
+    """a valid batch whose extra key nests to depth n in all (the envelope is level 1)"""
+    return b'{"v":1,"vehicle_id":"car1","source_id":"' + S.encode() + b'","samples":[],"x":' + b'[' * (n - 1) + b']' * (n - 1) + b'}'
+
+
+def test_deep_json_rejected_at_a_fixed_depth():
+    assert parse_batch(_nested(MAX_DEPTH)).vehicle_id == "car1"
+    for n in (MAX_DEPTH + 1, 100_000):  # 100_000 parses with a big enough stack: the cap, not the stack, must reject it
+        with pytest.raises(ProtocolError, match="bad json"):
+            parse_batch(_nested(n))
+
+
+def test_brackets_inside_strings_do_not_count_as_depth():
+    v = '[{\\"' * 100  # brackets, a backslash and a quote inside the string: all escaped in the JSON
+    assert parse_batch(VALID_WITH(samples=[{"seq": 1, "t": 1, "k": "mode", "v": v}])).samples[0].v == v

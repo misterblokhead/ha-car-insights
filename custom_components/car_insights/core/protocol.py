@@ -10,6 +10,9 @@ IGNITION_ON, IGNITION_OFF, IGNITION_LOCK = 4, 2, 1  # the car app's ignition cod
 FUTURE_SLACK_MS = 86_400_000  # a sample this far ahead of its arrival is a clock error
 _VEHICLE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 _SOURCE = re.compile(r"[a-z_]+-[0-9a-f]{8}")
+MAX_DEPTH = 64  # a batch nests 4 levels; a cap keeps parsing off the stack limit, which differs per interpreter and machine
+_STRINGS = re.compile(rb'"(?:[^"\\]|\\.)*"')
+_NOT_BRACKET = re.compile(rb"[^\[\]{}]+")
 
 
 @dataclass(frozen=True)
@@ -71,10 +74,20 @@ def _sample(s) -> Sample:
     return Sample(s["seq"], s["t"], k, s["v"])
 
 
+def loads(raw: bytes) -> Any:
+    """json.loads, but a ValueError for anything nested deeper than MAX_DEPTH (brackets inside strings do not count)."""
+    depth = 0
+    for c in _NOT_BRACKET.sub(b"", _STRINGS.sub(b"", raw)):
+        depth += 1 if c in b"[{" else -1
+        if depth > MAX_DEPTH:
+            raise ValueError("JSON nested too deeply")
+    return json.loads(raw)
+
+
 def parse_batch(raw: bytes) -> Batch:
     try:
-        d = json.loads(raw)
-    except (ValueError, RecursionError) as e:  # RecursionError: deeply nested JSON
+        d = loads(raw)
+    except ValueError as e:
         raise ProtocolError("bad json") from e
     if not isinstance(d, dict) or d.get("v") != 1 or not _int(d["v"]):
         raise ProtocolError("bad version")

@@ -14,6 +14,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 import custom_components.car_insights as integration
 from custom_components.car_insights import receiver as r
 from custom_components.car_insights.const import DOMAIN, MAX_BODY
+from custom_components.car_insights.core.protocol import MAX_DEPTH
 from custom_components.car_insights.service import Service
 
 SECRET = "invented-secret-0123"
@@ -82,7 +83,10 @@ def test_is_https_url():
 
 
 def test_deep_json_does_not_match():
-    assert not r.body_vehicle_matches(b'{"vehicle_id":"megane","x":' + b'[' * 100000 + b']' * 100000 + b'}', "megane")
+    deep = lambda n: b'{"vehicle_id":"megane","x":' + b'[' * n + b']' * n + b'}'  # nests n + 1 levels
+    assert r.body_vehicle_matches(deep(MAX_DEPTH - 1), "megane")
+    for n in (MAX_DEPTH, 100_000):  # the cap rejects it, whatever the stack would allow
+        assert not r.body_vehicle_matches(deep(n), "megane")
 
 
 def test_conf_with_url():
