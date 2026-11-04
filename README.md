@@ -1,6 +1,6 @@
 # Car Insights for Home Assistant
 
-Car Insights records your car's trips, charges and costs in Home Assistant. It works for any car: from your car's own Home Assistant integration (Renault, Peugeot, Kia and more) or from an optional Android Automotive car app.
+Car Insights records your car's trips, charges and costs in Home Assistant. It was built for Android Automotive cars with a companion car app, which is not released yet. It can also read the readings your car's own Home Assistant integration already provides, with presets for Renault and Stellantis. **That second path is built and unit-tested but has not yet been tried with a real car's integration, so treat it as experimental. Feedback is welcome.**
 
 ![Activity: trips and charges on one timeline](docs/images/activity.png)
 ![A trip with its route and curves](docs/images/trip.png)

@@ -109,7 +109,7 @@
     "source": {
       "options": {
         "car_app": "Car app: an Android Automotive car with the Car Insights app (not publicly available yet)",
-        "cloud": "My car's Home Assistant integration: your car already shows up in Home Assistant (Renault, Peugeot, Kia…)",
+        "cloud": "My car's Home Assistant integration: your car already shows up in Home Assistant (experimental, not yet tried with a real car)",
         "both": "Both"
       }
     }

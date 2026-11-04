@@ -3,6 +3,11 @@
 All notable changes to Car Insights. Versions follow [Semantic Versioning](https://semver.org/); each version is a git
 tag `vX.Y.Z`, and the GitHub release of that tag has the full notes.
 
+## [1.4.1](https://github.com/misterblokhead/ha-car-insights/releases/tag/v1.4.1): Honest wording
+
+### Changed
+- The README, guides and the Add a car dialog no longer say it works for any car. The car app path is what was built and used; reading a car's own Home Assistant integration (presets for Renault and Stellantis) is unit-tested but not yet tried with a real car, and is marked experimental.
+
 ## [1.4.0](https://github.com/misterblokhead/ha-car-insights/releases/tag/v1.4.0): Privacy
 
 ### Changed

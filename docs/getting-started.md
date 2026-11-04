@@ -17,7 +17,7 @@ The dialog asks for:
 
 1. **Car name**, for example "My car". Under **Advanced** you can set the car's ID. Leave it empty to use the name.
 2. **How does Car Insights get this car's data?**
-   - **My car's Home Assistant integration**: your car already shows up in Home Assistant (Renault, Peugeot, Kia and more). This is the choice for most people.
+   - **My car's Home Assistant integration**: your car already shows up in Home Assistant. This is the choice for most people, but it is experimental: it has not yet been tried with a real car's integration.
    - **Car app**: an Android Automotive car with the Car Insights app. The app is not publicly available yet.
    - **Both**.
 3. For the integration: pick your car's device, then check the entities. Charge level and Odometer are needed; the other readings make trips better. See [Pick the device](cars.md#pick-the-device) and [Readings](cars.md#readings).
