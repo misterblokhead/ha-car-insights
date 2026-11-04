@@ -47,8 +47,6 @@ Then follow [Getting started](docs/getting-started.md).
 
 ## What this touches
 
-In detail, from the code:
-
 **Network.** Nothing by default. One optional outside service, **off unless you turn on Street names** in the Car
 Insights Settings: [Nominatim](https://nominatim.openstreetmap.org) (OpenStreetMap's public address lookup), to name
 the start and end of trips and charges. When on, it sends one point at a time, rounded to 4 decimals (about 11 m), at
