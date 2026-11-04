@@ -1,0 +1,25 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the version and take the notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          manifest=$(jq -r .version custom_components/car_insights/manifest.json)
+          [ "$manifest" = "$version" ] || { echo "::error::manifest.json says $manifest but the tag is $GITHUB_REF_NAME"; exit 1; }
+          awk -v h="## [$version]" 'index($0, h) == 1 {on = 1; next} on && /^## \[/ {exit} on' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md" || { echo "::error::CHANGELOG.md has no section '## [$version]'"; exit 1; }
+      - name: Create the GitHub release
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
+        env:
+          GH_TOKEN: ${{ github.token }}

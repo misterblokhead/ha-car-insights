@@ -20,3 +20,19 @@ npm ci
 npm test
 npm run build
 ```
+
+## Releasing
+
+1. Set `version` in `custom_components/car_insights/manifest.json` to the new version, for example `1.4.0`.
+2. Add a `## [1.4.0](https://github.com/misterblokhead/ha-car-insights/releases/tag/v1.4.0)` section at the top of
+   `CHANGELOG.md`.
+3. Commit, wait for the checks to pass, then tag and push the tag:
+
+   ```sh
+   git tag v1.4.0
+   git push origin v1.4.0
+   ```
+
+`.github/workflows/release.yml` does the rest: it checks that the tag matches the manifest version, takes that
+version's section from `CHANGELOG.md` as the notes and creates the GitHub release, which HACS offers as the update. It
+fails when the versions differ or the section is missing.
