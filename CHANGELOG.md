@@ -3,6 +3,13 @@
 All notable changes to Car Insights. Versions follow [Semantic Versioning](https://semver.org/); each version is a git
 tag `vX.Y.Z`, and the GitHub release of that tag has the full notes.
 
+## [1.4.0](https://github.com/misterblokhead/ha-car-insights/releases/tag/v1.4.0): Privacy
+
+### Changed
+- Street names are now off by default, also after updating: Car Insights sends nothing to OpenStreetMap's Nominatim
+  service unless an administrator turns on **Street names** in Settings. Until then, places outside your zones and
+  charge locations show "Unknown"; street names already looked up stay.
+
 ## [1.3.0](https://github.com/misterblokhead/ha-car-insights/releases/tag/v1.3.0): Setup and documentation
 
 ### New

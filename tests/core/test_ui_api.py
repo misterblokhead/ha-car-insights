@@ -202,12 +202,24 @@ async def test_settings_admin_only(conn):
     c, _ = client(conn)
     r = await c.get("/settings")
     assert (r.status_code, r.json()) == (403, {"detail": "forbidden"})
-    assert (await c.get("/settings", ADMIN)).json() == access.settings(conn, frozenset()) | {"prices": prices.settings(conn)}
+    assert (await c.get("/settings", ADMIN)).json() == access.settings(conn, frozenset()) | {"prices": prices.settings(conn), "address_lookup": False}
     for r in (await c.post("/groups", {"name": "x"}, VIEWER), await c.put("/groups/g", {"name": "x"}, VIEWER),
-              await c.delete("/groups/g", VIEWER),
+              await c.delete("/groups/g", VIEWER), await c.put("/address_lookup", {"enabled": True}, VIEWER),
               await c.put("/vehicles/car1", {"group_id": None, "viewers": ["u-viewer"]}, VIEWER)):
         assert r.status_code == 403
     assert conn.execute("SELECT COUNT(*) FROM cost_groups").fetchone()[0] == 0
+    assert db.address_lookup(conn) is False
+
+
+async def test_put_address_lookup_turns_it_on_and_off(conn):
+    c, _ = client(conn)
+    for enabled in (True, False):
+        r = await c.put("/address_lookup", {"enabled": enabled})
+        assert (r.status_code, r.json()) == (200, {})
+        assert (await c.get("/settings", ADMIN)).json()["address_lookup"] is enabled
+    for body in ({}, {"enabled": "yes"}, {"enabled": 1}, None):
+        assert (await c.put("/address_lookup", body)).status_code == 422, body
+    assert db.address_lookup(conn) is False
 
 
 async def test_settings_marks_vehicles_without_a_config_entry_archived(conn):

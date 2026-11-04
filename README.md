@@ -49,11 +49,12 @@ Then follow [Getting started](docs/getting-started.md).
 
 In detail, from the code:
 
-**Network.** One outside service: [Nominatim](https://nominatim.openstreetmap.org) (OpenStreetMap's public address
-lookup), to name the start and end of trips and charges. It sends one point at a time, rounded to 4 decimals (about
-11 m), at most one every 15 seconds, with the Car Insights version and Home Assistant's language. Points inside one of
-your Home Assistant zones or a saved charge location are never sent. There is no setting to turn this off yet.
-Nothing else: no telemetry, no analytics, no update checks. The maps load their tiles through Home Assistant's own map
+**Network.** Nothing by default. One optional outside service, **off unless you turn on Street names** in the Car
+Insights Settings: [Nominatim](https://nominatim.openstreetmap.org) (OpenStreetMap's public address lookup), to name
+the start and end of trips and charges. When on, it sends one point at a time, rounded to 4 decimals (about 11 m), at
+most one every 15 seconds, with the Car Insights version and Home Assistant's language. Points inside one of your Home
+Assistant zones or a saved charge location are never sent. When off, it makes no request and those places show their
+zone or charge location name, or "Unknown". No telemetry, no analytics, no update checks. The maps load their tiles through Home Assistant's own map
 tile proxy (`/api/map_tiles/`), so the page never contacts a map server itself.
 
 **Inbound (car app only).** One webhook per car (`POST` only, reachable from outside your network). Every upload must be

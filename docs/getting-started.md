@@ -33,7 +33,9 @@ The top of **Activity** shows a **Getting started** card, for administrators onl
 - **Add your car**
 - **First data from your car**: until then the card says "Waiting for your car's first data…" and tells you what to check (see [Troubleshooting](troubleshooting.md#no-data-yet)).
 - **Set your electricity prices**: opens the prices in Settings. See [Costs](costs.md).
-- **Name your places**: your Home Assistant zones, so trips read "Home → Work" instead of street names.
+- **Name your places**: your Home Assistant zones, so trips read "Home → Work" instead of "Unknown". Places outside your zones
+  show "Unknown" unless you turn on **Street names** in Settings, which asks OpenStreetMap's Nominatim service for the
+  street name (it sends the rounded coordinates of those places; off by default).
 - **Choose who sees what**: only matters when other people use your Home Assistant. See [Sharing](sharing.md).
 - **Dashboard and sensors**: see [Sensors and dashboard](sensors-and-dashboard.md).
 

@@ -49,8 +49,10 @@ def test_label_without_road_uses_the_name_and_the_town():
     assert geocode.label({"name": "Winkel", "address": {}}) is None
 
 
-def run(conn, fetch, rounds, ready=lambda: True, protected=lambda lat, lon: False):
-    """geocode.run until `rounds` sleeps have happened; returns the sleeps"""
+def run(conn, fetch, rounds, ready=lambda: True, protected=lambda lat, lon: False, enabled=True):
+    """geocode.run until `rounds` sleeps have happened, with address lookup turned on unless `enabled` is False; returns the sleeps"""
+    if enabled:
+        db.set_address_lookup(conn, True)
     sleeps = []
 
     async def sleep(s):
@@ -80,6 +82,45 @@ def test_run_looks_up_newest_first_with_the_rounded_coordinates_then_idles():
     assert run(conn, fetch, 3) == [geocode.SPACING_S, geocode.SPACING_S, geocode.IDLE_S]
     assert asked == [(51.4, -4.5), (51.2, 4.3)]
     assert addresses(conn) == [(512000, 43000, "Weg2, Stad", 99), (514000, -45000, "Weg1, Stad", 99)]
+
+
+def test_address_lookup_is_off_by_default():
+    conn = db.connect(":memory:")
+    assert db.address_lookup(conn) is False
+    db.set_address_lookup(conn, True)
+    assert db.address_lookup(conn) is True
+    db.set_address_lookup(conn, False)
+    assert db.address_lookup(conn) is False
+
+
+def test_run_makes_no_http_request_while_address_lookup_is_off(monkeypatch):
+    conn = db.connect(":memory:")
+    seed_charge(conn, "car1", 10, 20, lat=51.2, lon=4.3)
+    seed_trip(conn, "car1", 30, 40, from_lat=51.4, from_lon=4.5, to_lat=51.5, to_lon=4.6)
+    opened = []
+    monkeypatch.setattr("custom_components.car_insights.core.geocode.urllib.request.urlopen", lambda *a, **k: opened.append(a))
+    assert run(conn, partial(geocode.fetch, language="en"), 3, enabled=False) == [geocode.IDLE_S] * 3
+    assert opened == [] and addresses(conn) == []
+
+
+def test_run_starts_looking_up_once_address_lookup_is_turned_on():
+    conn = db.connect(":memory:")
+    seed_charge(conn, "car1", 10, 20, lat=51.2, lon=4.3)
+    sleeps, asked = [], []
+
+    async def sleep(s):  # the admin turns it on in Settings while the job idles
+        sleeps.append(s)
+        db.set_address_lookup(conn, True)
+        if len(sleeps) == 2:
+            raise asyncio.CancelledError
+
+    def fetch(lat, lon):
+        asked.append((lat, lon))
+        return answer("house")
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(geocode.run(conn, fetch, lambda: 99, lambda: True, lambda lat, lon: False, sleep))
+    assert sleeps == [geocode.IDLE_S, geocode.SPACING_S] and asked == [(51.2, 4.3)]
 
 
 def test_run_backs_off_on_a_failure_and_stores_nothing(caplog):
@@ -190,6 +231,8 @@ def test_run_does_not_block_the_event_loop():
 
     async def stop(s):
         raise asyncio.CancelledError
+
+    db.set_address_lookup(conn, True)
 
     async def main():
         async def tick():

@@ -83,6 +83,7 @@ _RECEIPT = _shape({"amount": vol.Any(None, _num)})
 _FIXED_COST = _shape({"name": str, "amount": _num, "period": str, "start": _date, "end": vol.Any(None, _date)})
 _END = _shape({"end": vol.Any(None, _date)})
 _CARD = _shape({"markup_pct": _num, "start_fee": _num})
+_ADDRESS_LOOKUP = _shape({"enabled": bool})
 _ONBOARDING = vol.Schema(vol.Any({vol.Required("opened"): vol.In(onboarding.STEPS_OPENED)}, {vol.Required("hidden"): bool}))  # exactly one of the two
 
 
@@ -261,7 +262,12 @@ class UiApi:
 
     @_admin
     def _settings(self, viewer, p, q, body):
-        return access.settings(self.conn, self.cars()) | {"prices": prices.settings(self.conn)}
+        return access.settings(self.conn, self.cars()) | {"prices": prices.settings(self.conn), "address_lookup": db.address_lookup(self.conn)}
+
+    @_admin
+    def _put_address_lookup(self, viewer, p, q, body):
+        db.set_address_lookup(self.conn, _body(_ADDRESS_LOOKUP, body)["enabled"])
+        return {}
 
     @_admin
     def _onboarding(self, viewer, p, q, body):
@@ -361,6 +367,7 @@ ROUTES = [_route(*r) for r in (
     ("GET", "/settings", UiApi._settings),
     ("GET", "/onboarding", UiApi._onboarding),
     ("PUT", "/onboarding", UiApi._put_onboarding),
+    ("PUT", "/address_lookup", UiApi._put_address_lookup),
     ("POST", "/groups", UiApi._create_group),
     ("PUT", "/groups/{gid}", UiApi._rename_group),
     ("DELETE", "/groups/{gid}", UiApi._delete_group),
