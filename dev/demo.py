@@ -2,12 +2,14 @@
 
     wsl: cd <repo> && ~/venvs/ha-ci/bin/python dev/demo.py [frontend dir]     # http://127.0.0.1:8765/  (needs aiohttp and voluptuous)
     DEMO_USER=u-viewer ...                                                      # the same page as a non-admin (u-viewer shares both cars)
+    DEMO_TILES=osm ...                                                          # real OpenStreetMap tiles (for screenshots), cached in dev/.tiles/
 
 Two cars and a cost group: 10 days of Home / Work / Shop trips with GPS routes (the same drives repeat, so similar trips exist),
 one trip to a place outside every zone, an open trip, charges timed by the car and by the cloud, and one cloud charge whose
 energy is a state-of-charge estimate. Prices: AC 0.45 and DC 0.69 per kWh, a "Shop" spot at 0.35, a monthly 3.99 "Charge card" per car.
-Everything is samples fed through the real Deriver. Map tiles are one generated grey grid; points outside every zone get invented street addresses.
-All coordinates are invented."""
+Everything is samples fed through the real Deriver. Map tiles are one generated grey grid unless DEMO_TILES=osm; points outside every zone get invented names.
+The places are public spots in Utrecht (parks, the university campus, the exhibition centre); the routes between them are invented curves."""
+import asyncio
 import math
 import os
 import random
@@ -31,8 +33,8 @@ from custom_components.car_insights.core.protocol import Sample  # noqa: E402
 from custom_components.car_insights.core.ui_api import UiApi  # noqa: E402
 
 TZ = ZoneInfo("Europe/Amsterdam")
-PLACES = {"Home": (52.0, 5.0), "Work": (52.09, 5.11), "Shop": (52.03, 5.04), "Elsewhere": (52.06, 4.95)}  # Elsewhere is in no zone
-CRUISE = {"Work": 24.0, "Shop": 11.0, "Elsewhere": 19.0, "Home": 17.0}  # m/s on the way to...
+PLACES = {"Home": (52.0985, 5.1285), "Work": (52.0855, 5.1745), "Shop": (52.0890, 5.1095), "Elsewhere": (52.0975, 5.0560)}  # Elsewhere is in no zone
+CRUISE = {"Work": 14.0, "Shop": 10.0, "Elsewhere": 13.0, "Home": 12.0}  # m/s on the way to...
 MIN = 60_000
 CARS = {  # id -> (name, capacity Wh, has a cloud source, battery at the start)
     "demo-aurora": ("Aurora", 60_000.0, True, 0.8),
@@ -45,6 +47,34 @@ def _grid_png() -> bytes:
     rows = b"".join(b"\0" + bytes(215 if y % 32 == 0 or x % 32 == 0 else 240 for x in range(256)) for y in range(256))
     chunk = lambda t, b: struct.pack(">I", len(b)) + t + b + struct.pack(">I", zlib.crc32(t + b))
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 256, 256, 8, 0, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+
+
+OSM = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+TILES = Path(__file__).resolve().parent / ".tiles"  # git-ignored
+
+
+def osm_tiles(grey: bytes):
+    """Handler for DEMO_TILES=osm: each tile fetched once from OpenStreetMap, one at a time, then served from disk; grey on failure."""
+    from aiohttp import ClientSession, ClientTimeout
+    lock = asyncio.Lock()  # OSM's tile policy: no parallel bulk fetching
+
+    async def tile(request):
+        z, x, y = (int(request.match_info[k]) for k in ("z", "x", "y"))
+        path = TILES / f"{z}-{x}-{y}.png"
+        async with lock:
+            if not path.exists():
+                try:
+                    async with ClientSession(headers={"User-Agent": "ha-car-insights-demo/1 (+https://github.com/misterblokhead/ha-car-insights)"},
+                                             timeout=ClientTimeout(total=15)) as s, s.get(OSM.format(z=z, x=x, y=y)) as r:
+                        r.raise_for_status()
+                        body = await r.read()
+                    TILES.mkdir(exist_ok=True)
+                    path.write_bytes(body)
+                except Exception as e:  # noqa: BLE001
+                    print("tile", z, x, y, "failed:", e)
+                    return web.Response(body=grey, content_type="image/png")
+        return web.Response(body=path.read_bytes(), content_type="image/png", headers={"Cache-Control": "max-age=86400"})
+    return tile
 
 
 def zones(lat: float, lon: float) -> str | None:
@@ -184,7 +214,7 @@ def build(conn, now: int) -> Deriver:
                 _, wh = charge(cloud_log if cloud else log, start, wh, cap, rng.uniform(0.82, 0.96) * cap, car_reports=not cloud)
                 estimate_next = cloud and d == 4
         if cloud:  # the open trip: out for 5 minutes
-            drive(log, now - 5 * MIN, "Home", "Work", wh, 11.0, rng, wake=not estimate_next, until=now)
+            drive(log, now - 5 * MIN, "Home", "Elsewhere", wh, 11.0, rng, wake=not estimate_next, until=now)
         for source, rows in (("car", car), ("cloud", sky)):
             if rows:
                 rows.sort(key=lambda r: r[0])  # stable: samples of one instant keep their order
@@ -206,9 +236,9 @@ def build(conn, now: int) -> Deriver:
     for vid in CARS:
         prices.add_fixed_cost(conn, vid, "Charge card", 3.99, "month", first, None)
     n = 0
-    while key := store.unaddressed(conn):  # invented street names for the points no zone names
+    while key := store.unaddressed(conn):  # invented names for the points no zone names
         n += 1
-        store.save_address(conn, *key, f"{n} Demo Street, Exampleville", now)
+        store.save_address(conn, *key, f"Place {n}", now)
     return deriver
 
 
@@ -246,7 +276,8 @@ def main(frontend: Path) -> None:
     app.add_routes([
         web.get("/", lambda r: web.Response(text=INDEX, content_type="text/html")),
         web.route("*", "/api/car_insights/ui/{path:.*}", ui),
-        web.get("/api/map_tiles/raster/{z}/{x}/{y}.png", lambda r: web.Response(body=png, content_type="image/png")),  # Home Assistant wants a login here
+        web.get("/api/map_tiles/raster/{z}/{x}/{y}.png",  # Home Assistant wants a login here
+                osm_tiles(png) if os.environ.get("DEMO_TILES") == "osm" else lambda r: web.Response(body=png, content_type="image/png")),
         web.static("/car_insights_static", frontend),
     ])
     web.run_app(app, host="127.0.0.1", port=8765)
