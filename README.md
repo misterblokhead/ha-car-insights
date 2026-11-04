@@ -88,6 +88,14 @@ changes before they go into a release, and I use it every day with my own car. T
 integration and the page; GitHub runs them, plus the HACS and hassfest checks, on every push, and I only release when
 they pass.
 
+## Project status
+
+Car Insights is young: the first release was in October 2026 and the repository became public in November 2026. It was developed privately first, so the public history starts at an initial import. Releases and the [CHANGELOG](CHANGELOG.md) are the readable history.
+
+- **Built and used:** the Android Automotive car app path. The car app is not released yet.
+- **Experimental:** reading your car's own Home Assistant integration. It is unit-tested, but I have not yet tried it with a real car's integration. Reports from other cars are very welcome.
+- **Maintained by one person.** Bugs and questions: [open an issue](https://github.com/misterblokhead/ha-car-insights/issues). Security reports: see [SECURITY.md](SECURITY.md).
+
 ## Help
 
 Found a bug or have a question? [Open an issue](https://github.com/misterblokhead/ha-car-insights/issues).
