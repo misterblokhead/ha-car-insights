@@ -4,12 +4,14 @@
     DEMO_USER=u-viewer ...                                                      # the same page as a non-admin (u-viewer shares both cars)
     DEMO_TILES=osm ...                                                          # real OpenStreetMap tiles (for screenshots), cached in dev/.tiles/
 
-Two cars and a cost group: 10 days of Home / Work / Shop trips with GPS routes (the same drives repeat, so similar trips exist),
-one trip to a place outside every zone, an open trip, charges timed by the car and by the cloud, and one cloud charge whose
+Two cars and a cost group: 17 days of Home / Work / Shop trips with GPS routes (the same drives repeat, so similar trips exist),
+a Sunday trip to a park outside every zone, an open trip nearly at the Shop, Saturday charges at the Shop, charges timed by the car and by the cloud, and one cloud charge whose
 energy is a state-of-charge estimate. Prices: AC 0.45 and DC 0.69 per kWh, a "Shop" spot at 0.35, a monthly 3.99 "Charge card" per car.
 Everything is samples fed through the real Deriver. Map tiles are one generated grey grid unless DEMO_TILES=osm; points outside every zone get invented names.
-The places are public spots in Utrecht (parks, the university campus, the exhibition centre); the routes between them are invented curves."""
+The places are public spots in Utrecht (a park, the university campus, the exhibition centre), snapped to the nearest road; the routes
+between them are real road geometry from OpenStreetMap via OSRM, fetched once into dev/demo_routes.json."""
 import asyncio
+import json
 import math
 import os
 import random
@@ -33,9 +35,11 @@ from custom_components.car_insights.core.protocol import Sample  # noqa: E402
 from custom_components.car_insights.core.ui_api import UiApi  # noqa: E402
 
 TZ = ZoneInfo("Europe/Amsterdam")
-PLACES = {"Home": (52.0985, 5.1285), "Work": (52.0855, 5.1745), "Shop": (52.0890, 5.1095), "Elsewhere": (52.0975, 5.0560)}  # Elsewhere is in no zone
+_ROUTES = json.loads((Path(__file__).resolve().parent / "demo_routes.json").read_text(encoding="utf-8"))
+PLACES = {k: tuple(v) for k, v in _ROUTES["places"].items()}  # Elsewhere is in no zone
 CRUISE = {"Work": 14.0, "Shop": 10.0, "Elsewhere": 13.0, "Home": 12.0}  # m/s on the way to...
 MIN = 60_000
+DAYS = 17  # of history: the previous week and the one before it are complete
 CARS = {  # id -> (name, capacity Wh, has a cloud source, battery at the start)
     "demo-aurora": ("Aurora", 60_000.0, True, 0.8),
     "demo-breeze": ("Breeze", 40_000.0, False, 0.58),
@@ -89,26 +93,20 @@ def plan(vid: str, day) -> list[tuple[int, int, str, str]]:
     """(hour, minute, from, to) of the day's drives"""
     wd = day.weekday()
     if vid == "demo-aurora":
+        if wd == 3:  # works from home on Thursdays
+            return []
         if wd < 5:
             evening = [(17, 20, "Work", "Shop"), (18, 0, "Shop", "Home")] if wd == 2 else [(17, 20, "Work", "Home")]
             return [(7, 50, "Home", "Work"), *evening]
-        return [(10, 30, "Home", "Shop"), (11, 25, "Shop", "Home")] if wd == 5 else [(14, 0, "Home", "Elsewhere"), (16, 40, "Elsewhere", "Home")]
+        return [(10, 30, "Home", "Shop"), (11, 40, "Shop", "Home")] if wd == 5 else [(14, 0, "Home", "Elsewhere"), (16, 40, "Elsewhere", "Home")]
     if wd in (0, 4):
         return [(8, 10, "Home", "Work"), (16, 45, "Work", "Home")]
     return [(9, 15, "Home", "Shop"), (11 if wd == 5 else 10, 0, "Shop", "Home")] if wd in (1, 3, 5) else []  # Saturday: long enough to charge at the Shop
 
 
-def route(a: str, b: str, rng: random.Random):
-    """polyline a -> b bowed to one side; (points, cumulative metres)"""
-    (la, oa), (lb, ob) = PLACES[a], PLACES[b]
-    dx, dy = lb - la, ob - oa
-    n = math.hypot(dx, dy)
-    bow, wig = rng.uniform(0.6, 1.4) * 0.12 * n, rng.uniform(0, 6)
-    pts = []
-    for i in range(81):
-        u = i / 80
-        side = (bow * math.sin(math.pi * u) + 0.1 * bow * math.sin(5 * math.pi * u + wig)) / n
-        pts.append((la + dx * u - dy * side, oa + dy * u + dx * side))
+def route(a: str, b: str):
+    """the road a -> b; (points, cumulative metres)"""
+    pts = [tuple(p) for p in _ROUTES["routes"][f"{a}-{b}"]]
     pts[0], pts[-1] = PLACES[a], PLACES[b]
     cum = [0.0]
     for p, q in zip(pts, pts[1:]):
@@ -125,9 +123,9 @@ def at(pts, cum, s):
 
 
 def drive(log, t0, a, b, wh, temp, rng, wake=True, until=None) -> tuple[int, float]:
-    """The samples of one drive from t0; with `until` it stops there, still open. Returns (end time, battery Wh).
+    """The samples of one drive from t0; with `until` it stops there (or 200 m before `b`), still open. Returns (end time, battery Wh).
     wake=False leaves no battery reading between the car's last one and the drive (a cloud charge before it is then estimated)."""
-    pts, cum = route(a, b, rng)
+    pts, cum = route(a, b)
     if wake:
         log(t0 - 90_000, "battery_wh", round(wh))
     log(t0 - 90_000, "gear", 1)
@@ -152,7 +150,7 @@ def drive(log, t0, a, b, wh, temp, rng, wake=True, until=None) -> tuple[int, flo
         if hard and t == t0:
             for k in range(1, 8):
                 log(t + 200 * k, "speed", round(min(6.5, new + 0.8 * k), 2))
-        if until is not None and t + 4000 > until:
+        if until is not None and (t + 4000 > until or rem < 200):
             return t, wh
         if hard and 0 < rem <= new * 4:  # the step before arrival
             for k in range(1, 12):
@@ -196,9 +194,9 @@ def build(conn, now: int) -> Deriver:
         log = lambda t, k, v, rows=car: rows.append((int(t), k, v))
         cloud_log = lambda t, k, v: sky.append((int(t), k, v))
         wh, estimate_next = full * cap, False
-        log(local(today - timedelta(days=10), 0, 0), "meta", {"vehicle_name": name, "make": "Demo", "model": "E1"})
-        log(local(today - timedelta(days=10), 0, 1), "odometer_km", 12_345.0)
-        for d in range(9, -1, -1):
+        log(local(today - timedelta(days=DAYS), 0, 0), "meta", {"vehicle_name": name, "make": "Demo", "model": "E1"})
+        log(local(today - timedelta(days=DAYS), 0, 1), "odometer_km", 12_345.0)
+        for d in range(DAYS - 1, -1, -1):
             day = today - timedelta(days=d)
             for h, m, a, b in plan(vid, day):
                 t0 = local(day, h, m + rng.randint(-10, 10))
@@ -206,15 +204,16 @@ def build(conn, now: int) -> Deriver:
                     continue
                 end, wh = drive(log, t0, a, b, wh, 9 + 3 * math.sin(d) + rng.uniform(-1, 1), rng, wake=not estimate_next)
                 estimate_next = False
-                if vid == "demo-breeze" and day.weekday() == 5 and b == "Shop" and end + 70 * MIN < now:  # the one charge away from home, for the Shop price
-                    _, wh = charge(log, end + 3 * MIN, wh, cap, min(wh + 5400, 0.98 * cap), car_reports=True)
+                if day.weekday() == 5 and b == "Shop" and end + 70 * MIN < now:  # the charge away from home, for the Shop price
+                    _, wh = charge(cloud_log if cloud else log, end + 3 * MIN, wh, cap, min(wh + 4000, 0.98 * cap), car_reports=not cloud)
             # evening at home: plug in when below 70 %; the Aurora's cloud charge four days ago is left as a state-of-charge estimate
             start = local(day, 19, 30) + rng.randint(0, 120) * MIN
             if (wh < 0.7 * cap or (cloud and d == 4)) and start < now - 6 * 3600_000:
-                _, wh = charge(cloud_log if cloud else log, start, wh, cap, rng.uniform(0.82, 0.96) * cap, car_reports=not cloud)
+                target = max(rng.uniform(0.82, 0.96) * cap, min(wh + 6000, 0.98 * cap))  # the forced one adds something even after a top-up
+                _, wh = charge(cloud_log if cloud else log, start, wh, cap, target, car_reports=not cloud)
                 estimate_next = cloud and d == 4
-        if cloud:  # the open trip: out for 5 minutes
-            drive(log, now - 5 * MIN, "Home", "Elsewhere", wh, 11.0, rng, wake=not estimate_next, until=now)
+        if cloud:  # the open trip: nearly at the Shop, so its end already has a name
+            drive(log, now - 12 * MIN, "Home", "Shop", wh, 11.0, rng, wake=not estimate_next, until=now)
         for source, rows in (("car", car), ("cloud", sky)):
             if rows:
                 rows.sort(key=lambda r: r[0])  # stable: samples of one instant keep their order
@@ -226,19 +225,20 @@ def build(conn, now: int) -> Deriver:
     deriver = Deriver(conn, zones, lambda vid: db.capacity_wh(conn, vid, 60_000.0))
     for vid in CARS:
         deriver.update(vid, None, now)
-    first = today - timedelta(days=10)
+    first = today - timedelta(days=DAYS)
     for target, per_kwh in (("ac", 0.45), ("dc", 0.69)):
         prices.set_tariff(conn, target, local(first, 0, 0), per_kwh)
-    shop = min(((c["start"], vid) for vid in CARS for c in store.closed(conn, CHARGE, vid) if c["place"] == "Shop"), default=None)
-    if shop:  # none when the Saturday visit falls outside the 10 days
-        prices.create_spot(conn, shop[1], shop[0], "Shop", 0.35)
-        relabel(conn)
+    for vid in CARS:
+        shop = min((c["start"] for c in store.closed(conn, CHARGE, vid) if c["place"] == "Shop"), default=None)
+        if shop:
+            prices.create_spot(conn, vid, shop, "Shop", 0.35)
+    relabel(conn)
     for vid in CARS:
         prices.add_fixed_cost(conn, vid, "Charge card", 3.99, "month", first, None)
-    n = 0
-    while key := store.unaddressed(conn):  # invented names for the points no zone names
+    park, n = tuple(round(c * 10_000) for c in PLACES["Elsewhere"]), 0
+    while key := store.unaddressed(conn):  # names for the points no zone names: the park the Elsewhere trips go to, else invented
         n += 1
-        store.save_address(conn, *key, f"Place {n}", now)
+        store.save_address(conn, *key, "Máximapark" if math.dist(key, park) < 5 else f"Place {n}", now)
     return deriver
 
 
